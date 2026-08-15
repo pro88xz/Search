@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="appBackground">#FAFAFA</color>
+    <!-- Settings Material-3 surfaces -->
+    <color name="settingsPageBg">#F1EEF7</color>
+    <color name="settingsCard">#FFFFFF</color>
+    <color name="settingsIconTint">#5E44A0</color>
     <color name="splashBg">#220549</color>
     <color name="splashIconBg">#220549</color>
     <color name="ic_launcher_background">#2A1E48</color>

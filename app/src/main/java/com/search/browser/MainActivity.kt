@@ -1092,6 +1092,55 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    // ---------- Owl tap (context-aware) ----------
+    private fun onOwlTapped() {
+        val current = activeWeb()?.url
+        val onHome = (current == null || current == homePage)
+        if (onHome) showOwlCloseDialog() else showOwlHomeDialog()
+    }
+
+    private fun showOwlHomeDialog() {
+        val view = layoutInflater.inflate(R.layout.dialog_owl_home, null)
+        val dialog = android.app.AlertDialog.Builder(this).setView(view).create()
+        dialog.window?.setBackgroundDrawable(
+            android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT)
+        )
+        dialog.window?.attributes?.windowAnimations = R.style.OwlDialogAnim
+        view.findViewById<android.widget.TextView>(R.id.owlStay).setOnClickListener {
+            dialog.dismiss()
+        }
+        view.findViewById<android.widget.TextView>(R.id.owlGoHome).setOnClickListener {
+            dialog.dismiss()
+            activeWeb()?.loadUrl(homePage)
+        }
+        dialog.show()
+        dialog.window?.let { w ->
+            val width = (resources.displayMetrics.widthPixels * 0.86f).toInt()
+            w.setLayout(width, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+    }
+
+    private fun showOwlCloseDialog() {
+        val view = layoutInflater.inflate(R.layout.dialog_owl_close, null)
+        val dialog = android.app.AlertDialog.Builder(this).setView(view).create()
+        dialog.window?.setBackgroundDrawable(
+            android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT)
+        )
+        dialog.window?.attributes?.windowAnimations = R.style.OwlDialogAnim
+        view.findViewById<android.widget.TextView>(R.id.owlCloseNo).setOnClickListener {
+            dialog.dismiss()
+        }
+        view.findViewById<android.widget.TextView>(R.id.owlCloseYes).setOnClickListener {
+            dialog.dismiss()
+            finishAffinity()
+        }
+        dialog.show()
+        dialog.window?.let { w ->
+            val width = (resources.displayMetrics.widthPixels * 0.86f).toInt()
+            w.setLayout(width, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+    }
+
     // ---------- Downloads ----------
 
     /**
@@ -1199,7 +1248,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupToolbar() {
         binding.reloadBtn.setOnClickListener { activeWeb()?.reload() }
-        binding.homeBtn.setOnClickListener { activeWeb()?.loadUrl(homePage) }
+        binding.homeBtn.setOnClickListener { onOwlTapped() }
         binding.tabCountBtn.setOnClickListener { openDeck() }
         binding.settingsBtn.setOnClickListener { openMenu() }
 

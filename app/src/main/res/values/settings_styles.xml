@@ -15,15 +15,37 @@
     <style name="SettingsRow">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
-        <item name="android:paddingStart">20dp</item>
-        <item name="android:paddingEnd">20dp</item>
-        <item name="android:paddingTop">16dp</item>
-        <item name="android:paddingBottom">16dp</item>
+        <item name="android:paddingStart">18dp</item>
+        <item name="android:paddingEnd">16dp</item>
+        <item name="android:paddingTop">17dp</item>
+        <item name="android:paddingBottom">17dp</item>
         <item name="android:textSize">16sp</item>
         <item name="android:textColor">?android:attr/textColorPrimary</item>
         <item name="android:background">?attr/selectableItemBackground</item>
         <item name="android:drawableEnd">@drawable/ic_chevron</item>
+        <item name="android:drawablePadding">18dp</item>
         <item name="android:gravity">center_vertical</item>
+    </style>
+    <!-- Section label sitting above each card -->
+    <style name="SettingsCardLabel">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:paddingStart">14dp</item>
+        <item name="android:paddingBottom">8dp</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:letterSpacing">0.02</item>
+        <item name="android:textColor">@color/settingsIconTint</item>
+    </style>
+    <!-- The rounded card wrapping a section's rows -->
+    <style name="SettingsCard">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:background">@drawable/settings_card_bg</item>
+        <item name="android:layout_marginBottom">20dp</item>
+        <item name="android:elevation">1dp</item>
+        <item name="android:clipToOutline">true</item>
     </style>
 
     <style name="SettingsDivider">
@@ -58,5 +80,9 @@
         <item name="android:background">?attr/selectableItemBackground</item>
         <item name="android:clickable">true</item>
         <item name="android:focusable">true</item>
+    </style>
+    <style name="OwlDialogAnim">
+        <item name="android:windowEnterAnimation">@anim/owl_pop_in</item>
+        <item name="android:windowExitAnimation">@anim/owl_pop_out</item>
     </style>
 </resources>

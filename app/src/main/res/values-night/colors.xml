@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="appBackground">#0E0E10</color>
+    <color name="settingsPageBg">#0E0E10</color>
+    <color name="settingsCard">#1C1C20</color>
+    <color name="settingsIconTint">#B39DF0</color>
     <color name="splashBg">#2A1E48</color>
 </resources>

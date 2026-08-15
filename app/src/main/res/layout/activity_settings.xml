@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="?android:attr/colorBackground">
+    android:background="@color/settingsPageBg">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -41,63 +41,84 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:paddingTop="8dp"
-            android:paddingBottom="24dp">
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:paddingTop="12dp"
+            android:paddingBottom="28dp">
 
-            <TextView style="@style/SettingsHeader" android:text="Search engine" />
-            <RadioGroup
-                android:id="@+id/engineGroup"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:paddingStart="20dp"
-                android:paddingEnd="20dp"
-                android:paddingBottom="12dp" />
+            <!-- Search engine -->
+            <TextView style="@style/SettingsCardLabel" android:text="Search engine" />
+            <LinearLayout style="@style/SettingsCard">
+                <RadioGroup
+                    android:id="@+id/engineGroup"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:paddingStart="18dp"
+                    android:paddingEnd="18dp"
+                    android:paddingTop="6dp"
+                    android:paddingBottom="6dp" />
+            </LinearLayout>
 
-            <View style="@style/SettingsDivider" />
+            <!-- Browsing -->
+            <TextView style="@style/SettingsCardLabel" android:text="Browsing" />
+            <LinearLayout style="@style/SettingsCard">
+                <TextView android:id="@+id/rowSecurity" style="@style/SettingsRow"
+                    android:text="Search Security" android:drawableStart="@drawable/set_security" />
+                <TextView android:id="@+id/rowAdblock" style="@style/SettingsRow"
+                    android:text="Ad blocking" android:drawableStart="@drawable/set_adblock" />
+                <TextView android:id="@+id/rowSiteSettings" style="@style/SettingsRow"
+                    android:text="Site settings" android:drawableStart="@drawable/set_site" />
+                <TextView android:id="@+id/rowAccessibility" style="@style/SettingsRow"
+                    android:text="Accessibility" android:drawableStart="@drawable/set_accessibility" />
+                <TextView android:id="@+id/rowCustomize" style="@style/SettingsRow"
+                    android:text="Customize your Search" android:drawableStart="@drawable/set_customize" />
+            </LinearLayout>
 
-            <TextView style="@style/SettingsHeader" android:text="Browsing" />
-            <TextView android:id="@+id/rowSecurity" style="@style/SettingsRow" android:text="Search Security" />
-            <TextView android:id="@+id/rowAdblock" style="@style/SettingsRow" android:text="Ad blocking" />
-            <TextView android:id="@+id/rowSiteSettings" style="@style/SettingsRow" android:text="Site settings" />
-            <TextView android:id="@+id/rowAccessibility" style="@style/SettingsRow" android:text="Accessibility" />
-            <TextView android:id="@+id/rowCustomize" style="@style/SettingsRow" android:text="Customize your Search" />
+            <!-- Appearance -->
+            <TextView style="@style/SettingsCardLabel" android:text="Appearance" />
+            <LinearLayout style="@style/SettingsCard">
+                <RadioGroup
+                    android:id="@+id/themeGroup"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:paddingStart="18dp"
+                    android:paddingEnd="18dp"
+                    android:paddingTop="6dp"
+                    android:paddingBottom="6dp" />
+            </LinearLayout>
 
-            <View style="@style/SettingsDivider" />
+            <!-- Data -->
+            <TextView style="@style/SettingsCardLabel" android:text="Data" />
+            <LinearLayout style="@style/SettingsCard">
+                <TextView android:id="@+id/clearData" style="@style/SettingsRow"
+                    android:text="Clear browsing data" android:textColor="#E53935"
+                    android:drawableStart="@drawable/set_clear" />
+            </LinearLayout>
 
-            <TextView style="@style/SettingsHeader" android:text="Appearance" />
-            <RadioGroup
-                android:id="@+id/themeGroup"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:paddingStart="20dp"
-                android:paddingEnd="20dp"
-                android:paddingBottom="12dp" />
+            <!-- About -->
+            <TextView style="@style/SettingsCardLabel" android:text="About" />
+            <LinearLayout style="@style/SettingsCard">
+                <TextView
+                    android:id="@+id/aboutText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingStart="18dp"
+                    android:paddingEnd="18dp"
+                    android:paddingTop="16dp"
+                    android:paddingBottom="16dp"
+                    android:text="Search Browser"
+                    android:textSize="15sp"
+                    android:textColor="?android:attr/textColorPrimary" />
+                <TextView android:id="@+id/rowCheckUpdate" style="@style/SettingsRow"
+                    android:text="Check for updates" android:drawableStart="@drawable/set_update" />
+                <TextView android:id="@+id/rowPrivacy" style="@style/SettingsRow"
+                    android:text="Privacy Policy" android:drawableStart="@drawable/set_privacy" />
+                <TextView android:id="@+id/rowTerms" style="@style/SettingsRow"
+                    android:text="Terms of Use" android:drawableStart="@drawable/set_terms" />
+            </LinearLayout>
 
-            <View style="@style/SettingsDivider" />
-
-            <TextView android:id="@+id/clearData" style="@style/SettingsRow"
-                android:text="Clear browsing data" android:textColor="#E53935" />
-
-            <View style="@style/SettingsDivider" />
-
-            <TextView style="@style/SettingsHeader" android:text="About" />
-            <TextView
-                android:id="@+id/aboutText"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:paddingStart="20dp"
-                android:paddingEnd="20dp"
-                android:text="Search Browser"
-                android:textSize="15sp"
-                android:textColor="?android:attr/textColorPrimary" />
-            <TextView android:id="@+id/rowCheckUpdate" style="@style/SettingsRow"
-                android:text="Check for updates" />
-
-            <View style="@style/SettingsDivider" />
-            <TextView android:id="@+id/rowPrivacy" style="@style/SettingsRow" android:text="Privacy Policy" />
-            <TextView android:id="@+id/rowTerms" style="@style/SettingsRow" android:text="Terms of Use" />
         </LinearLayout>
     </ScrollView>
 </LinearLayout>
