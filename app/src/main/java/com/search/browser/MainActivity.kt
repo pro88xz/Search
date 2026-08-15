@@ -766,6 +766,12 @@ class MainActivity : AppCompatActivity() {
     private fun refreshOmniboxVisibility(url: String?) {
         val isHome = url == null || url == homePage
         binding.urlBarContainer.visibility = if (isHome) View.INVISIBLE else View.VISIBLE
+        // Desktop mode is meaningless on the home page — reset it when we land
+        // home so the next site opens as a normal mobile page.
+        if (isHome && Settings.getBool(this, Settings.DESKTOP_MODE, false)) {
+            Settings.setBool(this, Settings.DESKTOP_MODE, false)
+            applyDesktopMode(false)
+        }
     }
 
     private fun freezeTab(tab: Tab) {
@@ -1264,6 +1270,14 @@ class MainActivity : AppCompatActivity() {
             if (nightOwl) exitNightOwl() else enterNightOwl()
         }
         binding.menuDesktop.setOnClickListener {
+            val current = activeWeb()?.url
+            if (current == null || current == homePage) {
+                closeMenu()
+                android.widget.Toast.makeText(this,
+                    "Open a page first — nothing to switch to desktop",
+                    android.widget.Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
             val on = !Settings.getBool(this, Settings.DESKTOP_MODE, false)
             Settings.setBool(this, Settings.DESKTOP_MODE, on)
             closeMenu()
