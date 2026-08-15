@@ -113,6 +113,8 @@
                     android:textColor="?android:attr/textColorPrimary" />
                 <TextView android:id="@+id/rowCheckUpdate" style="@style/SettingsRow"
                     android:text="Check for updates" android:drawableStart="@drawable/set_update" />
+                <TextView android:id="@+id/rowRate" style="@style/SettingsRow"
+                    android:text="Rate Search" android:drawableStart="@drawable/set_rate" />
                 <TextView android:id="@+id/rowPrivacy" style="@style/SettingsRow"
                     android:text="Privacy Policy" android:drawableStart="@drawable/set_privacy" />
                 <TextView android:id="@+id/rowTerms" style="@style/SettingsRow"

@@ -104,6 +104,7 @@ class SettingsActivity : AppCompatActivity() {
         } catch (e: Exception) { "1.0" }
         about.text = "Search Browser\nVersion $version"
         findViewById<TextView>(R.id.rowCheckUpdate).setOnClickListener { checkForUpdate() }
+        findViewById<TextView>(R.id.rowRate).setOnClickListener { openPlayListing() }
     }
 
     private val updateLauncher = registerForActivityResult(
@@ -139,6 +140,25 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun toast(msg: String) =
         android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_SHORT).show()
+
+    private fun openPlayListing() {
+        val pkg = packageName
+        try {
+            startActivity(android.content.Intent(
+                android.content.Intent.ACTION_VIEW,
+                android.net.Uri.parse("market://details?id=$pkg"))
+                .setPackage("com.android.vending"))
+        } catch (e: Exception) {
+            // Play Store app not available — fall back to the web listing.
+            try {
+                startActivity(android.content.Intent(
+                    android.content.Intent.ACTION_VIEW,
+                    android.net.Uri.parse("https://play.google.com/store/apps/details?id=$pkg")))
+            } catch (e2: Exception) {
+                toast("Couldn't open the Play Store")
+            }
+        }
+    }
 
     private fun openSection(section: String) {
         val i = android.content.Intent(this, SectionActivity::class.java)
