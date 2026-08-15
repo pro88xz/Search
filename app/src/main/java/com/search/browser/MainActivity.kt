@@ -919,6 +919,18 @@ class MainActivity : AppCompatActivity() {
             }.start()
     }
 
+    /** Instant close (no fade) for when a menu item's action follows immediately,
+     *  so the panel doesn't linger see-through over the page during the action. */
+    private fun closeMenuNow() {
+        binding.menuScrim.animate().cancel()
+        binding.menuPanel.animate().cancel()
+        binding.menuScrim.visibility = View.GONE
+        binding.menuScrim.alpha = 1f
+        binding.menuPanel.scaleX = 1f
+        binding.menuPanel.scaleY = 1f
+        binding.menuPanel.alpha = 1f
+    }
+
     private fun addNewTab(loadUrl: String = homePage) {
         val tab = tabs.createTab(loadUrl)
         openTab(tab, loadUrl)
@@ -1290,16 +1302,16 @@ class MainActivity : AppCompatActivity() {
 
         // Menu items
         binding.menuNewTab.setOnClickListener {
-            closeMenu(); addNewTab(homePage)
+            closeMenuNow(); addNewTab(homePage)
         }
         binding.menuNightOwl.setOnClickListener {
-            closeMenu()
+            closeMenuNow()
             if (nightOwl) exitNightOwl() else enterNightOwl()
         }
         binding.menuDesktop.setOnClickListener {
             val current = activeWeb()?.url
             if (current == null || current == homePage) {
-                closeMenu()
+                closeMenuNow()
                 android.widget.Toast.makeText(this,
                     "Open a page first — nothing to switch to desktop",
                     android.widget.Toast.LENGTH_SHORT).show()
@@ -1307,36 +1319,36 @@ class MainActivity : AppCompatActivity() {
             }
             val on = !Settings.getBool(this, Settings.DESKTOP_MODE, false)
             Settings.setBool(this, Settings.DESKTOP_MODE, on)
-            closeMenu()
+            closeMenuNow()
             applyDesktopMode(on)
             android.widget.Toast.makeText(this,
                 if (on) "Desktop site on" else "Desktop site off",
                 android.widget.Toast.LENGTH_SHORT).show()
         }
         binding.menuHistory.setOnClickListener {
-            closeMenu(); openDeck(); showHistory()
+            closeMenuNow(); openDeck(); showHistory()
         }
         binding.menuBookmarks.setOnClickListener {
-            closeMenu(); openDeck(); showBookmarks()
+            closeMenuNow(); openDeck(); showBookmarks()
         }
         binding.menuSettings.setOnClickListener {
-            closeMenu()
+            closeMenuNow()
             startActivity(android.content.Intent(this, SettingsActivity::class.java))
         }
         binding.menuDownloads.setOnClickListener {
-            closeMenu()
+            closeMenuNow()
             openDownloads()
         }
         binding.menuFind.setOnClickListener {
-            closeMenu()
+            closeMenuNow()
             openFindBar()
         }
         binding.menuSupport.setOnClickListener {
-            closeMenu()
+            closeMenuNow()
             startActivity(android.content.Intent(this, SupportActivity::class.java))
         }
         binding.menuGames.setOnClickListener {
-            closeMenu()
+            closeMenuNow()
             android.widget.Toast.makeText(this, "Play games — coming soon", android.widget.Toast.LENGTH_SHORT).show()
         }
 

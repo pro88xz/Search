@@ -3,47 +3,52 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:layout_margin="6dp"
-    android:background="#F2F2F2"
-    android:padding="6dp"
+    android:layout_margin="7dp"
+    android:background="@drawable/tab_card_bg"
+    android:elevation="2dp"
+    android:clipToOutline="true"
     android:clickable="true"
     android:focusable="true">
 
-    <!-- Thumbnail preview -->
-    <ImageView
-        android:id="@+id/tabThumb"
+    <!-- Thumbnail with an overlaid corner close button -->
+    <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="150dp"
-        android:scaleType="matrix"
-        android:background="#FFFFFF"
-        android:contentDescription="Tab preview" />
+        android:layout_height="200dp">
 
-    <!-- Title + close row -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:paddingTop="6dp">
-
-        <TextView
-            android:id="@+id/tabTitle"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:maxLines="1"
-            android:ellipsize="end"
-            android:textSize="13sp"
-            android:textStyle="bold"
-            android:textColor="#111111"
-            android:text="New Tab" />
+        <ImageView
+            android:id="@+id/tabThumb"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="matrix"
+            android:background="@drawable/tab_thumb_bg"
+            android:contentDescription="Tab preview" />
 
         <ImageButton
             android:id="@+id/closeTab"
-            android:layout_width="30dp"
-            android:layout_height="30dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@android:drawable/ic_menu_close_clear_cancel"
+            android:layout_width="26dp"
+            android:layout_height="26dp"
+            android:layout_gravity="top|end"
+            android:layout_margin="8dp"
+            android:padding="6dp"
+            android:scaleType="fitCenter"
+            android:background="@drawable/tab_close_bg"
+            android:src="@drawable/ic_tab_close"
             android:contentDescription="Close tab" />
-    </LinearLayout>
+    </FrameLayout>
+
+    <!-- Title row -->
+    <TextView
+        android:id="@+id/tabTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:maxLines="1"
+        android:ellipsize="end"
+        android:textSize="13sp"
+        android:textStyle="bold"
+        android:textColor="?android:attr/textColorPrimary"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:paddingTop="10dp"
+        android:paddingBottom="12dp"
+        android:text="New Tab" />
 </LinearLayout>
