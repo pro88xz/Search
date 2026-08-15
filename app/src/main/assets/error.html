@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Can't reach site</title>
+<style>
+  :root { --bg:#FAFAFA; --fg:#0E0E10; --muted:#8A8A8F; --accent:#5E44A0; --line:#E4E4E7; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#0E0E10; --fg:#FAFAFA; --muted:#8A8A8F; --accent:#8B6BD8; --line:#26262A; }
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--fg);
+    font-family:-apple-system,"Roboto","Segoe UI",system-ui,sans-serif; -webkit-font-smoothing:antialiased; }
+  .wrap { min-height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:40px 28px; text-align:center; }
+  .owl { width:96px; height:96px; margin-bottom:24px; opacity:0.9; }
+  h1 { font-size:22px; font-weight:700; margin:0 0 12px; letter-spacing:-0.01em; }
+  p { font-size:15px; color:var(--muted); margin:0 0 10px; max-width:340px; line-height:1.5; }
+  .host { font-size:13px; color:var(--muted); margin:0 0 28px; max-width:320px;
+    word-break:break-all; background:var(--line); padding:8px 14px; border-radius:10px; }
+  .retry {
+    display:inline-block; padding:13px 28px; border-radius:24px;
+    background:var(--accent); color:#fff; font-size:15px; font-weight:600;
+    border:none; cursor:pointer; font-family:inherit;
+  }
+  .retry:active { opacity:0.85; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <img class="owl" src="ic_owl.png" alt="Search owl">
+    <h1>This site can't be reached</h1>
+    <p>Search couldn't find or connect to the page you asked for. The address may be wrong, or the site may be down.</p>
+    <div class="host" id="host"></div>
+    <button class="retry" onclick="if(window.SearchApp&&window.SearchApp.retry)window.SearchApp.retry();">Try again</button>
+  </div>
+<script>
+  // The app appends ?u=<failed url> so we can show which site failed.
+  try {
+    var m = location.search.match(/[?&]u=([^&]+)/);
+    if (m) document.getElementById('host').textContent = decodeURIComponent(m[1]);
+    else document.getElementById('host').style.display='none';
+  } catch(e){ document.getElementById('host').style.display='none'; }
+</script>
+</body>
+</html>

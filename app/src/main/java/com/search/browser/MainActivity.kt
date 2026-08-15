@@ -94,6 +94,14 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun hasNetwork(): Boolean {
+        val cm = getSystemService(android.content.Context.CONNECTIVITY_SERVICE)
+            as android.net.ConnectivityManager
+        val net = cm.activeNetwork ?: return false
+        val caps = cm.getNetworkCapabilities(net) ?: return false
+        return caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+    }
+
     private fun siteSettingsSignature(): String {
         return listOf(
             Settings.getBool(this, Settings.SITE_JAVASCRIPT, true),
@@ -550,7 +558,17 @@ class MainActivity : AppCompatActivity() {
                 // Only replace the main-frame failure (not sub-resources like images/ads).
                 if (request?.isForMainFrame == true) {
                     lastFailedUrl = request.url?.toString()
-                    view?.loadUrl("file:///android_asset/offline.html")
+                    if (hasNetwork()) {
+                        // Online but the site failed (bad address, host down, refused):
+                        // show the "can't reach site" page with the failed URL.
+                        val enc = try {
+                            java.net.URLEncoder.encode(lastFailedUrl ?: "", "UTF-8")
+                        } catch (e: Exception) { "" }
+                        view?.loadUrl("file:///android_asset/error.html?u=$enc")
+                    } else {
+                        // Genuinely no connectivity: show the offline page.
+                        view?.loadUrl("file:///android_asset/offline.html")
+                    }
                 }
             }
 
