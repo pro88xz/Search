@@ -70,6 +70,30 @@ class MainActivity : AppCompatActivity() {
             notifPermLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
         }
     }
+    // File upload (WebView <input type=file>) support.
+    private var filePathCallback: android.webkit.ValueCallback<Array<android.net.Uri>>? = null
+    private val fileChooserLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val cb = filePathCallback
+        filePathCallback = null
+        if (cb == null) return@registerForActivityResult
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            val data = result.data
+            val uris: Array<android.net.Uri>? = when {
+                data?.clipData != null -> {
+                    val cd = data.clipData!!
+                    Array(cd.itemCount) { i -> cd.getItemAt(i).uri }
+                }
+                data?.data != null -> arrayOf(data.data!!)
+                else -> null
+            }
+            cb.onReceiveValue(uris)
+        } else {
+            cb.onReceiveValue(null)
+        }
+    }
+
     private fun siteSettingsSignature(): String {
         return listOf(
             Settings.getBool(this, Settings.SITE_JAVASCRIPT, true),
@@ -598,6 +622,30 @@ class MainActivity : AppCompatActivity() {
                     binding.progressBar.progress = newProgress
                     binding.progressBar.visibility =
                         if (newProgress in 1..99) View.VISIBLE else View.GONE
+                }
+            }
+            // File uploads: <input type="file"> on web pages.
+            override fun onShowFileChooser(
+                webView: WebView?,
+                callback: android.webkit.ValueCallback<Array<android.net.Uri>>?,
+                params: FileChooserParams?
+            ): Boolean {
+                // Cancel any previous pending chooser.
+                filePathCallback?.onReceiveValue(null)
+                filePathCallback = callback
+                val intent = params?.createIntent()
+                    ?: android.content.Intent(android.content.Intent.ACTION_GET_CONTENT).apply {
+                        addCategory(android.content.Intent.CATEGORY_OPENABLE)
+                        type = "*/*"
+                    }
+                return try {
+                    fileChooserLauncher.launch(intent)
+                    true
+                } catch (e: Exception) {
+                    filePathCallback = null
+                    android.widget.Toast.makeText(this@MainActivity,
+                        "Can't open file picker", android.widget.Toast.LENGTH_SHORT).show()
+                    false
                 }
             }
         }
