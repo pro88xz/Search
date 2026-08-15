@@ -3,14 +3,9 @@
     <style name="Theme.Search" parent="Theme.MaterialComponents.NoActionBar">
         <item name="android:windowBackground">@color/appBackground</item>
         <item name="android:colorBackground">@color/appBackground</item>
-        <item name="android:statusBarColor">@color/appBackground</item>
-        <item name="android:navigationBarColor">@color/appBackground</item>
-        <item name="android:windowLightStatusBar">false</item>
     </style>
     <style name="Theme.Search.Splash" parent="Theme.MaterialComponents.NoActionBar">
         <item name="android:windowBackground">@color/splashBg</item>
-        <item name="android:statusBarColor">@color/splashBg</item>
-        <item name="android:navigationBarColor">@color/splashBg</item>
         <item name="android:windowFullscreen">true</item>
         <item name="android:windowNoTitle">true</item>
     </style>
