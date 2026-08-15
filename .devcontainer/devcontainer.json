@@ -6,11 +6,14 @@
       "version": "17",
       "installGradle": false,
       "installMaven": false
-    },
-    "ghcr.io/devcontainers-extra/features/android-sdk:1": {}
+    }
+  },
+  "containerEnv": {
+    "ANDROID_HOME": "/home/vscode/android-sdk",
+    "ANDROID_SDK_ROOT": "/home/vscode/android-sdk"
   },
   "remoteEnv": {
-    "JAVA_HOME": "/usr/local/sdkman/candidates/java/current"
+    "PATH": "${containerEnv:PATH}:/home/vscode/android-sdk/platform-tools:/home/vscode/android-sdk/cmdline-tools/latest/bin"
   },
   "customizations": {
     "vscode": {
@@ -20,5 +23,5 @@
       ]
     }
   },
-  "postCreateCommand": "echo 'sdk.dir='$ANDROID_HOME > local.properties || true"
+  "postCreateCommand": "bash .devcontainer/setup-android.sh"
 }
