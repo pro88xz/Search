@@ -886,10 +886,37 @@ class MainActivity : AppCompatActivity() {
         (binding.menuNightOwl.getChildAt(1) as? android.widget.TextView)?.text =
             if (nightOwl) "Exit Night Owl" else "Night Owl"
         binding.menuScrim.visibility = View.VISIBLE
+        binding.menuScrim.alpha = 0f
+        binding.menuScrim.animate().alpha(1f).setDuration(150).start()
+        val panel = binding.menuPanel
+        panel.post {
+            panel.pivotX = panel.width.toFloat()
+            panel.pivotY = 0f
+            panel.scaleX = 0.85f
+            panel.scaleY = 0.85f
+            panel.alpha = 0f
+            panel.animate()
+                .scaleX(1f).scaleY(1f).alpha(1f)
+                .setInterpolator(android.view.animation.OvershootInterpolator(1.2f))
+                .setDuration(220)
+                .start()
+        }
     }
 
     private fun closeMenu() {
-        binding.menuScrim.visibility = View.GONE
+        val panel = binding.menuPanel
+        panel.pivotX = panel.width.toFloat()
+        panel.pivotY = 0f
+        panel.animate()
+            .scaleX(0.9f).scaleY(0.9f).alpha(0f)
+            .setInterpolator(android.view.animation.AccelerateInterpolator())
+            .setDuration(130)
+            .start()
+        binding.menuScrim.animate().alpha(0f).setDuration(130)
+            .withEndAction {
+                binding.menuScrim.visibility = View.GONE
+                panel.scaleX = 1f; panel.scaleY = 1f; panel.alpha = 1f
+            }.start()
     }
 
     private fun addNewTab(loadUrl: String = homePage) {
