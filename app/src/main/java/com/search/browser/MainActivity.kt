@@ -137,6 +137,11 @@ class MainActivity : AppCompatActivity() {
     private fun enterSearchMode() {
         if (searchMode) return
         searchMode = true
+        // The bar is non-focusable at rest; make it typable now that the user
+        // has deliberately entered search mode. This is the ONLY place focus is
+        // enabled, so system/incidental focus can never trigger search mode.
+        binding.urlBar.isFocusable = true
+        binding.urlBar.isFocusableInTouchMode = true
         binding.homeBtn.visibility = View.GONE
         binding.reloadBtn.visibility = View.GONE
         binding.tabCountBtn.visibility = View.GONE
@@ -166,6 +171,10 @@ class MainActivity : AppCompatActivity() {
         binding.settingsBtn.visibility = View.VISIBLE
         binding.starBtn.visibility = View.VISIBLE
         binding.urlBar.clearFocus()
+        // Return the bar to non-focusable at rest so nothing but an explicit
+        // tap (which re-enables focus via enterSearchMode) can re-open search.
+        binding.urlBar.isFocusable = false
+        binding.urlBar.isFocusableInTouchMode = false
         val imm = getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
         imm.hideSoftInputFromWindow(binding.urlBar.windowToken, 0)
         val current = tabs.activeTab?.url
@@ -1273,8 +1282,15 @@ class MainActivity : AppCompatActivity() {
     // ---------- UI wiring ----------
 
     private fun setupUrlBar() {
-        binding.urlBar.setOnFocusChangeListener { _, hasFocus ->
-            if (hasFocus && !searchMode) enterSearchMode()
+        // Start non-focusable; only enterSearchMode() enables focus.
+        binding.urlBar.isFocusable = false
+        binding.urlBar.isFocusableInTouchMode = false
+        // Enter search mode on an explicit tap only. The bar is non-focusable at
+        // rest (see enterSearchMode/exitSearchMode), so system/incidental focus
+        // during tab switches or page loads can never trigger it. This is the
+        // permanent fix for the stray-cursor / wrong-tab-open bugs.
+        binding.urlBar.setOnClickListener {
+            if (!searchMode) enterSearchMode()
         }
         binding.urlBar.addTextChangedListener(object : android.text.TextWatcher {
             override fun beforeTextChanged(cs: CharSequence?, a: Int, b: Int, c: Int) {}
