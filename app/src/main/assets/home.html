@@ -151,6 +151,13 @@
   @keyframes shimmer { from { background-position:180% 0; } to { background-position:-40% 0; } }
   .feed-fade-out { animation:feedFade .22s ease forwards; }
   @keyframes feedFade { to { opacity:0; transform:translateY(-6px); } }
+  /* Night Owl private empty-state */
+  .nightowl-empty { display:none; width:100%; max-width:520px; margin-top:46px;
+    text-align:center; animation:cardIn .5s ease both; }
+  .nightowl-empty.show { display:block; }
+  .night-line { font-size:17px; font-weight:700; color:var(--fg); letter-spacing:-0.01em; }
+  .night-sub { font-size:14px; color:var(--muted); margin-top:8px; line-height:1.5;
+    font-style:italic; }
 </style>
 </head>
 <body>
@@ -168,16 +175,29 @@
     </label>
     <div class="shortcuts" id="tiles"></div>
     <div class="feed hidden" id="feed"></div>
+    <div class="nightowl-empty" id="nightMsg">
+      <div class="night-line">You're browsing in the dark.</div>
+      <div class="night-sub">The owl sees everything, remembers nothing.</div>
+    </div>
   </div>
 <script>
   var showTiles = true;
+  var nightOwl = false;
   try {
     if (window.SearchApp && window.SearchApp.getConfig) {
       var cfg = JSON.parse(window.SearchApp.getConfig());
       if (cfg.accent) document.documentElement.style.setProperty('--accent', cfg.accent);
       showTiles = (cfg.tiles !== false);
+      nightOwl = (cfg.nightOwl === true);
     }
   } catch (e) {}
+  // In Night Owl (private) mode, show a calm empty state instead of tiles/feed.
+  if (nightOwl) {
+    showTiles = false;
+    var _t = document.getElementById('tiles'); if (_t) _t.style.display = 'none';
+    var _f = document.getElementById('feed'); if (_f) _f.style.display = 'none';
+    var _n = document.getElementById('nightMsg'); if (_n) _n.classList.add('show');
+  }
 
   // ---------- Search box: dumb button that opens the native search page ----------
   var input = document.getElementById('q');
@@ -323,9 +343,9 @@
     try { window.SearchApp.getFeed(feedReqId); } catch(e){}
   }
 
-  loadFeed();
+  if (!nightOwl) loadFeed();
   document.addEventListener('visibilitychange', function(){
-    if (document.visibilityState === 'visible' && !feedLoaded) loadFeed();
+    if (!nightOwl && document.visibilityState === 'visible' && !feedLoaded) loadFeed();
   });
   // Ripple effect on tappable surfaces.
   function addRipple(e){

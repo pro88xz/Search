@@ -394,7 +394,7 @@ class MainActivity : AppCompatActivity() {
             val bg = Settings.getHomeBackground(this@MainActivity)
             val accent = Settings.getHomeAccent(this@MainActivity)
             val tiles = Settings.getBool(this@MainActivity, Settings.HOME_SHOW_TILES, true)
-            return "{\"background\":\"$bg\",\"accent\":\"$accent\",\"tiles\":$tiles}"
+            return "{\"background\":\"$bg\",\"accent\":\"$accent\",\"tiles\":$tiles,\"nightOwl\":$nightOwl}"
         }
         @JavascriptInterface
         fun suggest(query: String, requestId: Int) {
@@ -651,6 +651,32 @@ class MainActivity : AppCompatActivity() {
                         if (newProgress in 1..99) View.VISIBLE else View.GONE
                 }
             }
+            // Popups / window.open (e.g. "Sign in with Google" flows). Create a
+            // real child WebView wired through the transport so the opener keeps
+            // its handle to the popup (needed for OAuth callbacks), and host it
+            // as a new tab.
+            override fun onCreateWindow(
+                view: WebView?,
+                isDialog: Boolean,
+                isUserGesture: Boolean,
+                resultMsg: android.os.Message?
+            ): Boolean {
+                if (resultMsg == null) return false
+                val popupTab = tabs.createTab("about:blank")
+                val popupWeb = newWebView()
+                popupTab.webView = popupWeb
+                val transport = resultMsg.obj as? WebView.WebViewTransport ?: return false
+                transport.webView = popupWeb
+                resultMsg.sendToTarget()
+                openTab(popupTab)
+                return true
+            }
+            // When a popup finishes (window.close), fall back to the previous tab.
+            override fun onCloseWindow(window: WebView?) {
+                super.onCloseWindow(window)
+                val closing = tabs.tabs.firstOrNull { it.webView == window }
+                if (closing != null) closeTabFromDeck(closing)
+            }
             // File uploads: <input type="file"> on web pages.
             override fun onShowFileChooser(
                 webView: WebView?,
@@ -850,6 +876,10 @@ class MainActivity : AppCompatActivity() {
         activeWeb()?.clearCache(true)
         binding.nightOwlBadge.visibility = View.GONE
         applyNightOwlChrome(false)
+        // If we're on the home page, reload it so it drops the private empty-state
+        // and shows the normal tiles/feed again immediately.
+        val current = activeWeb()?.url
+        if (current == null || current == homePage) activeWeb()?.loadUrl(homePage)
         android.widget.Toast.makeText(this,
             "Night Owl off", android.widget.Toast.LENGTH_SHORT).show()
     }
