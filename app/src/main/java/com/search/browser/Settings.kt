@@ -16,7 +16,12 @@ object Settings {
     val ENGINES = linkedMapOf(
         "Google" to "https://www.google.com/search?q=",
         "DuckDuckGo" to "https://duckduckgo.com/?q=",
-        "Bing" to "https://www.bing.com/search?q="
+        "Bing" to "https://www.bing.com/search?q=",
+        "Yahoo" to "https://search.yahoo.com/search?p=",
+        "Ecosia" to "https://www.ecosia.org/search?q=",
+        "Brave" to "https://search.brave.com/search?q=",
+        "Startpage" to "https://www.startpage.com/sp/search?query=",
+        "Yandex" to "https://yandex.com/search/?text="
     )
 
     // Theme modes
@@ -26,6 +31,18 @@ object Settings {
 
     private fun prefs(c: Context) =
         c.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    // Domain per engine, for loading its favicon in settings.
+    val ENGINE_DOMAINS = mapOf(
+        "Google" to "google.com",
+        "DuckDuckGo" to "duckduckgo.com",
+        "Bing" to "bing.com",
+        "Yahoo" to "search.yahoo.com",
+        "Ecosia" to "ecosia.org",
+        "Brave" to "search.brave.com",
+        "Startpage" to "startpage.com",
+        "Yandex" to "yandex.com"
+    )
 
     fun getEngineName(c: Context): String =
         prefs(c).getString(KEY_ENGINE, "Google") ?: "Google"

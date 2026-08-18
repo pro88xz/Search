@@ -37,19 +37,44 @@ class SettingsActivity : AppCompatActivity() {
     private fun setupEngines() {
         val group = findViewById<RadioGroup>(R.id.engineGroup)
         val current = Settings.getEngineName(this)
+        val iconPx = (22 * resources.displayMetrics.density).toInt()
         Settings.ENGINES.keys.forEach { name ->
             val rb = RadioButton(this)
             rb.id = android.view.View.generateViewId()
             rb.text = name
             rb.textSize = 16f
             rb.setPadding(8, 20, 8, 20)
+            rb.compoundDrawablePadding = (12 * resources.displayMetrics.density).toInt()
             rb.setOnClickListener {
                 Settings.setEngine(this, name)
                 Toast.makeText(this, "Search engine: $name", Toast.LENGTH_SHORT).show()
             }
             group.addView(rb)
             if (name == current) group.check(rb.id)
+            loadEngineIcon(rb, name, iconPx)
         }
+    }
+
+    /** Loads an engine's favicon (crisp, requested at 2x) onto its radio button
+     *  as a leading icon. Fails silently: on any error the button stays text-only. */
+    private fun loadEngineIcon(rb: RadioButton, name: String, sizePx: Int) {
+        val domain = Settings.ENGINE_DOMAINS[name] ?: return
+        Thread {
+            try {
+                val url = java.net.URL("https://www.google.com/s2/favicons?sz=64&domain=$domain")
+                val conn = url.openConnection() as java.net.HttpURLConnection
+                conn.connectTimeout = 6000; conn.readTimeout = 6000
+                val bmp = android.graphics.BitmapFactory.decodeStream(conn.inputStream)
+                conn.disconnect()
+                if (bmp != null) {
+                    val d = android.graphics.drawable.BitmapDrawable(resources, bmp)
+                    d.setBounds(0, 0, sizePx, sizePx)
+                    runOnUiThread {
+                        rb.setCompoundDrawables(d, null, null, null)
+                    }
+                }
+            } catch (_: Exception) { /* keep text-only */ }
+        }.start()
     }
 
     private fun setupTheme() {
