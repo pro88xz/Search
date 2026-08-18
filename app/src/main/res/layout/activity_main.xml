@@ -106,7 +106,7 @@
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:src="@drawable/ic_settings"
                 android:scaleType="fitCenter"
-                android:padding="7dp"
+                android:padding="5dp"
                 android:contentDescription="Settings" />
         </LinearLayout>
 
