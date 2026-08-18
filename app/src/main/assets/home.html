@@ -116,7 +116,14 @@
     display:flex; align-items:center; justify-content:space-between;
     margin-top:10px; gap:10px;
   }
-  .feed-card .cardfoot .src { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .feed-card .cardfoot .srcwrap {
+    flex:1; min-width:0; display:flex; align-items:center; gap:7px;
+  }
+  .feed-card .cardfoot .src { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .feed-card .favicon {
+    width:16px; height:16px; flex:none; border-radius:4px; display:block;
+    object-fit:contain; background:rgba(128,128,128,0.08);
+  }
   .feed-card .sharebtn {
     flex:none; width:34px; height:34px; margin:-6px -6px -6px 0;
     display:flex; align-items:center; justify-content:center;
@@ -334,8 +341,21 @@
       var ti=document.createElement('div'); ti.className='title'; ti.textContent=it.title;
       b.appendChild(ti);
       var foot=document.createElement('div'); foot.className='cardfoot';
-      if (it.source){ var sc=document.createElement('div'); sc.className='src'; sc.textContent=it.source; foot.appendChild(sc); }
-      else { var sp=document.createElement('div'); sp.className='src'; foot.appendChild(sp); }
+      var srcWrap=document.createElement('div'); srcWrap.className='srcwrap';
+      // Crisp source favicon (requested at 2x display size), from the article
+      // domain. Fails silently: onerror removes it so nothing looks broken.
+      try {
+        var dom = new URL(it.link).hostname.replace(/^www\./,'');
+        if (dom) {
+          var fav=document.createElement('img'); fav.className='favicon';
+          fav.width=16; fav.height=16; fav.loading='lazy'; fav.alt='';
+          fav.src='https://www.google.com/s2/favicons?sz=64&domain='+encodeURIComponent(dom);
+          fav.onerror=function(){ if(fav.parentNode) fav.parentNode.removeChild(fav); };
+          srcWrap.appendChild(fav);
+        }
+      } catch(e){}
+      var sc=document.createElement('div'); sc.className='src'; sc.textContent=it.source||''; srcWrap.appendChild(sc);
+      foot.appendChild(srcWrap);
       var sh=document.createElement('div'); sh.className='sharebtn';
       sh.setAttribute('role','button'); sh.setAttribute('aria-label','Share');
       sh.innerHTML='<svg viewBox="0 0 256 256" fill="currentColor"><path d="M176,160a39.7,39.7,0,0,0-28.6,12.1L91.4,140.5a40.1,40.1,0,0,0,0-25L147.4,83.9a40,40,0,1,0-8-14L83.4,101.5a40,40,0,1,0,0,53l56,31.6a40,40,0,1,0,36.6-26.1Z"/></svg>';
