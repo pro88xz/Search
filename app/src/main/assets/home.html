@@ -94,25 +94,25 @@
     margin:0 4px 12px;
   }
   .feed-card {
-    display:flex; gap:14px; align-items:stretch;
+    display:flex; flex-direction:column; align-items:stretch;
     background:var(--field); border:1px solid var(--line);
-    border-radius:20px; overflow:hidden; margin-bottom:14px;
+    border-radius:20px; overflow:hidden; margin-bottom:16px;
     text-decoration:none; color:var(--fg);
     box-shadow:0 1px 3px rgba(0,0,0,0.05), 0 8px 22px rgba(0,0,0,0.06);
   }
   .feed-card:active { background:rgba(128,128,128,0.10); }
   .feed-card .thumb {
-    width:118px; min-width:118px; background:var(--line);
+    width:100%; height:180px; background:var(--line);
     background-size:cover; background-position:center;
   }
-  .feed-card .body { padding:15px 16px 15px 0; flex:1; min-width:0; display:flex; flex-direction:column; justify-content:center; }
+  .feed-card .body { padding:14px 16px 16px; min-width:0; }
   .feed-card .title {
-    font-size:15.5px; font-weight:700; line-height:1.38; letter-spacing:-0.01em;
+    font-size:16px; font-weight:700; line-height:1.4; letter-spacing:-0.01em;
     display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical;
     overflow:hidden;
   }
   .feed-card .src { font-size:11px; color:var(--muted); margin-top:6px; text-transform:capitalize; }
-  .feed-card.no-thumb .body { padding-left:16px; }
+  .feed-card.no-thumb .thumb { display:none; }
   /* Gentle entrance for feed cards */
   @keyframes cardIn {
     from { opacity:0; transform:translateY(14px); }
@@ -129,13 +129,13 @@
   @keyframes rippleOut { to { transform:scale(2.4); opacity:0; } }
   /* Skeleton loading cards — mirror the real card shape, then shimmer */
   .skel-card {
-    display:flex; gap:14px; align-items:stretch;
+    display:flex; flex-direction:column; align-items:stretch;
     background:var(--field); border:1px solid var(--line);
-    border-radius:20px; overflow:hidden; margin-bottom:14px;
+    border-radius:20px; overflow:hidden; margin-bottom:16px;
     box-shadow:0 1px 3px rgba(0,0,0,0.05), 0 8px 22px rgba(0,0,0,0.06);
   }
-  .skel-thumb { width:118px; min-width:118px; }
-  .skel-body { flex:1; padding:15px 16px; display:flex; flex-direction:column; gap:9px; justify-content:center; }
+  .skel-thumb { width:100%; height:180px; }
+  .skel-body { padding:14px 16px 16px; display:flex; flex-direction:column; gap:10px; }
   .skel-line { height:13px; border-radius:6px; }
   .skel-line.w80 { width:80%; }
   .skel-line.w60 { width:60%; }
@@ -288,7 +288,7 @@
     var head=document.createElement('div'); head.className='feed-head';
     head.textContent='Top stories';
     feedHost.appendChild(head);
-    for (var i=0;i<5;i++){
+    for (var i=0;i<3;i++){
       var c=document.createElement('div'); c.className='skel-card';
       var t=document.createElement('div'); t.className='skel-thumb shimmer';
       var b=document.createElement('div'); b.className='skel-body';
