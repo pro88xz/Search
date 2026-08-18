@@ -336,6 +336,8 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun focusSearch() { runOnUiThread { enterSearchMode() } }
         @JavascriptInterface
+        fun shareUrl(url: String, title: String) { runOnUiThread { shareLink(url, title) } }
+        @JavascriptInterface
         fun startVoice() { runOnUiThread { launchVoiceSearch() } }
         @JavascriptInterface
         fun startScan() { runOnUiThread { launchScan() } }
@@ -798,6 +800,22 @@ class MainActivity : AppCompatActivity() {
      * the same way it does on any other page before you start typing.
      * Everywhere else, the native bar behaves exactly as it always has.
      */
+    /** Opens Android's native share sheet for a feed article. */
+    private fun shareLink(url: String, title: String) {
+        if (url.isBlank()) return
+        try {
+            val text = if (title.isBlank()) url else "$title\n$url"
+            val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(android.content.Intent.EXTRA_TEXT, text)
+                putExtra(android.content.Intent.EXTRA_SUBJECT, title)
+            }
+            startActivity(android.content.Intent.createChooser(send, "Share via"))
+        } catch (e: Exception) {
+            android.widget.Toast.makeText(this, "Couldn't share", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun refreshOmniboxVisibility(url: String?) {
         val isHome = url == null || url == homePage
         binding.urlBarContainer.visibility = if (isHome) View.INVISIBLE else View.VISIBLE

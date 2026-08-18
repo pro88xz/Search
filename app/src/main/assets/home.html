@@ -111,7 +111,19 @@
     display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical;
     overflow:hidden;
   }
-  .feed-card .src { font-size:11px; color:var(--muted); margin-top:6px; text-transform:capitalize; }
+  .feed-card .src { font-size:11px; color:var(--muted); text-transform:capitalize; }
+  .feed-card .cardfoot {
+    display:flex; align-items:center; justify-content:space-between;
+    margin-top:10px; gap:10px;
+  }
+  .feed-card .cardfoot .src { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .feed-card .sharebtn {
+    flex:none; width:34px; height:34px; margin:-6px -6px -6px 0;
+    display:flex; align-items:center; justify-content:center;
+    border-radius:50%; color:var(--muted);
+  }
+  .feed-card .sharebtn:active { background:rgba(128,128,128,0.15); }
+  .feed-card .sharebtn svg { width:17px; height:17px; display:block; }
   .feed-card.no-thumb .thumb { display:none; }
   /* Gentle entrance for feed cards */
   @keyframes cardIn {
@@ -321,7 +333,15 @@
       var b=document.createElement('div'); b.className='body';
       var ti=document.createElement('div'); ti.className='title'; ti.textContent=it.title;
       b.appendChild(ti);
-      if (it.source){ var sc=document.createElement('div'); sc.className='src'; sc.textContent=it.source; b.appendChild(sc); }
+      var foot=document.createElement('div'); foot.className='cardfoot';
+      if (it.source){ var sc=document.createElement('div'); sc.className='src'; sc.textContent=it.source; foot.appendChild(sc); }
+      else { var sp=document.createElement('div'); sp.className='src'; foot.appendChild(sp); }
+      var sh=document.createElement('div'); sh.className='sharebtn';
+      sh.setAttribute('role','button'); sh.setAttribute('aria-label','Share');
+      sh.innerHTML='<svg viewBox="0 0 256 256" fill="currentColor"><path d="M176,160a39.7,39.7,0,0,0-28.6,12.1L91.4,140.5a40.1,40.1,0,0,0,0-25L147.4,83.9a40,40,0,1,0-8-14L83.4,101.5a40,40,0,1,0,0,53l56,31.6a40,40,0,1,0,36.6-26.1Z"/></svg>';
+      sh.onclick=function(ev){ ev.stopPropagation(); ev.preventDefault(); if(window.SearchApp&&window.SearchApp.shareUrl) window.SearchApp.shareUrl(it.link, it.title||''); };
+      foot.appendChild(sh);
+      b.appendChild(foot);
       a.appendChild(b);
       feedHost.appendChild(a);
     });
