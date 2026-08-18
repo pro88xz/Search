@@ -82,10 +82,12 @@
 
             <ImageButton
                 android:id="@+id/reloadBtn"
-                android:layout_width="42dp"
-                android:layout_height="42dp"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
-                android:src="@android:drawable/ic_menu_rotate"
+                android:src="@drawable/ic_reload"
+                android:scaleType="fitCenter"
+                android:padding="9dp"
                 android:contentDescription="Reload" />
 
             <TextView
@@ -94,9 +96,12 @@
                 android:layout_height="42dp"
                 android:gravity="center"
                 android:text="1"
-                android:textSize="15sp"
+                android:textSize="13sp"
                 android:textStyle="bold"
-                android:background="?attr/selectableItemBackgroundBorderless"
+                android:textColor="?android:attr/textColorPrimary"
+                android:background="@drawable/tab_count_box"
+                android:layout_margin="9dp"
+                android:paddingTop="1dp"
                 android:contentDescription="Tabs" />
 
             <ImageButton
@@ -104,10 +109,10 @@
                 android:layout_width="46dp"
                 android:layout_height="46dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
-                android:src="@drawable/ic_settings"
+                android:src="@drawable/ic_menu_dots"
                 android:scaleType="fitCenter"
-                android:padding="7dp"
-                android:contentDescription="Settings" />
+                android:padding="10dp"
+                android:contentDescription="Menu" />
         </LinearLayout>
 
         <ProgressBar
