@@ -24,7 +24,15 @@ object NewsFeed {
         if (c != null && now - cachedAt < TTL_MS) return c
 
         return try {
-            val url = URL("$ENDPOINT?apikey=$API_KEY&language=en&category=top&image=1")
+            // Global-interest feed: top-10% sources only (prioritydomain=top)
+            // across quality categories, English, image required. This filters
+            // out hyper-local noise (town-council items, local crime) in favor
+            // of world/tech/science/business stories anyone would care about.
+            val url = URL(
+                "$ENDPOINT?apikey=$API_KEY&language=en" +
+                "&category=world,technology,science,business" +
+                "&prioritydomain=top&image=1"
+            )
             val conn = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
                 connectTimeout = 8000
