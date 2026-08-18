@@ -1177,6 +1177,35 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ---------- Owl tap (context-aware) ----------
+    private val gamesUrl = "https://toolsepulse.co/games"
+
+    private fun openGames() {
+        addNewTab(gamesUrl)
+    }
+
+    private fun showGamesWelcome() {
+        val view = layoutInflater.inflate(R.layout.dialog_games_welcome, null)
+        val dialog = android.app.AlertDialog.Builder(this).setView(view).create()
+        dialog.window?.setBackgroundDrawable(
+            android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT)
+        )
+        dialog.window?.attributes?.windowAnimations = R.style.OwlDialogAnim
+        view.findViewById<android.widget.TextView>(R.id.gamesLater).setOnClickListener {
+            Settings.setBool(this, Settings.GAMES_INTRO_SEEN, true)
+            dialog.dismiss()
+        }
+        view.findViewById<android.widget.TextView>(R.id.gamesGo).setOnClickListener {
+            Settings.setBool(this, Settings.GAMES_INTRO_SEEN, true)
+            dialog.dismiss()
+            openGames()
+        }
+        dialog.show()
+        dialog.window?.let { w ->
+            val width = (resources.displayMetrics.widthPixels * 0.86f).toInt()
+            w.setLayout(width, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+    }
+
     private fun onOwlTapped() {
         val current = activeWeb()?.url
         val onHome = (current == null || current == homePage)
@@ -1395,7 +1424,11 @@ class MainActivity : AppCompatActivity() {
         }
         binding.menuGames.setOnClickListener {
             closeMenuNow()
-            android.widget.Toast.makeText(this, "Play games — coming soon", android.widget.Toast.LENGTH_SHORT).show()
+            if (Settings.getBool(this, Settings.GAMES_INTRO_SEEN, false)) {
+                openGames()
+            } else {
+                showGamesWelcome()
+            }
         }
 
         binding.starBtn.setOnClickListener { toggleBookmark() }

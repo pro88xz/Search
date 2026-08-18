@@ -55,6 +55,7 @@ object Settings {
     // Security keys + defaults
     const val SEC_HTTPS_ONLY = "sec_https_only"       // default true
     const val IS_SUPPORTER = "is_supporter"           // set true after a support purchase
+    const val GAMES_INTRO_SEEN = "games_intro_seen"   // set true after the games welcome screen is shown once
     const val SEC_SAFE_BROWSING = "sec_safe_browsing" // default true
     const val SEC_BLOCK_POPUPS = "sec_block_popups"   // default true
     const val SEC_BLOCK_3P_COOKIES = "sec_block_3p_cookies" // default false
