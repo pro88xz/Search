@@ -16,8 +16,8 @@
             android:layout_height="54dp"
             android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:paddingStart="4dp"
-            android:paddingEnd="4dp"
+            android:paddingStart="@dimen/space_xxs"
+            android:paddingEnd="@dimen/space_xxs"
             android:background="?android:attr/colorBackground">
 
             <ImageButton
@@ -38,10 +38,10 @@
                 android:textColor="#FFFFFF"
                 android:textSize="11sp"
                 android:textStyle="bold"
-                android:paddingStart="8dp"
-                android:paddingEnd="8dp"
-                android:paddingTop="3dp"
-                android:paddingBottom="3dp"
+                android:paddingStart="@dimen/space_xs"
+                android:paddingEnd="@dimen/space_xs"
+                android:paddingTop="@dimen/space_xxs"
+                android:paddingBottom="@dimen/space_xxs"
                 android:background="@drawable/nightowl_badge_bg"
                 android:visibility="gone" />
 
@@ -50,8 +50,8 @@
                 android:layout_width="0dp"
                 android:layout_height="40dp"
                 android:layout_weight="1"
-                android:layout_marginStart="2dp"
-                android:layout_marginEnd="2dp">
+                android:layout_marginStart="@dimen/space_xxs"
+                android:layout_marginEnd="@dimen/space_xxs">
 
                 <EditText
                     android:id="@+id/urlBar"
@@ -72,7 +72,7 @@
                     android:layout_width="30dp"
                     android:layout_height="30dp"
                     android:layout_gravity="end|center_vertical"
-                    android:layout_marginEnd="6dp"
+                    android:layout_marginEnd="@dimen/space_xs"
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:src="@drawable/ic_star_outline"
                     android:scaleType="fitCenter"
@@ -325,7 +325,7 @@
         android:orientation="horizontal"
         android:gravity="center_vertical"
         android:paddingStart="12dp"
-        android:paddingEnd="4dp"
+        android:paddingEnd="@dimen/space_xxs"
         android:background="?android:attr/colorBackground"
         android:elevation="8dp"
         android:visibility="gone">
