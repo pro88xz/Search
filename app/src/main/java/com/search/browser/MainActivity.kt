@@ -928,14 +928,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openDownloads() {
-        try {
-            val intent = android.content.Intent(android.app.DownloadManager.ACTION_VIEW_DOWNLOADS)
-            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-            startActivity(intent)
-        } catch (e: Exception) {
-            android.widget.Toast.makeText(this,
-                "No downloads app available", android.widget.Toast.LENGTH_SHORT).show()
-        }
+        openDeck()
+        showDownloads()
     }
 
     private fun openMenu() {
@@ -1070,6 +1064,9 @@ class MainActivity : AppCompatActivity() {
         bookmarksOpen = false
         binding.historyList.visibility = View.GONE
         binding.bookmarkList.visibility = View.GONE
+        binding.downloadList.visibility = View.GONE
+        binding.deckEmpty.visibility = View.GONE
+        downloadsOpen = false
         binding.tabList.visibility = View.VISIBLE
         val active = tabs.activeTab
         if (active?.webView != null && !deckVisible) captureThumbnail(active) { showDeckNow() }
@@ -1112,6 +1109,66 @@ class MainActivity : AppCompatActivity() {
         if (historyOpen) hideHistory() else showHistory()
     }
 
+    /** Shows the deck empty-state with the given icon and message. */
+    private fun showDeckEmpty(iconRes: Int, title: String, subtitle: String) {
+        binding.deckEmptyIcon.setImageResource(iconRes)
+        binding.deckEmptyTitle.text = title
+        binding.deckEmptySubtitle.text = subtitle
+        binding.deckEmpty.visibility = View.VISIBLE
+    }
+
+    private var downloadsOpen = false
+    private fun showDownloads() {
+        val items = Downloads.load(this)
+        val adapter = DownloadsAdapter(
+            items = items,
+            onOpen = { d -> openDownloadedFile(d) },
+            onDelete = { d ->
+                try {
+                    (getSystemService(DOWNLOAD_SERVICE) as android.app.DownloadManager).remove(d.id)
+                } catch (_: Exception) {}
+                showDownloads()
+            }
+        )
+        binding.downloadList.layoutManager =
+            androidx.recyclerview.widget.LinearLayoutManager(this)
+        binding.downloadList.adapter = adapter
+        binding.tabList.visibility = View.GONE
+        binding.historyList.visibility = View.GONE
+        binding.bookmarkList.visibility = View.GONE
+        if (items.isEmpty()) {
+            showDeckEmpty(R.drawable.menu_history, "No downloads yet", "Files you download will show up here.")
+            binding.downloadList.visibility = View.GONE
+        } else {
+            binding.deckEmpty.visibility = View.GONE
+            binding.downloadList.visibility = View.VISIBLE
+        }
+        downloadsOpen = true
+        historyOpen = false
+        bookmarksOpen = false
+    }
+
+    /** Opens a completed download with the appropriate app; toasts if not ready. */
+    private fun openDownloadedFile(d: Downloads.Item) {
+        if (!d.isComplete || d.localUri == null) {
+            android.widget.Toast.makeText(this,
+                if (d.isRunning) "Still downloading…" else "File not available",
+                android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+        try {
+            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                setDataAndType(android.net.Uri.parse(d.localUri), d.mimeType ?: "*/*")
+                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+        } catch (e: Exception) {
+            android.widget.Toast.makeText(this, "No app to open this file",
+                android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun showHistory() {
         val entries = History.load(this)
         val adapter = HistoryAdapter(
@@ -1128,9 +1185,15 @@ class MainActivity : AppCompatActivity() {
         binding.historyList.layoutManager =
             androidx.recyclerview.widget.LinearLayoutManager(this)
         binding.historyList.adapter = adapter
-        binding.historyList.visibility = View.VISIBLE
         binding.tabList.visibility = View.GONE
         binding.bookmarkList.visibility = View.GONE
+        if (entries.isEmpty()) {
+            showDeckEmpty(R.drawable.menu_history, "No history yet", "Pages you visit will show up here.")
+            binding.historyList.visibility = View.GONE
+        } else {
+            binding.deckEmpty.visibility = View.GONE
+            binding.historyList.visibility = View.VISIBLE
+        }
         historyOpen = true
         bookmarksOpen = false
     }
@@ -1151,21 +1214,29 @@ class MainActivity : AppCompatActivity() {
         binding.bookmarkList.layoutManager =
             androidx.recyclerview.widget.LinearLayoutManager(this)
         binding.bookmarkList.adapter = adapter
-        binding.bookmarkList.visibility = View.VISIBLE
         binding.tabList.visibility = View.GONE
         binding.historyList.visibility = View.GONE
+        if (entries.isEmpty()) {
+            showDeckEmpty(R.drawable.menu_bookmarks, "No bookmarks yet", "Tap the star on any page to save it here.")
+            binding.bookmarkList.visibility = View.GONE
+        } else {
+            binding.deckEmpty.visibility = View.GONE
+            binding.bookmarkList.visibility = View.VISIBLE
+        }
         bookmarksOpen = true
         historyOpen = false
     }
 
     private fun hideBookmarks() {
         binding.bookmarkList.visibility = View.GONE
+        binding.deckEmpty.visibility = View.GONE
         binding.tabList.visibility = View.VISIBLE
         bookmarksOpen = false
     }
 
     private fun hideHistory() {
         binding.historyList.visibility = View.GONE
+        binding.deckEmpty.visibility = View.GONE
         binding.tabList.visibility = View.VISIBLE
         historyOpen = false
     }
