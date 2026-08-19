@@ -102,6 +102,49 @@ class MainActivity : AppCompatActivity() {
         return caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 
+    private var netCallback: android.net.ConnectivityManager.NetworkCallback? = null
+    private var wasOffline = false
+
+    /** Watches connectivity; when it returns after being offline, tells the home
+     *  page to swap cached/offline content for fresh stories. */
+    private fun registerNetworkWatch() {
+        if (netCallback != null) return
+        wasOffline = !hasNetwork()
+        val cm = getSystemService(android.content.Context.CONNECTIVITY_SERVICE)
+            as android.net.ConnectivityManager
+        val cb = object : android.net.ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: android.net.Network) {
+                runOnUiThread {
+                    if (wasOffline) {
+                        wasOffline = false
+                        val web = activeWeb()
+                        val url = web?.url
+                        if (web != null && (url == null || url == homePage)) {
+                            web.evaluateJavascript(
+                                "window.__reloadFeedOnline && window.__reloadFeedOnline();", null)
+                        }
+                    }
+                }
+            }
+            override fun onLost(network: android.net.Network) {
+                runOnUiThread { if (!hasNetwork()) wasOffline = true }
+            }
+        }
+        try {
+            cm.registerDefaultNetworkCallback(cb)
+            netCallback = cb
+        } catch (_: Exception) {}
+    }
+
+    private fun unregisterNetworkWatch() {
+        val cb = netCallback ?: return
+        try {
+            (getSystemService(android.content.Context.CONNECTIVITY_SERVICE)
+                as android.net.ConnectivityManager).unregisterNetworkCallback(cb)
+        } catch (_: Exception) {}
+        netCallback = null
+    }
+
     private fun siteSettingsSignature(): String {
         return listOf(
             Settings.getBool(this, Settings.SITE_JAVASCRIPT, true),
@@ -194,6 +237,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        registerNetworkWatch()
         // If a flexible update finished downloading while away, offer to install it.
         appUpdateManager.appUpdateInfo.addOnSuccessListener { info ->
             if (info.installStatus() ==
@@ -225,6 +269,7 @@ class MainActivity : AppCompatActivity() {
     }
     override fun onPause() {
         super.onPause()
+        unregisterNetworkWatch()
         // Persist cookies to disk so logins survive the app being killed
         // (common on low-RAM devices). Without this, sessions can be lost.
         android.webkit.CookieManager.getInstance().flush()
@@ -408,7 +453,7 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun getFeed(requestId: Int) {
             Thread {
-                val json = NewsFeed.fetch()
+                val json = NewsFeed.fetch(this@MainActivity)
                 runOnUiThread { pushFeed(requestId, json) }
             }.start()
         }

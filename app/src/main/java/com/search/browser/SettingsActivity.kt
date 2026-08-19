@@ -61,7 +61,8 @@ class SettingsActivity : AppCompatActivity() {
         val domain = Settings.ENGINE_DOMAINS[name] ?: return
         Thread {
             try {
-                val url = java.net.URL("https://www.google.com/s2/favicons?sz=64&domain=$domain")
+                val iconBase = "https://" + "icons.duckduckgo.com" + "/ip3/"
+                val url = java.net.URL(iconBase + domain + ".ico")
                 val conn = url.openConnection() as java.net.HttpURLConnection
                 conn.connectTimeout = 6000; conn.readTimeout = 6000
                 val bmp = android.graphics.BitmapFactory.decodeStream(conn.inputStream)

@@ -132,6 +132,21 @@
   .feed-card .sharebtn:active { background:rgba(128,128,128,0.15); }
   .feed-card .sharebtn svg { width:17px; height:17px; display:block; }
   .feed-card.no-thumb .thumb { display:none; }
+  /* Placeholder shown while an image loads or when it fails (offline): a clean
+     branded tint with a subtle glyph, so cards never look broken or blank. */
+  .feed-card .thumb.thumb-ph {
+    background-color:var(--line);
+    background-image:
+      linear-gradient(135deg, rgba(43,108,240,0.10), rgba(43,108,240,0.02));
+    display:flex; align-items:center; justify-content:center;
+  }
+  .feed-card .thumb.thumb-ph::after {
+    content:"";
+    width:34px; height:34px; opacity:0.28;
+    background-color:var(--muted);
+    -webkit-mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256'><path d='M216 40H40a16 16 0 00-16 16v144a16 16 0 0016 16h176a16 16 0 0016-16V56a16 16 0 00-16-16zm0 16v102l-30-30a16 16 0 00-22 0l-52 52-26-26a16 16 0 00-22 0l-2 2V56zM40 174l40-40 58 58H40zm176 26h-70l-28-28 44-44 54 54v18z'/><circle cx='84' cy='100' r='16'/></svg>") center/contain no-repeat;
+    mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256'><path d='M216 40H40a16 16 0 00-16 16v144a16 16 0 0016 16h176a16 16 0 0016-16V56a16 16 0 00-16-16zm0 16v102l-30-30a16 16 0 00-22 0l-52 52-26-26a16 16 0 00-22 0l-2 2V56zM40 174l40-40 58 58H40zm176 26h-70l-28-28 44-44 54 54v18z'/><circle cx='84' cy='100' r='16'/></svg>") center/contain no-repeat;
+  }
   /* Gentle entrance for feed cards */
   @keyframes cardIn {
     from { opacity:0; transform:translateY(14px); }
@@ -332,7 +347,19 @@
       a.onclick=function(){ if(window.SearchApp&&window.SearchApp.open) window.SearchApp.open(it.link); };
       if (it.image){
         var t=document.createElement('div'); t.className='thumb';
-        t.style.backgroundImage="url('"+it.image.replace(/'/g,"%27")+"')";
+        // Preload the image; only paint it once it actually loads. If it fails
+        // (e.g. offline), the card keeps a clean branded placeholder instead of
+        // a blank or broken box.
+        (function(thumb, src){
+          var probe = new Image();
+          probe.onload = function(){
+            thumb.style.backgroundImage = "url('" + src.replace(/'/g,"%27") + "')";
+            thumb.classList.remove('thumb-ph');
+          };
+          probe.onerror = function(){ thumb.classList.add('thumb-ph'); };
+          thumb.classList.add('thumb-ph'); // placeholder until/unless it loads
+          probe.src = src;
+        })(t, it.image);
         a.appendChild(t);
       } else {
         a.classList.add('no-thumb');
@@ -374,6 +401,13 @@
     renderFeed(items);
   };
 
+  // Called by the app when connectivity is restored, to swap cached/offline
+  // content for fresh stories. Forces a fetch even if a feed already loaded.
+  window.__reloadFeedOnline = function(){
+    if (nightOwl) return;
+    feedLoaded = false;
+    loadFeed();
+  };
   function loadFeed(){
     if (!window.SearchApp || !window.SearchApp.getFeed) return;
     // Show skeletons only when the feed is empty (first load), so a
