@@ -34,6 +34,12 @@ import java.net.URLEncoder
 
 class MainActivity : AppCompatActivity() {
 
+    companion object {
+        // Runs the launch update check once per process, so recreating the
+        // activity (e.g. a theme change) doesn't re-trigger the update prompt.
+        private var didLaunchUpdateCheck = false
+    }
+
     // ---- Native search-page mode ----
     private var searchMode = false
     private var lastFailedUrl: String? = null
@@ -70,6 +76,29 @@ class MainActivity : AppCompatActivity() {
             notifPermLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
         }
     }
+    // Storage permission for downloads on Android 9 and below (API <= 28).
+    // Holds the pending download so it can resume after the user grants it.
+    private data class PendingDownload(
+        val url: String,
+        val userAgent: String?,
+        val contentDisposition: String?,
+        val mimeType: String?
+    )
+    private var pendingDownload: PendingDownload? = null
+    private val storagePermLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val pd = pendingDownload
+        pendingDownload = null
+        if (granted && pd != null) {
+            performDownload(pd.url, pd.userAgent, pd.contentDisposition, pd.mimeType)
+        } else if (!granted) {
+            android.widget.Toast.makeText(this,
+                "Storage permission is needed to download files",
+                android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
     // File upload (WebView <input type=file>) support.
     private var filePathCallback: android.webkit.ValueCallback<Array<android.net.Uri>>? = null
     private val fileChooserLauncher = registerForActivityResult(
@@ -281,6 +310,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tabAdapter: TabAdapter
 
     private val thumbWidthPx = 400
+    // Capture the deck thumbnail at reduced resolution to cut the
+    // main-thread bitmap allocation (full-screen was ~5MB per open).
+    // PixelCopy scales the source rect into this smaller dest bitmap.
+    private val thumbCaptureDivisor = 2
     private var deckVisible = false
     // Held true to keep the system splash on its final frame briefly so the
     // launch animation lands cleanly before the browser appears.
@@ -354,14 +387,22 @@ class MainActivity : AppCompatActivity() {
                     "window.__searchMediaControl && window.__searchMediaControl('" + action + "');", null)
             }
         }
-        // Quietly check Play for a newer version on launch; prompts only if one exists.
-        checkForUpdate(fromUser = false)
+        // Quietly check Play for a newer version on launch; prompts only if one
+        // exists. Guarded to run once per process so an activity recreation
+        // doesn't re-trigger the update prompt.
+        if (!didLaunchUpdateCheck) {
+            didLaunchUpdateCheck = true
+            checkForUpdate(fromUser = false)
+        }
 
         // Only create the initial home tab on a genuine fresh start.
         // Prevents losing your open tab if the activity is recreated (e.g. returning from Settings).
         if (tabs.count() == 0) {
-            val first = tabs.createTab(homePage)
-            openTab(first, homePage)
+            // If launched by a tapped/shared link, open that; otherwise home.
+            val incoming = urlFromIntent(intent)
+            val startUrl = incoming ?: homePage
+            val first = tabs.createTab(startUrl)
+            openTab(first, startUrl)
         } else {
             // Re-attach the existing active tab's view.
             tabs.activeTab?.let { openTab(it) }
@@ -370,6 +411,19 @@ class MainActivity : AppCompatActivity() {
 
     }
 
+
+    // Handles links tapped/shared while the app is already open (singleTop
+    // delivers them here instead of a fresh onCreate). Opens the link in a
+    // new tab via the normal go() path.
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val incoming = urlFromIntent(intent)
+        if (incoming != null) {
+            addNewTab(homePage)
+            go(incoming)
+        }
+    }
 
     // ---------- JS bridge ----------
 
@@ -480,6 +534,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun fetchWebSuggestions(query: String): List<String> {
+        // Night Owl (private): never send keystrokes to a search engine's
+        // autocomplete endpoint. Local history/bookmark matches still work
+        // because they never leave the device.
+        if (nightOwl) return emptyList()
         if (query.isEmpty()) return emptyList()
         val q = URLEncoder.encode(query, "UTF-8")
         val endpoint = when (Settings.getEngineName(this)) {
@@ -553,7 +611,13 @@ class MainActivity : AppCompatActivity() {
             // Data saver: block images when enabled.
             blockNetworkImage = Settings.getBool(this@MainActivity, Settings.SITE_BLOCK_IMAGES, false)
 
-            userAgentString = userAgentString.replace("; wv", "")
+            // Present as clean mobile Chrome: drop the "; wv" WebView token AND
+            // the legacy "Version/4.0" token. Strict sites (e.g. Notion) read
+            // "Version/4.0" as an ancient browser and block it, so removing it
+            // lets those sites render normally.
+            userAgentString = userAgentString
+                .replace("; wv", "")
+                .replace("Version/4.0 ", "")
 
             // --- Desktop mode ---
             if (Settings.getBool(this@MainActivity, Settings.DESKTOP_MODE, false)) {
@@ -709,10 +773,13 @@ class MainActivity : AppCompatActivity() {
                 resultMsg: android.os.Message?
             ): Boolean {
                 if (resultMsg == null) return false
+                // Validate the transport BEFORE creating any tab, so a malformed
+                // window.open() can't leave an orphan about:blank tab in the list.
+                val transport = resultMsg.obj as? WebView.WebViewTransport ?: return false
                 val popupTab = tabs.createTab("about:blank")
+                popupTab.title = "Opening\u2026"
                 val popupWeb = newWebView()
                 popupTab.webView = popupWeb
-                val transport = resultMsg.obj as? WebView.WebViewTransport ?: return false
                 transport.webView = popupWeb
                 resultMsg.sendToTarget()
                 openTab(popupTab)
@@ -774,7 +841,12 @@ class MainActivity : AppCompatActivity() {
         ) { onDone?.invoke(); return }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             try {
-                val source = Bitmap.createBitmap(web.width, web.height, Bitmap.Config.RGB_565)
+                // Allocate the destination at reduced resolution; PixelCopy
+                // scales the full-size source rect down into it. Clamp to >=1px
+                // so a tiny view never produces a zero-sized bitmap.
+                val dstW = (web.width / thumbCaptureDivisor).coerceAtLeast(1)
+                val dstH = (web.height / thumbCaptureDivisor).coerceAtLeast(1)
+                val source = Bitmap.createBitmap(dstW, dstH, Bitmap.Config.RGB_565)
                 val location = IntArray(2)
                 web.getLocationInWindow(location)
                 val rect = android.graphics.Rect(
@@ -1447,6 +1519,19 @@ class MainActivity : AppCompatActivity() {
         contentDisposition: String?,
         mimeType: String?
     ) {
+        // On Android 9 and below, writing to public Downloads needs the runtime
+        // WRITE_EXTERNAL_STORAGE grant. Request it and resume after grant.
+        // Android 10+ (API 29+) doesn't need it, so skip the check there.
+        if (android.os.Build.VERSION.SDK_INT <= 28) {
+            val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+                this, android.Manifest.permission.WRITE_EXTERNAL_STORAGE
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (!granted) {
+                pendingDownload = PendingDownload(url, userAgent, contentDisposition, mimeType)
+                storagePermLauncher.launch(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                return
+            }
+        }
         try {
             val fileName = android.webkit.URLUtil.guessFileName(url, contentDisposition, mimeType)
             val request = android.app.DownloadManager.Request(android.net.Uri.parse(url))
@@ -1658,6 +1743,27 @@ class MainActivity : AppCompatActivity() {
             android.widget.Toast.makeText(this,
                 "Voice search not available", android.widget.Toast.LENGTH_SHORT).show()
         }
+    }
+
+    /**
+     * Pulls a web link out of an incoming intent, if any:
+     *  - ACTION_VIEW carries the link in the intent data (tapped links).
+     *  - ACTION_SEND carries it in EXTRA_TEXT (shared links).
+     * Returns the URL string, or null if the intent has no usable link.
+     */
+    private fun urlFromIntent(intent: android.content.Intent?): String? {
+        if (intent == null) return null
+        when (intent.action) {
+            android.content.Intent.ACTION_VIEW -> {
+                val d = intent.dataString?.trim()
+                if (!d.isNullOrEmpty()) return d
+            }
+            android.content.Intent.ACTION_SEND -> {
+                val t = intent.getStringExtra(android.content.Intent.EXTRA_TEXT)?.trim()
+                if (!t.isNullOrEmpty()) return t
+            }
+        }
+        return null
     }
 
     private fun go(input: String) {
