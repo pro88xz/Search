@@ -449,6 +449,37 @@
   renderFeed = function(items){ _origRenderFeed(items); bindRipples(); };
   var _origRenderTiles = renderTiles;
   renderTiles = function(){ _origRenderTiles(); bindRipples(); };
+
+  // ---------- Collapsing header ----------
+  // Report to native when the in-page search pill leaves / re-enters the
+  // viewport. Native swaps its top bar between the icon row and a full-width
+  // pill. This block only observes: no DOM, CSS or layout change is made here.
+  (function(){
+    var f = document.getElementById('field');
+    if (!f || !window.SearchApp || !window.SearchApp.homeFieldVisible) return;
+    var last = null;
+    function push(v){
+      if (v === last) return;
+      last = v;
+      try { window.SearchApp.homeFieldVisible(v); } catch(e){}
+    }
+    // Native calls this after a tab switch, when this page may already be
+    // scrolled but no intersection change will fire on its own.
+    window.__syncHomeBar = function(){
+      last = null;
+      push(f.getBoundingClientRect().bottom > 0);
+    };
+    if ('IntersectionObserver' in window) {
+      new IntersectionObserver(function(entries){
+        push(entries[0].isIntersecting);
+      }, { threshold: 0 }).observe(f);
+    } else {
+      window.addEventListener('scroll', function(){
+        push(f.getBoundingClientRect().bottom > 0);
+      }, { passive: true });
+    }
+    push(true);
+  })();
 </script>
 </body>
 </html>

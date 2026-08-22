@@ -42,6 +42,9 @@ class MainActivity : AppCompatActivity() {
 
     // ---- Native search-page mode ----
     private var searchMode = false
+    // True when the home page is scrolled past its in-page search pill, so the
+    // native top bar shows the pill instead of the icon row.
+    private var homeCompact = false
     private var lastFailedUrl: String? = null
 
     // Tracks the site-settings signature last applied, so we only reload when it changed.
@@ -258,6 +261,8 @@ class MainActivity : AppCompatActivity() {
             binding.urlBarContainer.visibility = View.VISIBLE
             binding.urlBar.setText(displayUrl(current))
         }
+        // The page may still be scrolled past its pill; re-apply the compact bar.
+        if (onHome && homeCompact) applyHomeCompact(true)
     }
 
 
@@ -434,6 +439,10 @@ class MainActivity : AppCompatActivity() {
         fun open(url: String) { runOnUiThread { activeWeb()?.loadUrl(url) } }
         @JavascriptInterface
         fun focusSearch() { runOnUiThread { enterSearchMode() } }
+        @JavascriptInterface
+        fun homeFieldVisible(visible: Boolean) {
+            runOnUiThread { applyHomeCompact(!visible, animate = true) }
+        }
         @JavascriptInterface
         fun shareUrl(url: String, title: String) { runOnUiThread { shareLink(url, title) } }
         @JavascriptInterface
@@ -933,9 +942,120 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // Swaps the native top bar between the icon row (home / reload / tabs /
+    // settings) and a single full-width search pill. Nothing is resized and the
+    // WebView is never re-laid-out; only child visibility inside the existing
+    // 54dp bar changes, so the page cannot jump or reflow while scrolling.
+    private var homeBarAnim: android.animation.Animator? = null
+    private var homeBarSeq = 0
+
+    private fun homeBarRow(): List<View> = listOf(
+        binding.homeBtn, binding.reloadBtn, binding.tabCountBtn, binding.settingsBtn)
+
+    // Settles the bar into a final state with nothing in flight. Also the
+    // recovery path when a transition is cancelled part-way.
+    private fun snapHomeBar(compact: Boolean) {
+        homeBarRow().forEach {
+            it.alpha = 1f
+            it.translationY = 0f
+            it.visibility = if (compact) View.GONE else View.VISIBLE
+        }
+        binding.starBtn.visibility = View.GONE
+        binding.urlBarContainer.alpha = 1f
+        binding.urlBarContainer.translationY = 0f
+        binding.urlBarContainer.visibility = if (compact) View.VISIBLE else View.INVISIBLE
+    }
+
+    private fun applyHomeCompact(compact: Boolean, animate: Boolean = false) {
+        homeCompact = compact
+        if (searchMode || deckVisible) return
+        val url = tabs.activeTab?.url
+        if (!(url == null || url == homePage)) return
+        if (compact && binding.urlBar.text.isNotEmpty()) binding.urlBar.setText("")
+
+        homeBarAnim?.cancel()
+        homeBarAnim = null
+        val seq = ++homeBarSeq
+
+        // Nothing to do (e.g. a tab switch that already agrees with the bar):
+        // settle instantly rather than animating a no-op.
+        val settled = binding.homeBtn.visibility == (if (compact) View.GONE else View.VISIBLE)
+        if (!animate || settled) { snapHomeBar(compact); return }
+
+        val outgoing = if (compact) homeBarRow() else listOf<View>(binding.urlBarContainer)
+        val incoming = if (compact) listOf<View>(binding.urlBarContainer) else homeBarRow()
+        val hiddenVis = if (compact) View.GONE else View.INVISIBLE
+        val rise = 5f * resources.displayMetrics.density
+        outgoing.forEach { it.translationY = 0f }
+
+        // Fade the outgoing set out, flip visibility while BOTH sets are fully
+        // transparent, then fade the incoming set in. The reflow (icons giving
+        // up their width so the pill can fill the bar) therefore lands on a
+        // frame where neither set is drawn, so it can never be seen to pop.
+        // Starting from the current alpha keeps a reversal mid-transition smooth.
+        val startA = outgoing.firstOrNull()?.alpha ?: 1f
+        val out = android.animation.ValueAnimator.ofFloat(startA, 0f).apply {
+            duration = (90f * startA).toLong().coerceIn(1L, 90L)
+            interpolator = android.view.animation.AccelerateInterpolator()
+            addUpdateListener { a ->
+                val v = a.animatedValue as Float
+                outgoing.forEach { it.alpha = v }
+            }
+            addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(anim: android.animation.Animator) {
+                    if (seq != homeBarSeq) return
+                    outgoing.forEach { it.alpha = 1f; it.visibility = hiddenVis }
+                    incoming.forEach {
+                        it.alpha = 0f
+                        it.translationY = rise
+                        it.visibility = View.VISIBLE
+                    }
+                }
+            })
+        }
+        val inn = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 130
+            interpolator = android.view.animation.DecelerateInterpolator()
+            addUpdateListener { a ->
+                val v = a.animatedValue as Float
+                incoming.forEach { it.alpha = v; it.translationY = (1f - v) * rise }
+            }
+        }
+        val set = android.animation.AnimatorSet()
+        set.playSequentially(out, inn)
+        set.addListener(object : android.animation.AnimatorListenerAdapter() {
+            override fun onAnimationEnd(anim: android.animation.Animator) {
+                if (seq != homeBarSeq) return
+                homeBarAnim = null
+                snapHomeBar(compact)
+            }
+        })
+        homeBarAnim = set
+        set.start()
+    }
+
     private fun refreshOmniboxVisibility(url: String?) {
         val isHome = url == null || url == homePage
-        binding.urlBarContainer.visibility = if (isHome) View.INVISIBLE else View.VISIBLE
+        if (!isHome) {
+            // Leaving home: drop compact state and put the icon row back, in case
+            // the user opened a link while the bar was collapsed.
+            homeCompact = false
+            if (!searchMode) {
+                binding.homeBtn.visibility = View.VISIBLE
+                binding.reloadBtn.visibility = View.VISIBLE
+                binding.tabCountBtn.visibility = View.VISIBLE
+                binding.settingsBtn.visibility = View.VISIBLE
+                binding.starBtn.visibility = View.VISIBLE
+            }
+        } else {
+            // Landing on home (load or tab switch): the page may already be
+            // scrolled, and no intersection change would fire on its own.
+            homeCompact = false
+            activeWeb()?.evaluateJavascript(
+                "window.__syncHomeBar && window.__syncHomeBar()", null)
+        }
+        binding.urlBarContainer.visibility =
+            if (isHome && !homeCompact) View.INVISIBLE else View.VISIBLE
         // Desktop mode is meaningless on the home page — reset it when we land
         // home so the next site opens as a normal mobile page.
         if (isHome && Settings.getBool(this, Settings.DESKTOP_MODE, false)) {
