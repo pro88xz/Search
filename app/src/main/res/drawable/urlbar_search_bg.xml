@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The field while searching: a pill matching the home page field,
+     fully rounded against its 50dp height.
+     No <padding> element here, so swapping this in never disturbs the text
+     insets the EditText already carries. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/fieldSurface" />
+    <corners android:radius="25dp" />
+    <stroke android:width="1dp" android:color="@color/cardLine" />
+</shape>

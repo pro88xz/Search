@@ -189,13 +189,20 @@ class MainActivity : AppCompatActivity() {
     private var suggestSeq = 0
 
     private fun setupSuggestOverlay() {
-        suggestAdapter = SuggestAdapter(emptyList()) { item ->
+        suggestAdapter = SuggestAdapter(emptyList(), { item ->
             val kind = item.optString("kind")
             val title = item.optString("title")
             val url = item.optString("url")
             exitSearchMode()
             if (kind == "web" || url.isBlank()) go(title) else activeWeb()?.loadUrl(url)
-        }
+        }, { item ->
+            // The arrow loads a suggestion into the box instead of running it, so
+            // a near-miss can be edited rather than retyped. The box's own text
+            // watcher refreshes the list, so nothing is fetched twice here.
+            val fill = item.optString("url").ifBlank { item.optString("title") }
+            binding.urlBar.setText(fill)
+            binding.urlBar.setSelection(fill.length)
+        })
         binding.suggestOverlay.layoutManager =
             androidx.recyclerview.widget.LinearLayoutManager(this)
         binding.suggestOverlay.adapter = suggestAdapter
@@ -205,8 +212,44 @@ class MainActivity : AppCompatActivity() {
         val id = ++suggestSeq
         Thread {
             val items = buildSuggestions(query.trim())
-            runOnUiThread { if (id == suggestSeq && searchMode) suggestAdapter?.submit(items) }
+            runOnUiThread {
+                if (id == suggestSeq && searchMode) suggestAdapter?.submit(items, query.trim())
+            }
         }.start()
+    }
+
+    /**
+     * While searching, the field becomes a card sitting above a stack of cards
+     * rather than a flat grey pill across a white sheet. Margins widen to 12dp
+     * so its edges line up with the suggestion cards, and it gains 4dp of height
+     * so it does not read as the runt of the stack.
+     *
+     * Padding is captured and re-applied around the swap: setBackgroundResource
+     * will overwrite a view's padding whenever the incoming drawable reports any
+     * of its own, and the end inset differs between the two states because the
+     * star button is hidden while searching.
+     */
+    private fun styleUrlBarForSearch(searching: Boolean) {
+        val d = resources.displayMetrics.density
+        val top = binding.urlBar.paddingTop
+        val bottom = binding.urlBar.paddingBottom
+        binding.urlBar.setBackgroundResource(
+            if (searching) R.drawable.urlbar_search_bg else R.drawable.urlbar_bg)
+        binding.urlBar.setPaddingRelative(
+            (14 * d).toInt(), top, ((if (searching) 46 else 38) * d).toInt(), bottom)
+        binding.clearBtn.visibility =
+            if (searching && binding.urlBar.text.isNotEmpty()) View.VISIBLE else View.GONE
+        // Larger than any result row, so the field reads as the thing being typed
+        // into rather than the first item in the list.
+        binding.urlBar.setTextSize(
+            android.util.TypedValue.COMPLEX_UNIT_SP, if (searching) 17f else 15f)
+
+        val lp = binding.urlBarContainer.layoutParams
+            as? android.widget.LinearLayout.LayoutParams ?: return
+        lp.marginStart = ((if (searching) 6 else 4) * d).toInt()
+        lp.marginEnd = ((if (searching) 6 else 4) * d).toInt()
+        lp.height = ((if (searching) 50 else 40) * d).toInt()
+        binding.urlBarContainer.layoutParams = lp
     }
 
     private fun enterSearchMode() {
@@ -223,6 +266,7 @@ class MainActivity : AppCompatActivity() {
         binding.settingsBtn.visibility = View.GONE
         binding.starBtn.visibility = View.GONE
         binding.urlBarContainer.visibility = View.VISIBLE
+        styleUrlBarForSearch(true)
         val current = tabs.activeTab?.url
         val onHome = (current == null || current == homePage)
         if (onHome) binding.urlBar.setText("") else {
@@ -238,6 +282,7 @@ class MainActivity : AppCompatActivity() {
     private fun exitSearchMode() {
         if (!searchMode) return
         searchMode = false
+        styleUrlBarForSearch(false)
         binding.suggestOverlay.visibility = View.GONE
         suggestAdapter?.submit(emptyList())
         binding.homeBtn.visibility = View.VISIBLE
@@ -281,6 +326,7 @@ class MainActivity : AppCompatActivity() {
                 appUpdateManager.completeUpdate()
             }
         }
+        applyTabCounterAccent()
         val sig = siteSettingsSignature()
         if (sig == lastSiteSig) return  // nothing changed -> don't touch anything
         lastSiteSig = sig
@@ -569,6 +615,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // Second line for history/bookmark rows: the address, minus the noise.
+    private fun suggestSub(url: String): String = url
+        .removePrefix("https://").removePrefix("http://").removePrefix("www.")
+        .trimEnd('/')
+
     private fun buildSuggestions(query: String): List<JSONObject> {
         val local = localSuggestionMatches(query, if (query.isEmpty()) 5 else 3)
         val web = if (query.isEmpty()) emptyList() else fetchWebSuggestions(query)
@@ -576,6 +627,7 @@ class MainActivity : AppCompatActivity() {
         val out = mutableListOf<JSONObject>()
         local.forEach { (kind, title, url) ->
             out += JSONObject().put("kind", kind).put("title", title).put("url", url)
+                .put("sub", suggestSub(url))
         }
         web.forEach { text ->
             val key = text.lowercase()
@@ -1690,11 +1742,19 @@ class MainActivity : AppCompatActivity() {
         binding.urlBar.setOnClickListener {
             if (!searchMode) enterSearchMode()
         }
+        // Empties the field without leaving search mode, so the next query can be
+        // typed straight away. The watcher hides this button once the box is bare.
+        binding.clearBtn.setOnClickListener {
+            binding.urlBar.setText("")
+            binding.urlBar.requestFocus()
+        }
         binding.urlBar.addTextChangedListener(object : android.text.TextWatcher {
             override fun beforeTextChanged(cs: CharSequence?, a: Int, b: Int, c: Int) {}
             override fun onTextChanged(cs: CharSequence?, a: Int, b: Int, c: Int) {}
             override fun afterTextChanged(e: android.text.Editable?) {
                 if (searchMode) fetchSuggests(e?.toString() ?: "")
+                binding.clearBtn.visibility =
+                    if (searchMode && !e.isNullOrEmpty()) View.VISIBLE else View.GONE
             }
         })
 
@@ -1709,6 +1769,7 @@ class MainActivity : AppCompatActivity() {
         binding.reloadBtn.setOnClickListener { activeWeb()?.reload() }
         binding.homeBtn.setOnClickListener { onOwlTapped() }
         binding.tabCountBtn.setOnClickListener { openDeck() }
+        applyTabCounterAccent()
         binding.settingsBtn.setOnClickListener { openMenu() }
 
         // Menu scrim tap closes the menu
@@ -1904,6 +1965,31 @@ class MainActivity : AppCompatActivity() {
     private fun updateNavButtons() { /* system back handles page-back */ }
 
     private fun updateTabCount() { binding.tabCountBtn.text = tabs.count().toString() }
+
+    // Outline and digit follow the user's home accent, so the counter stays in
+    // step with the wordmark when the accent is changed in Settings. The shape
+    // has no fill, so the tint lands on the stroke only.
+    private fun applyTabCounterAccent() {
+        val accent = try {
+            android.graphics.Color.parseColor(Settings.getHomeAccent(this))
+        } catch (e: Exception) {
+            android.graphics.Color.parseColor("#8B6BD8")
+        }
+        binding.tabCountBtn.setTextColor(accent)
+        // Recolour the stroke directly. backgroundTintList cannot be used here:
+        // GradientDrawable applies the tint filter to its fill paint as well as
+        // its stroke, which paints a stroke-only shape as a solid block.
+        binding.tabCountBtn.backgroundTintList = null
+        val bg = binding.tabCountBtn.background?.mutate()
+        val ring = when (bg) {
+            is android.graphics.drawable.InsetDrawable ->
+                bg.drawable?.mutate() as? android.graphics.drawable.GradientDrawable
+            is android.graphics.drawable.GradientDrawable -> bg
+            else -> null
+        }
+        val strokePx = (1.5f * resources.displayMetrics.density).toInt().coerceAtLeast(1)
+        ring?.setStroke(strokePx, accent)
+    }
 
     private fun hideKeyboard() {
         val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager

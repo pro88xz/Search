@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="appBackground">#0E0E10</color>
+    <color name="sugMuted">#8A8A8F</color>
+    <color name="sugCard">#1A1A1E</color>
+    <color name="sugIcon">#9A9AA0</color>
+    <color name="fieldSurface">#26262B</color>
+    <color name="cardLine">#26262A</color>
     <color name="settingsPageBg">#0E0E10</color>
     <color name="settingsCard">#1C1C20</color>
     <color name="settingsIconTint">#B39DF0</color>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Tab counter outline. Inset 11dp on every side so the visible box is 22dp
+     inside the 44dp touch target. Stroke only, no fill; the outline is
+     recoloured to the live home accent at runtime. -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:insetLeft="11dp"
+    android:insetTop="11dp"
+    android:insetRight="11dp"
+    android:insetBottom="11dp">
+    <shape android:shape="rectangle">
+        <corners android:radius="6dp" />
+        <stroke android:width="1.5dp" android:color="#8B6BD8" />
+    </shape>
+</inset>

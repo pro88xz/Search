@@ -1,19 +1,62 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/sugRow"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
+    android:layout_marginStart="10dp"
+    android:layout_marginEnd="10dp"
+    android:layout_marginTop="3dp"
+    android:layout_marginBottom="3dp"
+    android:minHeight="48dp"
     android:orientation="horizontal"
     android:gravity="center_vertical"
-    android:paddingStart="18dp" android:paddingEnd="18dp"
-    android:paddingTop="15dp" android:paddingBottom="15dp"
-    android:background="?attr/selectableItemBackground"
-    android:clickable="true" android:focusable="true">
+    android:paddingStart="14dp"
+    android:paddingEnd="4dp"
+    android:paddingTop="4dp"
+    android:paddingBottom="4dp"
+    android:background="@drawable/sug_card_bg"
+    android:clickable="true"
+    android:focusable="true">
+
     <ImageView android:id="@+id/sugIcon"
-        android:layout_width="20dp" android:layout_height="20dp"
-        android:layout_marginEnd="16dp" android:src="@drawable/ic_sug_web" />
-    <TextView android:id="@+id/sugText"
-        android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:textSize="16sp" android:maxLines="1" android:ellipsize="end"
-        android:textColor="?android:attr/textColorPrimary" />
+        android:layout_width="20dp"
+        android:layout_height="20dp"
+        android:layout_marginEnd="14dp"
+        android:src="@drawable/ic_sug_web"
+        android:tint="@color/sugIcon"
+        android:contentDescription="@null" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView android:id="@+id/sugText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="16sp"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:textColor="?android:attr/textColorPrimary" />
+
+        <TextView android:id="@+id/sugSub"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:textSize="12sp"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:textColor="@color/sugMuted"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <ImageButton android:id="@+id/sugFill"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:padding="10dp"
+        android:scaleType="fitCenter"
+        android:src="@drawable/ic_sug_fill"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="Use this suggestion" />
 </LinearLayout>

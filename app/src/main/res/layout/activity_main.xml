@@ -78,35 +78,53 @@
                     android:scaleType="fitCenter"
                     android:padding="5dp"
                     android:contentDescription="Bookmark" />
+
+                <ImageButton
+                    android:id="@+id/clearBtn"
+                    android:layout_width="34dp"
+                    android:layout_height="34dp"
+                    android:layout_gravity="end|center_vertical"
+                    android:layout_marginEnd="7dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:src="@drawable/ic_clear"
+                    android:scaleType="fitCenter"
+                    android:padding="7dp"
+                    android:visibility="gone"
+                    android:contentDescription="Clear" />
             </FrameLayout>
 
             <ImageButton
                 android:id="@+id/reloadBtn"
-                android:layout_width="42dp"
-                android:layout_height="42dp"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:src="@android:drawable/ic_menu_rotate"
+                android:scaleType="fitCenter"
+                android:padding="10dp"
                 android:contentDescription="Reload" />
 
             <TextView
                 android:id="@+id/tabCountBtn"
-                android:layout_width="42dp"
-                android:layout_height="42dp"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
                 android:gravity="center"
+                android:includeFontPadding="false"
                 android:text="1"
-                android:textSize="15sp"
+                android:textSize="12sp"
                 android:textStyle="bold"
-                android:background="?attr/selectableItemBackgroundBorderless"
+                android:textColor="#8B6BD8"
+                android:background="@drawable/tab_count_bg"
+                android:foreground="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="Tabs" />
 
             <ImageButton
                 android:id="@+id/settingsBtn"
-                android:layout_width="46dp"
-                android:layout_height="46dp"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:src="@drawable/ic_settings"
                 android:scaleType="fitCenter"
-                android:padding="5dp"
+                android:padding="11dp"
                 android:contentDescription="Settings" />
         </LinearLayout>
 
@@ -246,6 +264,9 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_marginTop="54dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp"
+        android:clipToPadding="false"
         android:background="?android:attr/colorBackground"
         android:visibility="gone" />
 

@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="appBackground">#FAFAFA</color>
+    <!-- Search suggestions -->
+    <color name="sugMuted">#8A8A8F</color>
+    <color name="sugCard">#F0F0F3</color>
+    <color name="sugIcon">#6E6E73</color>
+    <color name="fieldSurface">#FFFFFF</color>
+    <color name="cardLine">#E4E4E7</color>
     <!-- Settings Material-3 surfaces -->
     <color name="settingsPageBg">#F1EEF7</color>
     <color name="settingsCard">#FFFFFF</color>
