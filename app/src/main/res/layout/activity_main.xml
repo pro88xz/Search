@@ -313,7 +313,7 @@
         android:paddingTop="8dp"
         android:paddingBottom="8dp"
         android:clipToPadding="false"
-        android:background="?android:attr/colorBackground"
+        android:background="@color/searchPageBg"
         android:visibility="gone" />
 
     <!-- ===== Slide-in menu panel (hidden by default) ===== -->

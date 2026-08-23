@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <color name="searchPageBg">#0E0E10</color>
     <color name="appBackground">#0E0E10</color>
     <color name="sugMuted">#8A8A8F</color>
     <color name="sugCard">#1A1A1E</color>
