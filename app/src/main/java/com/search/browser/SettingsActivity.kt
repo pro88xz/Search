@@ -65,8 +65,23 @@ class SettingsActivity : AppCompatActivity() {
                 val url = java.net.URL(iconBase + domain + ".ico")
                 val conn = url.openConnection() as java.net.HttpURLConnection
                 conn.connectTimeout = 6000; conn.readTimeout = 6000
-                val bmp = android.graphics.BitmapFactory.decodeStream(conn.inputStream)
+                val bytes = conn.inputStream.use { it.readBytes() }
                 conn.disconnect()
+                // Read the dimensions without allocating, pick a sample size,
+                // then decode straight down to roughly the size drawn. A favicon
+                // can arrive many times larger than the row it lands in.
+                val bounds = android.graphics.BitmapFactory.Options().apply {
+                    inJustDecodeBounds = true
+                }
+                android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                var sample = 1
+                while (sample < 32 &&
+                    bounds.outWidth / (sample * 2) >= sizePx &&
+                    bounds.outHeight / (sample * 2) >= sizePx
+                ) sample *= 2
+                val bmp = android.graphics.BitmapFactory.decodeByteArray(
+                    bytes, 0, bytes.size,
+                    android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })
                 if (bmp != null) {
                     val d = android.graphics.drawable.BitmapDrawable(resources, bmp)
                     d.setBounds(0, 0, sizePx, sizePx)
