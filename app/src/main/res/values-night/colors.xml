@@ -6,6 +6,9 @@
     <color name="sugIcon">#9A9AA0</color>
     <color name="fieldSurface">#26262B</color>
     <color name="cardLine">#26262A</color>
+    <!-- Mirrors the home page card fill and text colour -->
+    <color name="feedCard">#17171A</color>
+    <color name="feedFg">#FAFAFA</color>
     <color name="settingsPageBg">#0E0E10</color>
     <color name="settingsCard">#1C1C20</color>
     <color name="settingsIconTint">#B39DF0</color>

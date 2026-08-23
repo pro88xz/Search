@@ -190,6 +190,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupSuggestOverlay() {
         suggestAdapter = SuggestAdapter(emptyList(), { item ->
+            if (suggestListMoving()) return@SuggestAdapter
             val kind = item.optString("kind")
             val title = item.optString("title")
             val url = item.optString("url")
@@ -199,13 +200,24 @@ class MainActivity : AppCompatActivity() {
             // The arrow loads a suggestion into the box instead of running it, so
             // a near-miss can be edited rather than retyped. The box's own text
             // watcher refreshes the list, so nothing is fetched twice here.
-            val fill = item.optString("url").ifBlank { item.optString("title") }
+            if (suggestListMoving()) return@SuggestAdapter
+            val fill = item.optString("fill")
+                .ifBlank { item.optString("url") }
+                .ifBlank { item.optString("title") }
             binding.urlBar.setText(fill)
             binding.urlBar.setSelection(fill.length)
         })
         binding.suggestOverlay.layoutManager =
             androidx.recyclerview.widget.LinearLayoutManager(this)
         binding.suggestOverlay.adapter = suggestAdapter
+        binding.suggestOverlay.addOnScrollListener(
+            object : androidx.recyclerview.widget.RecyclerView.OnScrollListener() {
+                override fun onScrolled(
+                    rv: androidx.recyclerview.widget.RecyclerView, dx: Int, dy: Int
+                ) {
+                    if (dy != 0) lastSuggestScroll = android.os.SystemClock.uptimeMillis()
+                }
+            })
     }
 
     private fun fetchSuggests(query: String) {
@@ -229,27 +241,77 @@ class MainActivity : AppCompatActivity() {
      * of its own, and the end inset differs between the two states because the
      * star button is hidden while searching.
      */
-    private fun styleUrlBarForSearch(searching: Boolean) {
+    // One control at three sizes: grey address bar while browsing, and the same
+    // white pill as the home field when collapsed or searching. Previously the
+    // collapsed state kept the browsing style, so it was the odd one of three.
+    private val FIELD_NORMAL = 0
+    private val FIELD_COMPACT = 1
+    private val FIELD_SEARCH = 2
+
+    private fun styleUrlBar(mode: Int) {
         val d = resources.displayMetrics.density
+        val pill = mode != FIELD_NORMAL
         val top = binding.urlBar.paddingTop
         val bottom = binding.urlBar.paddingBottom
         binding.urlBar.setBackgroundResource(
-            if (searching) R.drawable.urlbar_search_bg else R.drawable.urlbar_bg)
-        binding.urlBar.setPaddingRelative(
-            (14 * d).toInt(), top, ((if (searching) 46 else 38) * d).toInt(), bottom)
-        binding.clearBtn.visibility =
-            if (searching && binding.urlBar.text.isNotEmpty()) View.VISIBLE else View.GONE
-        // Larger than any result row, so the field reads as the thing being typed
-        // into rather than the first item in the list.
+            if (pill) R.drawable.urlbar_search_bg else R.drawable.urlbar_bg)
         binding.urlBar.setTextSize(
-            android.util.TypedValue.COMPLEX_UNIT_SP, if (searching) 17f else 15f)
+            android.util.TypedValue.COMPLEX_UNIT_SP,
+            when (mode) {
+                FIELD_SEARCH -> 18f
+                FIELD_COMPACT -> 16f
+                else -> 15f
+            })
+        binding.urlBar.hint = if (pill) "Search the web" else "Search"
+        binding.urlBar.setHintTextColor(
+            androidx.core.content.ContextCompat.getColor(this, R.color.sugMuted))
+        refreshAdSlot()
+
+        if (pill) {
+            updateSearchFieldActions(top, bottom)
+        } else {
+            binding.clearBtn.visibility = View.GONE
+            binding.searchActions.visibility = View.GONE
+            binding.urlBar.setPaddingRelative((14 * d).toInt(), top, (38 * d).toInt(), bottom)
+        }
 
         val lp = binding.urlBarContainer.layoutParams
             as? android.widget.LinearLayout.LayoutParams ?: return
-        lp.marginStart = ((if (searching) 6 else 4) * d).toInt()
-        lp.marginEnd = ((if (searching) 6 else 4) * d).toInt()
-        lp.height = ((if (searching) 50 else 40) * d).toInt()
+        lp.marginStart = ((if (pill) 6 else 4) * d).toInt()
+        lp.marginEnd = ((if (pill) 6 else 4) * d).toInt()
+        lp.height = (when (mode) {
+            FIELD_SEARCH -> 50
+            FIELD_COMPACT -> 44
+            else -> 40
+        } * d).toInt()
         binding.urlBarContainer.layoutParams = lp
+    }
+
+    private fun styleUrlBarForSearch(searching: Boolean) {
+        styleUrlBar(
+            when {
+                searching -> FIELD_SEARCH
+                homeCompact -> FIELD_COMPACT
+                else -> FIELD_NORMAL
+            })
+    }
+
+    /**
+     * The trailing controls swap on content: mic and scan while the box is
+     * empty, one clear button once there is something to clear. Three controls
+     * in a 50dp pill is too crowded, and the end inset has to move with them or
+     * long text runs underneath whichever pair is showing.
+     */
+    private fun updateSearchFieldActions(
+        top: Int = binding.urlBar.paddingTop,
+        bottom: Int = binding.urlBar.paddingBottom
+    ) {
+        val d = resources.displayMetrics.density
+        val empty = binding.urlBar.text.isNullOrEmpty()
+        binding.searchActions.visibility = if (empty) View.VISIBLE else View.GONE
+        binding.clearBtn.visibility = if (empty) View.GONE else View.VISIBLE
+        binding.urlBar.setPaddingRelative(
+            (26 * d).toInt(), top, ((if (empty) 92 else 46) * d).toInt(), bottom)
     }
 
     private fun enterSearchMode() {
@@ -326,7 +388,7 @@ class MainActivity : AppCompatActivity() {
                 appUpdateManager.completeUpdate()
             }
         }
-        applyTabCounterAccent()
+        applyAccentTints()
         val sig = siteSettingsSignature()
         if (sig == lastSiteSig) return  // nothing changed -> don't touch anything
         lastSiteSig = sig
@@ -431,6 +493,7 @@ class MainActivity : AppCompatActivity() {
         setupToolbar()
         setupDeck()
         setupFindBar()
+        initAds()
         // Notification media buttons -> drive the page's media element.
         MediaService.onControl = { action ->
             runOnUiThread {
@@ -620,19 +683,52 @@ class MainActivity : AppCompatActivity() {
         .removePrefix("https://").removePrefix("http://").removePrefix("www.")
         .trimEnd('/')
 
+    private var lastSuggestScroll = 0L
+
+    /**
+     * True while the list is still settling. A tap that halts a fling would
+     * otherwise also open whatever row happened to be under the thumb, which is
+     * the one mistake in this list the user cannot undo.
+     */
+    private fun suggestListMoving(): Boolean =
+        android.os.SystemClock.uptimeMillis() - lastSuggestScroll < 250L
+
+    // Recognises a stored results page, so a past search can be offered as the
+    // query that was typed rather than as the engine's URL.
+    private fun searchQueryOf(url: String): String? = try {
+        val u = android.net.Uri.parse(url)
+        val host = u.host ?: ""
+        val engine = listOf("google.", "bing.", "duckduckgo.", "search.yahoo.",
+            "ecosia.", "startpage.", "search.brave.").any { host.contains(it) }
+        if (engine) u.getQueryParameter("q")?.takeIf { it.isNotBlank() } else null
+    } catch (e: Exception) {
+        null
+    }
+
     private fun buildSuggestions(query: String): List<JSONObject> {
-        val local = localSuggestionMatches(query, if (query.isEmpty()) 5 else 3)
+        // On focus, offer recents. While typing, hold local matches back until
+        // the query is specific enough to be worth pinning above the web
+        // suggestions: on one or two letters they are noise at the top.
+        val local = when {
+            query.isEmpty() -> localSuggestionMatches(query, 5)
+            query.trim().length >= 3 -> localSuggestionMatches(query, 3)
+            else -> emptyList()
+        }
         val web = if (query.isEmpty()) emptyList() else fetchWebSuggestions(query)
-        val seen = local.map { it.third.lowercase() }.toMutableSet()
+        val seen = mutableSetOf<String>()
         val out = mutableListOf<JSONObject>()
         local.forEach { (kind, title, url) ->
-            out += JSONObject().put("kind", kind).put("title", title).put("url", url)
-                .put("sub", suggestSub(url))
+            val q = searchQueryOf(url)
+            val shown = q ?: title
+            if (!seen.add(shown.lowercase())) return@forEach
+            val o = JSONObject().put("kind", kind).put("title", shown).put("url", url)
+            // A past search reads as a query: no page title, no results URL.
+            if (q != null) o.put("sub", "").put("fill", q)
+            else o.put("sub", suggestSub(url))
+            out += o
         }
         web.forEach { text ->
-            val key = text.lowercase()
-            if (out.size < 7 && key !in seen) {
-                seen += key
+            if (out.size < 7 && seen.add(text.lowercase())) {
                 out += JSONObject().put("kind", "web").put("title", text)
             }
         }
@@ -889,6 +985,11 @@ class MainActivity : AppCompatActivity() {
                     "${activeIndex + 1}/$numberOfMatches" else "0/0"
             }
         }
+
+        web.setOnScrollChangeListener { v, _, scrollY, _, _ ->
+            lastWebScroll = android.os.SystemClock.uptimeMillis()
+            positionAdSlot(v as android.webkit.WebView, scrollY)
+        }
         return web
     }
 
@@ -1000,22 +1101,54 @@ class MainActivity : AppCompatActivity() {
     // 54dp bar changes, so the page cannot jump or reflow while scrolling.
     private var homeBarAnim: android.animation.Animator? = null
     private var homeBarSeq = 0
+    private var homeRowWidths: List<Int>? = null
 
     private fun homeBarRow(): List<View> = listOf(
         binding.homeBtn, binding.reloadBtn, binding.tabCountBtn, binding.settingsBtn)
 
-    // Settles the bar into a final state with nothing in flight. Also the
-    // recovery path when a transition is cancelled part-way.
+    // Natural widths live in the layout params, which keep their fixed dp even
+    // while the view is collapsed to zero, so they survive the transition.
+    private fun homeRowWidths(): List<Int> {
+        var w = homeRowWidths
+        if (w == null) {
+            w = homeBarRow().map { it.layoutParams.width }
+            if (w.all { it > 0 }) homeRowWidths = w
+        }
+        return w
+    }
+
+    /**
+     * One continuous position between the two bar states, where 1 is the full
+     * icon row and 0 is the bare pill. The icons give up their width as they
+     * fade, and because the pill is weighted it takes that space on the same
+     * frame - so the two states cross over rather than one replacing the other.
+     */
+    private fun setHomeBarProgress(t: Float) {
+        val widths = homeRowWidths()
+        homeBarRow().forEachIndexed { i, v ->
+            val lp = v.layoutParams
+            lp.width = (widths[i] * t).toInt()
+            v.layoutParams = lp
+            v.alpha = t
+        }
+        binding.urlBarContainer.alpha = 1f - t
+    }
+
     private fun snapHomeBar(compact: Boolean) {
-        homeBarRow().forEach {
-            it.alpha = 1f
-            it.translationY = 0f
-            it.visibility = if (compact) View.GONE else View.VISIBLE
+        val widths = homeRowWidths()
+        homeBarRow().forEachIndexed { i, v ->
+            val lp = v.layoutParams
+            lp.width = widths[i]
+            v.layoutParams = lp
+            v.alpha = 1f
+            v.translationY = 0f
+            v.visibility = if (compact) View.GONE else View.VISIBLE
         }
         binding.starBtn.visibility = View.GONE
         binding.urlBarContainer.alpha = 1f
         binding.urlBarContainer.translationY = 0f
         binding.urlBarContainer.visibility = if (compact) View.VISIBLE else View.INVISIBLE
+        styleUrlBar(if (compact) FIELD_COMPACT else FIELD_NORMAL)
     }
 
     private fun applyHomeCompact(compact: Boolean, animate: Boolean = false) {
@@ -1029,61 +1162,44 @@ class MainActivity : AppCompatActivity() {
         homeBarAnim = null
         val seq = ++homeBarSeq
 
-        // Nothing to do (e.g. a tab switch that already agrees with the bar):
-        // settle instantly rather than animating a no-op.
         val settled = binding.homeBtn.visibility == (if (compact) View.GONE else View.VISIBLE)
         if (!animate || settled) { snapHomeBar(compact); return }
 
-        val outgoing = if (compact) homeBarRow() else listOf<View>(binding.urlBarContainer)
-        val incoming = if (compact) listOf<View>(binding.urlBarContainer) else homeBarRow()
-        val hiddenVis = if (compact) View.GONE else View.INVISIBLE
-        val rise = 5f * resources.displayMetrics.density
-        outgoing.forEach { it.translationY = 0f }
+        // Collapsing: the pill takes its final look and height now, while it is
+        // still fully transparent, so the only thing the eye follows is the
+        // crossfade. Expanding does the reverse, restyling once alpha reaches 0.
+        if (compact) styleUrlBar(FIELD_COMPACT)
 
-        // Fade the outgoing set out, flip visibility while BOTH sets are fully
-        // transparent, then fade the incoming set in. The reflow (icons giving
-        // up their width so the pill can fill the bar) therefore lands on a
-        // frame where neither set is drawn, so it can never be seen to pop.
-        // Starting from the current alpha keeps a reversal mid-transition smooth.
-        val startA = outgoing.firstOrNull()?.alpha ?: 1f
-        val out = android.animation.ValueAnimator.ofFloat(startA, 0f).apply {
-            duration = (90f * startA).toLong().coerceIn(1L, 90L)
-            interpolator = android.view.animation.AccelerateInterpolator()
-            addUpdateListener { a ->
-                val v = a.animatedValue as Float
-                outgoing.forEach { it.alpha = v }
-            }
+        val widths = homeRowWidths()
+        homeBarRow().forEach { it.visibility = View.VISIBLE; it.translationY = 0f }
+        binding.urlBarContainer.visibility = View.VISIBLE
+        binding.urlBarContainer.translationY = 0f
+
+        // Start from wherever a cancelled transition left the row, so reversing
+        // mid-way continues from the current position instead of jumping.
+        val from = (binding.homeBtn.layoutParams.width.toFloat() /
+            widths[0].coerceAtLeast(1).toFloat()).coerceIn(0f, 1f)
+        val to = if (compact) 0f else 1f
+        // Expanding is the slower half: things arriving on screen should settle,
+        // where things leaving can go quickly. Duration also scales with the
+        // distance left, so reversing part-way does not spend a full beat
+        // covering a sliver.
+        val span = kotlin.math.abs(to - from)
+        val anim = android.animation.ValueAnimator.ofFloat(from, to).apply {
+            duration = ((if (compact) 240 else 440) * span).toLong().coerceAtLeast(90L)
+            interpolator = android.view.animation.PathInterpolator(
+                if (compact) 0.3f else 0.05f, 0f, 0f, 1f)
+            addUpdateListener { a -> setHomeBarProgress(a.animatedValue as Float) }
             addListener(object : android.animation.AnimatorListenerAdapter() {
-                override fun onAnimationEnd(anim: android.animation.Animator) {
+                override fun onAnimationEnd(a: android.animation.Animator) {
                     if (seq != homeBarSeq) return
-                    outgoing.forEach { it.alpha = 1f; it.visibility = hiddenVis }
-                    incoming.forEach {
-                        it.alpha = 0f
-                        it.translationY = rise
-                        it.visibility = View.VISIBLE
-                    }
+                    homeBarAnim = null
+                    snapHomeBar(compact)
                 }
             })
         }
-        val inn = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 130
-            interpolator = android.view.animation.DecelerateInterpolator()
-            addUpdateListener { a ->
-                val v = a.animatedValue as Float
-                incoming.forEach { it.alpha = v; it.translationY = (1f - v) * rise }
-            }
-        }
-        val set = android.animation.AnimatorSet()
-        set.playSequentially(out, inn)
-        set.addListener(object : android.animation.AnimatorListenerAdapter() {
-            override fun onAnimationEnd(anim: android.animation.Animator) {
-                if (seq != homeBarSeq) return
-                homeBarAnim = null
-                snapHomeBar(compact)
-            }
-        })
-        homeBarAnim = set
-        set.start()
+        homeBarAnim = anim
+        anim.start()
     }
 
     private fun refreshOmniboxVisibility(url: String?) {
@@ -1108,6 +1224,7 @@ class MainActivity : AppCompatActivity() {
         }
         binding.urlBarContainer.visibility =
             if (isHome && !homeCompact) View.INVISIBLE else View.VISIBLE
+        refreshAdSlot()
         // Desktop mode is meaningless on the home page — reset it when we land
         // home so the next site opens as a normal mobile page.
         if (isHome && Settings.getBool(this, Settings.DESKTOP_MODE, false)) {
@@ -1298,6 +1415,194 @@ class MainActivity : AppCompatActivity() {
         binding.findBar.visibility = View.GONE
         activeWeb()?.clearMatches()
         hideKeyboard()
+    }
+
+    // ---------- Native feed ad ----------
+
+    private val feedAdUnit = "ca-app-pub-9121922395304175/6184493298"
+
+    private var nativeAd: com.google.android.gms.ads.nativead.NativeAd? = null
+
+    private var lastWebScroll = 0L
+
+    private fun initAds() {
+        // Gestures are mirrored onto the page so it scrolls under the card;
+        // only the tap that halts a fling is withheld.
+        binding.adSlot.page = { activeWeb() }
+        binding.adSlot.blocked = {
+            android.os.SystemClock.uptimeMillis() - lastWebScroll < 300L
+        }
+        // Initialization does disk work and can take a moment, so it runs off the
+        // main thread per the SDK guide - otherwise it lands squarely in cold
+        // start. Loading is bounced back to the main thread, where it must run.
+        Thread {
+            com.google.android.gms.ads.MobileAds.initialize(this) {
+                runOnUiThread { if (!isFinishing && !isDestroyed) loadFeedAd() }
+            }
+        }.start()
+    }
+
+    private fun loadFeedAd() {
+        android.util.Log.i("AdFeed", "requesting unit=$feedAdUnit")
+        com.google.android.gms.ads.AdLoader.Builder(this, feedAdUnit)
+            .forNativeAd { ad ->
+                if (isFinishing || isDestroyed) { ad.destroy(); return@forNativeAd }
+                android.util.Log.i("AdFeed", "loaded headline=" + ad.headline +
+                    " advertiser=" + ad.advertiser + " store=" + ad.store +
+                    " cta=" + ad.callToAction + " icon=" + (ad.icon != null) +
+                    " media=" + (ad.mediaContent != null) +
+                    " video=" + (ad.mediaContent?.hasVideoContent() ?: false) +
+                    " ratio=" + (ad.mediaContent?.aspectRatio ?: 0f))
+                nativeAd?.destroy()
+                nativeAd = ad
+                bindFeedAd(ad)
+            }
+            .withAdListener(object : com.google.android.gms.ads.AdListener() {
+                override fun onAdFailedToLoad(e: com.google.android.gms.ads.LoadAdError) {
+                    // Code 3 is no-fill, which a new unit does for hours and is
+                    // not a wiring fault. 0 internal, 1 invalid request (bad unit
+                    // id or app id mismatch), 2 network.
+                    android.util.Log.w("AdFeed", "failed code=" + e.code +
+                        " msg=" + e.message + " domain=" + e.domain +
+                        " cause=" + e.cause)
+                    binding.adSlot.visibility = View.GONE
+                }
+
+                override fun onAdImpression() {
+                    android.util.Log.i("AdFeed", "impression recorded")
+                }
+
+                override fun onAdClicked() {
+                    android.util.Log.i("AdFeed", "click recorded")
+                }
+            })
+            // Muted is the SDK default, but stated outright: a video ad that
+            // opens with sound in a browser home feed is unforgivable.
+            .withNativeAdOptions(
+                com.google.android.gms.ads.nativead.NativeAdOptions.Builder()
+                    .setVideoOptions(
+                        com.google.android.gms.ads.VideoOptions.Builder()
+                            .setStartMuted(true).build())
+                    .build())
+            .build()
+            .loadAd(com.google.android.gms.ads.AdRequest.Builder().build())
+    }
+
+    /**
+     * Every asset is handed to the SDK through NativeAdView, which is what makes
+     * impressions and clicks countable. Drawing these values anywhere else - into
+     * the page, for instance - renders the same pixels and earns nothing.
+     */
+    private fun bindFeedAd(ad: com.google.android.gms.ads.nativead.NativeAd) {
+        val view = layoutInflater.inflate(
+            R.layout.native_ad_feed_card, binding.adSlot, false)
+            as com.google.android.gms.ads.nativead.NativeAdView
+
+        // An explicit outline: deriving one from the background drawable is not
+        // reliable here, and without it the media runs square over the corners.
+        val card = view.findViewById<View>(R.id.adCard)
+        val radius = 20f * resources.displayMetrics.density
+        card.outlineProvider = object : android.view.ViewOutlineProvider() {
+            override fun getOutline(v: View, outline: android.graphics.Outline) {
+                outline.setRoundRect(0, 0, v.width, v.height, radius)
+            }
+        }
+        card.clipToOutline = true
+
+        val headline = view.findViewById<android.widget.TextView>(R.id.adHeadline)
+        headline.text = ad.headline
+        view.headlineView = headline
+
+        val media = view.findViewById<com.google.android.gms.ads.nativead.MediaView>(R.id.adMedia)
+        // Square thumbnail, cropped to fill, so any creative ratio reads the same.
+        val frame = view.findViewById<View>(R.id.adMediaFrame)
+        val thumbR = 12f * resources.displayMetrics.density
+        frame.outlineProvider = object : android.view.ViewOutlineProvider() {
+            override fun getOutline(v: View, outline: android.graphics.Outline) {
+                outline.setRoundRect(0, 0, v.width, v.height, thumbR)
+            }
+        }
+        frame.clipToOutline = true
+        // 120dp tall is the floor for video inventory, but the creative's own
+        // ratio decides the width: vertical video does serve here, and cropping
+        // 9:16 into a square throws most of the frame away. Clamped either side
+        // so the text column keeps usable room.
+        val tall = 120f * resources.displayMetrics.density
+        val ratio = ad.mediaContent?.aspectRatio ?: 1f
+        val wide = if (ratio > 0f) tall * ratio else tall
+        frame.layoutParams.width = wide.coerceIn(tall * 0.75f, tall * 1.25f).toInt()
+        media.setImageScaleType(android.widget.ImageView.ScaleType.CENTER_CROP)
+        ad.mediaContent?.let { media.mediaContent = it }
+        view.mediaView = media
+
+        val advertiser = view.findViewById<android.widget.TextView>(R.id.adAdvertiser)
+        val who = ad.advertiser ?: ad.store ?: ""
+        advertiser.text = who
+        advertiser.visibility = if (who.isBlank()) View.GONE else View.VISIBLE
+        view.advertiserView = advertiser
+
+        val cta = view.findViewById<android.widget.TextView>(R.id.adCta)
+        cta.text = ad.callToAction
+        cta.visibility = if (ad.callToAction.isNullOrBlank()) View.GONE else View.VISIBLE
+        view.callToActionView = cta
+
+        val icon = view.findViewById<android.widget.ImageView>(R.id.adIcon)
+        val art = ad.icon?.drawable
+        if (art != null) {
+            icon.setImageDrawable(art)
+            icon.visibility = View.VISIBLE
+            view.iconView = icon
+        } else icon.visibility = View.GONE
+
+        view.setNativeAd(ad)
+        binding.adSlot.removeAllViews()
+        binding.adSlot.addView(view)
+        refreshAdSlot()
+    }
+
+    /**
+     * The reserved gap is the last stretch of the document, so at full scroll it
+     * occupies exactly the bottom of the viewport - which is where the card
+     * already sits. Anywhere earlier, push it down by whatever scrolling is
+     * left, and it rides up into the gap as the end of the feed arrives.
+     */
+    private fun positionAdSlot(web: android.webkit.WebView, scrollY: Int) {
+        if (binding.adSlot.visibility != View.VISIBLE) return
+        val content = (web.contentHeight * web.scale).toInt()
+        val maxScroll = (content - web.height).coerceAtLeast(0)
+        // contentHeight * scale is a rounded estimate, so the last few pixels
+        // never arrive; settle the card once it is within a hair of seated.
+        val slack = 12f * resources.displayMetrics.density
+        val remaining = (maxScroll - scrollY).coerceAtLeast(0).toFloat()
+        binding.adSlot.translationY = if (remaining <= slack) 0f else remaining
+    }
+
+    // Tells the page how much room to leave. Sent after layout, since the card's
+    // height is not known until it has measured with a creative in it.
+    private fun syncAdSlotReserve() {
+        val web = activeWeb() ?: return
+        val scale = web.scale.takeIf { it > 0f } ?: 1f
+        val visible = binding.adSlot.visibility == View.VISIBLE
+        val h = binding.adSlot.height
+        val css = if (visible && h > 0) (h / scale).toInt() else 0
+        web.evaluateJavascript("window.__setAdSlot && window.__setAdSlot($css)", null)
+        if (visible) binding.adSlot.post { positionAdSlot(web, web.scrollY) }
+    }
+
+    // Home page only, and never over the search sheet or the tab deck.
+    private fun refreshAdSlot() {
+        val url = tabs.activeTab?.url
+        val onHome = (url == null || url == homePage)
+        val show = nativeAd != null && onHome && !searchMode && !deckVisible
+        val changed = (binding.adSlot.visibility == View.VISIBLE) != show
+        binding.adSlot.visibility = if (show) View.VISIBLE else View.GONE
+        if (changed) binding.adSlot.post { syncAdSlotReserve() }
+    }
+
+    override fun onDestroy() {
+        nativeAd?.destroy()
+        nativeAd = null
+        super.onDestroy()
     }
 
     private fun setupFindBar() {
@@ -1748,13 +2053,18 @@ class MainActivity : AppCompatActivity() {
             binding.urlBar.setText("")
             binding.urlBar.requestFocus()
         }
+        // Same two entry points the home page field offers, so both fields behave
+        // identically no matter which one the user reached.
+        binding.micBtn.setOnClickListener { launchVoiceSearch() }
+        binding.scanBtn.setOnClickListener { launchScan() }
         binding.urlBar.addTextChangedListener(object : android.text.TextWatcher {
             override fun beforeTextChanged(cs: CharSequence?, a: Int, b: Int, c: Int) {}
             override fun onTextChanged(cs: CharSequence?, a: Int, b: Int, c: Int) {}
             override fun afterTextChanged(e: android.text.Editable?) {
-                if (searchMode) fetchSuggests(e?.toString() ?: "")
-                binding.clearBtn.visibility =
-                    if (searchMode && !e.isNullOrEmpty()) View.VISIBLE else View.GONE
+                if (searchMode) {
+                    fetchSuggests(e?.toString() ?: "")
+                    updateSearchFieldActions()
+                }
             }
         })
 
@@ -1769,7 +2079,7 @@ class MainActivity : AppCompatActivity() {
         binding.reloadBtn.setOnClickListener { activeWeb()?.reload() }
         binding.homeBtn.setOnClickListener { onOwlTapped() }
         binding.tabCountBtn.setOnClickListener { openDeck() }
-        applyTabCounterAccent()
+        applyAccentTints()
         binding.settingsBtn.setOnClickListener { openMenu() }
 
         // Menu scrim tap closes the menu
@@ -1966,29 +2276,77 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateTabCount() { binding.tabCountBtn.text = tabs.count().toString() }
 
-    // Outline and digit follow the user's home accent, so the counter stays in
-    // step with the wordmark when the accent is changed in Settings. The shape
-    // has no fill, so the tint lands on the stroke only.
-    private fun applyTabCounterAccent() {
+    // Everything that carries the accent on the home page carries it here too:
+    // the tab count, and the mic and scan glyphs, which home draws in var(--accent).
+    private fun applyAccentTints() {
         val accent = try {
             android.graphics.Color.parseColor(Settings.getHomeAccent(this))
         } catch (e: Exception) {
             android.graphics.Color.parseColor("#8B6BD8")
         }
         binding.tabCountBtn.setTextColor(accent)
-        // Recolour the stroke directly. backgroundTintList cannot be used here:
-        // GradientDrawable applies the tint filter to its fill paint as well as
-        // its stroke, which paints a stroke-only shape as a solid block.
-        binding.tabCountBtn.backgroundTintList = null
-        val bg = binding.tabCountBtn.background?.mutate()
-        val ring = when (bg) {
-            is android.graphics.drawable.InsetDrawable ->
-                bg.drawable?.mutate() as? android.graphics.drawable.GradientDrawable
-            is android.graphics.drawable.GradientDrawable -> bg
-            else -> null
+        val tint = android.content.res.ColorStateList.valueOf(accent)
+        binding.micBtn.imageTintList = tint
+        binding.scanBtn.imageTintList = tint
+        applyArtAccent(accent)
+        // Rebuilt from the parsed colour rather than passed through, so nothing
+        // from settings reaches the page as script.
+        val hex = String.format("#%06X", 0xFFFFFF and accent)
+        activeWeb()?.evaluateJavascript(
+            "window.__setAccent && window.__setAccent('$hex')", null)
+    }
+
+    private var owlAccent = 0
+
+    /**
+     * Moves the owl's body colour onto the accent by rotating hue, rather than
+     * tinting. A tint list would paint every pixel one colour and collapse the
+     * mark into a silhouette - eyes, beak and shading gone.
+     *
+     * Only the purple family moves. The eye discs and pupils are near-white and
+     * near-black, so their hue carries no colour to rotate, and the beak sits
+     * far enough off the body hue to fall outside the band. Saturation and
+     * value are left alone, so the two-tone shading is preserved exactly.
+     */
+    private fun applyArtAccent(accent: Int) {
+        if (accent == owlAccent) return
+        owlAccent = accent
+        recolouredToAccent(R.drawable.ic_owl, accent)
+            ?.let { binding.homeBtn.setImageBitmap(it) }
+        recolouredToAccent(R.drawable.ic_settings, accent)
+            ?.let { binding.settingsBtn.setImageBitmap(it) }
+    }
+
+    private fun recolouredToAccent(resId: Int, accent: Int): android.graphics.Bitmap? {
+        val art = androidx.core.content.ContextCompat.getDrawable(this, resId)
+        val src = (art as? android.graphics.drawable.BitmapDrawable)?.bitmap ?: return null
+
+        val target = FloatArray(3)
+        android.graphics.Color.colorToHSV(accent, target)
+        val base = FloatArray(3)
+        android.graphics.Color.colorToHSV(android.graphics.Color.parseColor("#8B6BD8"), base)
+
+        val w = src.width
+        val h = src.height
+        val px = IntArray(w * h)
+        src.getPixels(px, 0, w, 0, 0, w, h)
+        val hsv = FloatArray(3)
+        for (i in px.indices) {
+            val c = px[i]
+            if (android.graphics.Color.alpha(c) == 0) continue
+            android.graphics.Color.colorToHSV(c, hsv)
+            if (hsv[1] < 0.15f) continue
+            var delta = hsv[0] - base[0]
+            if (delta > 180f) delta -= 360f
+            if (delta < -180f) delta += 360f
+            if (kotlin.math.abs(delta) > 45f) continue
+            hsv[0] = ((target[0] + delta) % 360f + 360f) % 360f
+            px[i] = android.graphics.Color.HSVToColor(android.graphics.Color.alpha(c), hsv)
         }
-        val strokePx = (1.5f * resources.displayMetrics.density).toInt().coerceAtLeast(1)
-        ring?.setStroke(strokePx, accent)
+        val out = android.graphics.Bitmap.createBitmap(
+            w, h, android.graphics.Bitmap.Config.ARGB_8888)
+        out.setPixels(px, 0, w, 0, 0, w, h)
+        return out
     }
 
     private fun hideKeyboard() {

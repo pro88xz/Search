@@ -75,5 +75,9 @@
             </intent-filter>
         </receiver>
 
+
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-9121922395304175~5269303770" />
     </application>
 </manifest>

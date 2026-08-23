@@ -21,7 +21,8 @@
   html, body { margin:0; padding:0; height:100%; background:var(--bg); color:var(--fg);
     font-family:-apple-system,"Roboto","Segoe UI",system-ui,sans-serif; -webkit-font-smoothing:antialiased; }
   .wrap { min-height:100%; display:flex; flex-direction:column; align-items:center;
-    padding:2.5vh 14px 40px; transition:padding-top .15s ease; }
+    padding:2.5vh 14px calc(40px + var(--adslot, 0px));
+    transition:padding-top .15s ease; }
 
   .wordmark {
     font-size:clamp(50px, 13.5vw, 66px);
@@ -63,7 +64,10 @@
   .shortcuts {
     width:100%; max-width:420px;
     display:grid; grid-template-columns:repeat(4,1fr);
-    gap:6px; margin-top:34px;
+    gap:6px;
+    background:var(--field); border:1px solid var(--line);
+    border-radius:20px; padding:16px 8px 14px;
+    box-shadow:0 1px 3px rgba(0,0,0,0.05), 0 8px 22px rgba(0,0,0,0.06);
   }
   .shortcuts.hidden { display:none; }
   .tile {
@@ -74,7 +78,7 @@
   .tile:active { background:rgba(128,128,128,0.12); }
   .tile .fav {
     width:56px; height:56px; border-radius:50%;
-    background:var(--field); box-shadow:var(--shadow);
+    background:rgba(128,128,128,0.08);
     display:flex; align-items:center; justify-content:center;
     font-size:22px; font-weight:600; color:var(--muted);
     overflow:hidden;
@@ -88,11 +92,12 @@
   /* News feed */
   .feed { width:100%; max-width:600px; margin-top:34px; }
   .feed.hidden { display:none; }
-  .feed-head {
-    font-size:13px; font-weight:600; color:var(--muted);
-    text-transform:uppercase; letter-spacing:0.04em;
-    margin:0 4px 12px;
+  .feed-head, .qa-head {
+    font-size:15px; font-weight:600; color:var(--fg);
+    letter-spacing:-0.01em; margin:0 4px 10px;
   }
+  .qa-head { width:100%; max-width:420px; margin-top:34px; }
+  .qa-head.hidden { display:none; }
   .feed-card {
     display:flex; flex-direction:column; align-items:stretch;
     background:var(--field); border:1px solid var(--line);
@@ -207,6 +212,7 @@
         <svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"><path d="M40 88V56a16 16 0 0 1 16-16h32M168 40h32a16 16 0 0 1 16 16v32M216 168v32a16 16 0 0 1-16 16h-32M88 216H56a16 16 0 0 1-16-16v-32M40 128h176"/></svg>
       </span>
     </label>
+    <div class="qa-head" id="qaHead">Quick access</div>
     <div class="shortcuts" id="tiles"></div>
     <div class="feed hidden" id="feed"></div>
     <div class="nightowl-empty" id="nightMsg">
@@ -229,6 +235,7 @@
   if (nightOwl) {
     showTiles = false;
     var _t = document.getElementById('tiles'); if (_t) _t.style.display = 'none';
+    var _q = document.getElementById('qaHead'); if (_q) _q.style.display = 'none';
     var _f = document.getElementById('feed'); if (_f) _f.style.display = 'none';
     var _n = document.getElementById('nightMsg'); if (_n) _n.classList.add('show');
   }
@@ -279,8 +286,15 @@
 
   function renderTiles(){
     host.innerHTML='';
-    if (!showTiles){ host.classList.add('hidden'); return; }
+    // The heading follows the tiles: hidden together, or it labels nothing.
+    var qaHead = document.getElementById('qaHead');
+    if (!showTiles){
+      host.classList.add('hidden');
+      if (qaHead) qaHead.classList.add('hidden');
+      return;
+    }
     host.classList.remove('hidden');
+    if (qaHead) qaHead.classList.remove('hidden');
 
     var recent=[];
     try {
@@ -480,6 +494,19 @@
     }
     push(true);
   })();
+
+  // Native reserves the tail of the page for the feed ad and parks its own view
+  // in the gap. Height arrives in CSS px, already including the inter-card gap.
+  window.__setAdSlot = function(px){
+    document.documentElement.style.setProperty(
+      '--adslot', (px > 0 ? px : 0) + 'px');
+  };
+
+  // The accent is read once at load, so a change made in Settings has to be
+  // pushed into the live page or the wordmark keeps the old colour until reload.
+  window.__setAccent = function(hex){
+    if (hex) document.documentElement.style.setProperty('--accent', hex);
+  };
 </script>
 </body>
 </html>
