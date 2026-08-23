@@ -42,6 +42,18 @@
     if (m) document.getElementById('host').textContent = decodeURIComponent(m[1]);
     else document.getElementById('host').style.display='none';
   } catch(e){ document.getElementById('host').style.display='none'; }
+
+  // Native pushes the accent in after load: these pages are assets, so their
+  // colours are baked at author time and cannot follow a setting on their own.
+  // The owl is a flat PNG, so it rotates hue rather than taking a colour - the
+  // white eyes carry no hue to turn, so only the body moves.
+  window.__setAccent = function(hex, hueShift){
+    if (hex) document.documentElement.style.setProperty('--accent', hex);
+    var owl = document.querySelector('.owl');
+    if (owl && typeof hueShift === 'number' && hueShift) {
+      owl.style.filter = 'hue-rotate(' + hueShift + 'deg)';
+    }
+  };
 </script>
 </body>
 </html>

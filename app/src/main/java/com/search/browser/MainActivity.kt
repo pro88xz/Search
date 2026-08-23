@@ -890,6 +890,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 if (view == tabs.activeTab?.webView) {
                     updateNavButtons(); refreshStar(); refreshOmniboxVisibility(url)
+                    pushAccentToPage(view)
                 }
             }
         }
@@ -1443,16 +1444,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun loadFeedAd() {
-        android.util.Log.i("AdFeed", "requesting unit=$feedAdUnit")
         com.google.android.gms.ads.AdLoader.Builder(this, feedAdUnit)
             .forNativeAd { ad ->
                 if (isFinishing || isDestroyed) { ad.destroy(); return@forNativeAd }
-                android.util.Log.i("AdFeed", "loaded headline=" + ad.headline +
-                    " advertiser=" + ad.advertiser + " store=" + ad.store +
-                    " cta=" + ad.callToAction + " icon=" + (ad.icon != null) +
-                    " media=" + (ad.mediaContent != null) +
-                    " video=" + (ad.mediaContent?.hasVideoContent() ?: false) +
-                    " ratio=" + (ad.mediaContent?.aspectRatio ?: 0f))
                 nativeAd?.destroy()
                 nativeAd = ad
                 bindFeedAd(ad)
@@ -1462,20 +1456,8 @@ class MainActivity : AppCompatActivity() {
                     // Code 3 is no-fill, which a new unit does for hours and is
                     // not a wiring fault. 0 internal, 1 invalid request (bad unit
                     // id or app id mismatch), 2 network.
-                    android.util.Log.w("AdFeed", "failed code=" + e.code +
-                        " msg=" + e.message + " domain=" + e.domain +
-                        " cause=" + e.cause)
                     binding.adSlot.visibility = View.GONE
-                }
-
-                override fun onAdImpression() {
-                    android.util.Log.i("AdFeed", "impression recorded")
-                }
-
-                override fun onAdClicked() {
-                    android.util.Log.i("AdFeed", "click recorded")
-                }
-            })
+                }            })
             // Muted is the SDK default, but stated outright: a video ad that
             // opens with sound in a browser home feed is unforgivable.
             .withNativeAdOptions(
@@ -1868,6 +1850,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showGamesWelcome() {
         val view = layoutInflater.inflate(R.layout.dialog_games_welcome, null)
+        applyOwlArtIn(view)
         val dialog = android.app.AlertDialog.Builder(this).setView(view).create()
         dialog.window?.setBackgroundDrawable(
             android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT)
@@ -1897,6 +1880,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showOwlHomeDialog() {
         val view = layoutInflater.inflate(R.layout.dialog_owl_home, null)
+        applyOwlArtIn(view)
         val dialog = android.app.AlertDialog.Builder(this).setView(view).create()
         dialog.window?.setBackgroundDrawable(
             android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT)
@@ -1918,6 +1902,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showOwlCloseDialog() {
         val view = layoutInflater.inflate(R.layout.dialog_owl_close, null)
+        applyOwlArtIn(view)
         val dialog = android.app.AlertDialog.Builder(this).setView(view).create()
         dialog.window?.setBackgroundDrawable(
             android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT)
@@ -1960,6 +1945,7 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) { "file" }
 
         val view = layoutInflater.inflate(R.layout.dialog_download, null)
+        applyOwlArtIn(view)
         view.findViewById<android.widget.TextView>(R.id.dlFileName).text = fileName
 
         val dialog = android.app.AlertDialog.Builder(this)
@@ -2289,11 +2275,7 @@ class MainActivity : AppCompatActivity() {
         binding.micBtn.imageTintList = tint
         binding.scanBtn.imageTintList = tint
         applyArtAccent(accent)
-        // Rebuilt from the parsed colour rather than passed through, so nothing
-        // from settings reaches the page as script.
-        val hex = String.format("#%06X", 0xFFFFFF and accent)
-        activeWeb()?.evaluateJavascript(
-            "window.__setAccent && window.__setAccent('$hex')", null)
+        pushAccentToPage(activeWeb())
     }
 
     private var owlAccent = 0
@@ -2308,13 +2290,74 @@ class MainActivity : AppCompatActivity() {
      * far enough off the body hue to fall outside the band. Saturation and
      * value are left alone, so the two-tone shading is preserved exactly.
      */
+    private var owlArt: android.graphics.Bitmap? = null
+
+    /**
+     * Hands the accent to whichever asset page is loaded. Values are rebuilt
+     * from the parsed colour rather than passed through, so nothing out of
+     * settings reaches a page as script. A no-op on real sites, which do not
+     * define the hook.
+     */
+    private fun pushAccentToPage(web: android.webkit.WebView?) {
+        val accent = try {
+            android.graphics.Color.parseColor(Settings.getHomeAccent(this))
+        } catch (e: Exception) {
+            android.graphics.Color.parseColor("#8B6BD8")
+        }
+        val target = FloatArray(3)
+        android.graphics.Color.colorToHSV(accent, target)
+        val base = FloatArray(3)
+        android.graphics.Color.colorToHSV(android.graphics.Color.parseColor("#8B6BD8"), base)
+        var shift = target[0] - base[0]
+        if (shift > 180f) shift -= 360f
+        if (shift < -180f) shift += 360f
+        val hex = String.format("#%06X", 0xFFFFFF and accent)
+        web?.evaluateJavascript(
+            "window.__setAccent && window.__setAccent('$hex', ${shift.toInt()})", null)
+    }
+
     private fun applyArtAccent(accent: Int) {
         if (accent == owlAccent) return
         owlAccent = accent
-        recolouredToAccent(R.drawable.ic_owl, accent)
-            ?.let { binding.homeBtn.setImageBitmap(it) }
+        owlArt = recolouredToAccent(R.drawable.ic_owl, accent)
+        owlArt?.let { binding.homeBtn.setImageBitmap(it) }
         recolouredToAccent(R.drawable.ic_settings, accent)
             ?.let { binding.settingsBtn.setImageBitmap(it) }
+        applyMenuAccent(accent)
+    }
+
+    // Menu glyphs are single-tone vectors, so a tint is exactly right here -
+    // there is no second colour for it to flatten. The rows carry ids but the
+    // icons inside them do not, so the panel is walked instead.
+    private fun applyMenuAccent(accent: Int) {
+        val tint = android.content.res.ColorStateList.valueOf(accent)
+        fun walk(v: View) {
+            if (v is android.view.ViewGroup) {
+                for (i in 0 until v.childCount) walk(v.getChildAt(i))
+            } else if (v is android.widget.ImageView) {
+                v.imageTintList = tint
+            }
+        }
+        walk(binding.menuPanel)
+    }
+
+    /**
+     * Swaps every owl in an inflated tree for the recoloured one. Matched on
+     * constant state rather than id: all four dialogs draw the same resource,
+     * and drawables loaded from one resource share it.
+     */
+    private fun applyOwlArtIn(root: View) {
+        val art = owlArt ?: return
+        val ref = androidx.core.content.ContextCompat
+            .getDrawable(this, R.drawable.ic_owl)?.constantState ?: return
+        fun walk(v: View) {
+            if (v is android.view.ViewGroup) {
+                for (i in 0 until v.childCount) walk(v.getChildAt(i))
+            } else if (v is android.widget.ImageView && v.drawable?.constantState == ref) {
+                v.setImageBitmap(art)
+            }
+        }
+        walk(root)
     }
 
     private fun recolouredToAccent(resId: Int, accent: Int): android.graphics.Bitmap? {
