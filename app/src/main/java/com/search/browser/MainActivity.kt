@@ -50,6 +50,9 @@ class MainActivity : AppCompatActivity() {
     // Tracks the site-settings signature last applied, so we only reload when it changed.
     private var lastSiteSig: String = ""
 
+    // True while the window is the small floating PiP one.
+    private var inPip = false
+
     // ---- HTML5 fullscreen video ----
     private var fullscreenView: View? = null
     private var fullscreenCallback: WebChromeClient.CustomViewCallback? = null
@@ -1163,6 +1166,59 @@ class MainActivity : AppCompatActivity() {
         // that before the view is detached leaves a black frame on some devices.
         fullscreenCallback?.onCustomViewHidden()
         fullscreenCallback = null
+    }
+
+    // ---------- Picture in picture ----------
+
+    /**
+     * Leaving the app with a video fullscreened hands it to a floating window
+     * instead of stopping it. Only ever from fullscreen: shrinking an ordinary
+     * page into a 200dp box helps nobody.
+     *
+     * onPause deliberately does not pause the WebView or its timers, so
+     * playback simply continues once the window shrinks.
+     */
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        maybeEnterPip()
+    }
+
+    private fun maybeEnterPip() {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) return
+        if (inPip) return
+        val v = fullscreenView ?: return
+        if (!packageManager.hasSystemFeature(
+                android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE)) return
+        val w = v.width
+        val h = v.height
+        if (w <= 0 || h <= 0) return
+        // The system rejects anything outside roughly 1:2.39 to 2.39:1 by
+        // throwing, so clamp rather than hand it something it will refuse.
+        val ratio = (w.toFloat() / h.toFloat()).coerceIn(0.42f, 2.38f)
+        try {
+            enterPictureInPictureMode(
+                android.app.PictureInPictureParams.Builder()
+                    .setAspectRatio(android.util.Rational((ratio * 1000).toInt(), 1000))
+                    .build()
+            )
+        } catch (e: Exception) {
+            // A device can refuse PiP for its own reasons; staying put is fine.
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(
+        isInPip: Boolean,
+        newConfig: android.content.res.Configuration
+    ) {
+        super.onPictureInPictureModeChanged(isInPip, newConfig)
+        inPip = isInPip
+        // Closed from the PiP window rather than expanded back into the app:
+        // the activity is on its way to stopped, so tear the player down now
+        // instead of leaving a fullscreen view behind for the next launch.
+        if (!isInPip &&
+            lifecycle.currentState == androidx.lifecycle.Lifecycle.State.CREATED) {
+            exitFullscreen()
+        }
     }
 
     private fun setSystemBarsVisible(show: Boolean) {
