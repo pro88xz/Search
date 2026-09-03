@@ -60,33 +60,36 @@
   .field .fdiv { width:1px; height:22px; background:var(--line); flex:none; }
 
 
-  /* Shortcut row: floating circular icons, Google-NTP style — no card shell. */
+  /* Shortcut row: bare circular icons on the page, no card shell.
+     One plane only. The previous version sat a --field well with a --line
+     border inside a --field card with a --line border, so the nesting had
+     no contrast to justify it and read as clutter rather than hierarchy. */
   .shortcuts {
     width:100%; max-width:420px;
     display:grid; grid-template-columns:repeat(4,1fr);
-    gap:6px;
-    background:var(--field); border:1px solid var(--line);
-    border-radius:26px; padding:18px 10px 16px;
-    box-shadow:0 1px 2px rgba(0,0,0,0.07), 0 4px 12px rgba(0,0,0,0.07);
+    gap:4px;
+    margin-bottom:4px;
   }
   .shortcuts.hidden { display:none; }
   .tile {
-    display:flex; flex-direction:column; align-items:center; gap:10px;
-    padding:8px 2px; border-radius:20px;
+    display:flex; flex-direction:column; align-items:center; gap:12px;
+    padding:6px 2px;
     text-decoration:none; color:var(--fg);
   }
-  .tile:active { background:rgba(128,128,128,0.12); }
   .tile .fav {
-    width:58px; height:58px; border-radius:19px;
+    width:62px; height:62px; border-radius:50%;
     background:var(--field); border:1px solid var(--line);
-    box-shadow:0 1px 2px rgba(0,0,0,0.04);
     display:flex; align-items:center; justify-content:center;
-    font-size:22px; font-weight:600; color:var(--muted);
+    font-size:24px; font-weight:600; color:var(--accent);
     overflow:hidden;
+    transition:transform .12s ease;
   }
-  .tile .fav img { width:62%; height:62%; object-fit:contain; border-radius:8px; }
+  /* Press shrinks the icon. The old :active painted a rounded-rect wash
+     behind the tile, which without a shell to sit in reads as a stray box. */
+  .tile:active .fav { transform:scale(0.92); }
+  .tile .fav img { width:62%; height:62%; object-fit:contain; border-radius:6px; }
   .tile span {
-    font-size:12px; color:var(--muted); max-width:100%;
+    font-size:12px; font-weight:500; color:var(--fg); max-width:100%;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
 
@@ -97,7 +100,7 @@
     font-size:14px; font-weight:600; color:var(--muted);
     letter-spacing:-0.005em; margin:0 4px 10px;
   }
-  .qa-head { width:100%; max-width:420px; margin-top:34px; }
+  .qa-head { width:100%; max-width:420px; margin-top:34px; margin-bottom:16px; }
   .qa-head.hidden { display:none; }
   .feed-card {
     display:flex; flex-direction:column; align-items:stretch;
@@ -160,7 +163,7 @@
   }
   .feed-card { animation:cardIn .45s cubic-bezier(.22,.61,.36,1) both; }
   /* Ripple on tappable surfaces */
-  .tile, .feed-card, .ficon { position:relative; overflow:hidden; }
+  .tile .fav, .feed-card, .ficon { position:relative; overflow:hidden; }
   .ripple {
     position:absolute; border-radius:50%; transform:scale(0);
     background:rgba(139,107,216,0.28); pointer-events:none;
@@ -278,9 +281,17 @@
     a.appendChild(fav); a.appendChild(span); host.appendChild(a);
     var dom=url.replace(/^https?:\/\//,'').split('/')[0].replace(/^www\./,'');
     var img=document.createElement('img');
-    img.src='https://www.google.com/s2/favicons?domain='+dom+'&sz=128';
+    var fellBack=false;
+    // Handlers before src: a cached icon can fire load before they attach,
+    // which is why a tile sometimes kept its letter for no reason at all.
     img.onload=function(){ fav.textContent=''; fav.appendChild(img); };
-    img.onerror=function(){ /* keep the grey letter */ };
+    img.onerror=function(){
+      // Second provider, then give up and keep the accent letter.
+      if(fellBack) return;
+      fellBack=true;
+      img.src='https://icons.duckduckgo.com/ip3/'+dom+'.ico';
+    };
+    img.src='https://www.google.com/s2/favicons?domain='+dom+'&sz=256';
   }
 
   var DEFAULTS=[{label:'YouTube',url:'https://m.youtube.com'},{label:'Facebook',url:'https://m.facebook.com'},{label:'ChatGPT',url:'https://chatgpt.com'},{label:'Wikipedia',url:'https://m.wikipedia.org'}];
@@ -452,7 +463,7 @@
     setTimeout(function(){ r.remove(); }, 560);
   }
   function bindRipples(){
-    document.querySelectorAll('.tile, .feed-card, .ficon').forEach(function(el){
+    document.querySelectorAll('.tile .fav, .feed-card, .ficon').forEach(function(el){
       if (el.__rippleBound) return;
       el.__rippleBound = true;
       el.addEventListener('pointerdown', addRipple);
