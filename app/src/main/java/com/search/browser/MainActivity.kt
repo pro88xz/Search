@@ -95,13 +95,23 @@ class MainActivity : AppCompatActivity() {
         val mimeType: String?
     )
     private var pendingDownload: PendingDownload? = null
+    // Same deal for a long-pressed image on API <= 28.
+    private var pendingImageSave: String? = null
+    // One-shot ticket for a blob: save. Minted when the user taps Save and
+    // spent on first use - the bridge is on every page, so without this any
+    // site could write to the gallery unprompted.
+    @Volatile private var blobSaveToken: String? = null
     private val storagePermLauncher = registerForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
     ) { granted ->
         val pd = pendingDownload
+        val pi = pendingImageSave
         pendingDownload = null
+        pendingImageSave = null
         if (granted && pd != null) {
             performDownload(pd.url, pd.userAgent, pd.contentDisposition, pd.mimeType)
+        } else if (granted && pi != null) {
+            saveImage(pi)
         } else if (!granted) {
             android.widget.Toast.makeText(this,
                 "Storage permission is needed to download files",
@@ -593,6 +603,28 @@ class MainActivity : AppCompatActivity() {
                 .getString(domain, "") ?: ""
         }
 
+        /**
+         * Reached only for a blob: image the user just chose to save. A blob URL
+         * is a handle into the page's own memory - nothing outside the renderer
+         * can read it, which is why DownloadManager and HttpURLConnection both
+         * refuse one. So the page hands the bytes back as a data: URL and the
+         * ordinary save path takes over.
+         */
+        @JavascriptInterface
+        fun saveBlobImage(token: String?, dataUrl: String?) {
+            if (token == null || token != blobSaveToken) return
+            blobSaveToken = null
+            if (dataUrl == null || !dataUrl.startsWith("data:")) { imageSaveFailed(); return }
+            Thread { saveDataImage(dataUrl) }.start()
+        }
+
+        @JavascriptInterface
+        fun saveBlobFailed(token: String?) {
+            if (token == null || token != blobSaveToken) return
+            blobSaveToken = null
+            imageSaveFailed()
+        }
+
         @JavascriptInterface
         fun getRecentSites(): String {
             // Return up to 8 most-recent unique domains from history as JSON.
@@ -1011,6 +1043,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        setupLongPress(web)
+
         web.setOnScrollChangeListener { v, _, scrollY, _, _ ->
             lastWebScroll = android.os.SystemClock.uptimeMillis()
             positionAdSlot(v as android.webkit.WebView, scrollY)
@@ -1090,6 +1124,249 @@ class MainActivity : AppCompatActivity() {
                 .BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             c.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
         }
+    }
+
+    // ---------- Long-press context menu ----------
+
+    private fun setupLongPress(web: WebView) {
+        web.setOnLongClickListener {
+            val r = web.hitTestResult
+            when (r.type) {
+                WebView.HitTestResult.IMAGE_TYPE -> {
+                    val img = r.extra
+                    if (img.isNullOrBlank()) false else { showTargetMenu(img, null); true }
+                }
+                WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE -> {
+                    val img = r.extra
+                    // hitTestResult carries the image, never the anchor around
+                    // it; the href only arrives through this async hop, so the
+                    // menu is built there, once both halves are known.
+                    val h = object : android.os.Handler(android.os.Looper.getMainLooper()) {
+                        override fun handleMessage(m: android.os.Message) {
+                            if (!img.isNullOrBlank()) showTargetMenu(img, m.data?.getString("url"))
+                        }
+                    }
+                    web.requestFocusNodeHref(h.obtainMessage())
+                    !img.isNullOrBlank()
+                }
+                WebView.HitTestResult.SRC_ANCHOR_TYPE -> {
+                    val href = r.extra
+                    if (href.isNullOrBlank()) false else { showTargetMenu(null, href); true }
+                }
+                // Plain text and input fields fall through to the system, or we
+                // would break text selection everywhere to add this menu.
+                else -> false
+            }
+        }
+    }
+
+    private fun showTargetMenu(image: String?, link: String?) {
+        val labels = ArrayList<String>()
+        val acts = ArrayList<() -> Unit>()
+
+        if (!link.isNullOrBlank()) {
+            labels.add("Open link in new tab"); acts.add { addNewTab(link) }
+            labels.add("Copy link address"); acts.add { copyText("Link", link) }
+            labels.add("Share link"); acts.add { shareLink(link, "") }
+        }
+        if (!image.isNullOrBlank()) {
+            labels.add("Save image"); acts.add { saveImage(image) }
+            labels.add("Open image in new tab"); acts.add { addNewTab(image) }
+            // A data: or blob: address is meaningless outside this page, so it
+            // is not offered for copy or share - a link nobody can open is a
+            // worse answer than no menu entry.
+            if (image.startsWith("http")) {
+                labels.add("Copy image address"); acts.add { copyText("Image", image) }
+                labels.add("Share image"); acts.add { shareLink(image, "") }
+            }
+        }
+        if (labels.isEmpty()) return
+
+        val head = image ?: link ?: ""
+        val title = if (head.startsWith("data:") || head.startsWith("blob:"))
+            "Image" else head.take(60)
+
+        android.app.AlertDialog.Builder(this)
+            .setTitle(title)
+            .setItems(labels.toTypedArray()) { d, i -> d.dismiss(); acts[i]() }
+            .show()
+    }
+
+    private fun copyText(label: String, text: String) {
+        try {
+            val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            cm.setPrimaryClip(android.content.ClipData.newPlainText(label, text))
+            // Android 13+ raises its own copy confirmation; ours would double it.
+            if (android.os.Build.VERSION.SDK_INT < 33) {
+                android.widget.Toast.makeText(
+                    this, "Copied", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            android.widget.Toast.makeText(
+                this, "Couldn't copy", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // ---------- Saving images ----------
+
+    private fun saveImage(url: String) {
+        if (android.os.Build.VERSION.SDK_INT <= 28) {
+            val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+                this, android.Manifest.permission.WRITE_EXTERNAL_STORAGE
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (!granted) {
+                pendingImageSave = url
+                storagePermLauncher.launch(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                return
+            }
+        }
+        when {
+            url.startsWith("data:") -> {
+                toast("Saving image\u2026")
+                Thread { saveDataImage(url) }.start()
+            }
+            url.startsWith("http://") || url.startsWith("https://") -> {
+                toast("Saving image\u2026")
+                val ua = activeWeb()?.settings?.userAgentString
+                val referer = activeWeb()?.url
+                Thread { saveRemoteImage(url, ua, referer) }.start()
+            }
+            // Only the page can read a blob:, so we ask it to (see requestBlobSave).
+            url.startsWith("blob:") -> {
+                toast("Saving image\u2026")
+                requestBlobSave(url)
+            }
+            else -> toast("Can't save this image")
+        }
+    }
+
+    /**
+     * Fetched here rather than handed to DownloadManager for two reasons: the
+     * cookies and referer below are what separate a real image from a saved 403
+     * page, and writing through MediaStore ourselves is what makes the file
+     * actually appear in the gallery.
+     */
+    private fun saveRemoteImage(url: String, ua: String?, referer: String?) {
+        var conn: HttpURLConnection? = null
+        try {
+            val c = URL(url).openConnection() as HttpURLConnection
+            conn = c
+            c.connectTimeout = 15000
+            c.readTimeout = 20000
+            c.instanceFollowRedirects = true
+            ua?.let { c.setRequestProperty("User-Agent", it) }
+            android.webkit.CookieManager.getInstance().getCookie(url)?.let {
+                c.setRequestProperty("Cookie", it)
+            }
+            referer?.let { if (it.startsWith("http")) c.setRequestProperty("Referer", it) }
+            c.connect()
+            if (c.responseCode !in 200..299) { imageSaveFailed(); return }
+            val mime = c.contentType?.substringBefore(';')?.trim()
+            val bytes = c.inputStream.use { it.readBytes() }
+            if (bytes.isEmpty()) { imageSaveFailed(); return }
+            writeImage(bytes, if (mime.isNullOrBlank()) "image/jpeg" else mime)
+        } catch (e: Exception) {
+            imageSaveFailed()
+        } finally {
+            try { conn?.disconnect() } catch (e: Exception) {}
+        }
+    }
+
+    /**
+     * The page fetches its own blob, turns it into a data: URL and hands that
+     * back over the bridge. Capped at 16MB: base64 inflates by a third and the
+     * whole string crosses the bridge in one piece.
+     *
+     * A site with a strict connect-src CSP can refuse the fetch. That path ends
+     * in saveBlobFailed, so it reports rather than hanging.
+     */
+    private fun requestBlobSave(url: String) {
+        val web = activeWeb() ?: run { imageSaveFailed(); return }
+        val token = java.util.UUID.randomUUID().toString()
+        blobSaveToken = token
+        val js = "(function(u,t){try{" +
+            "fetch(u).then(function(r){if(!r.ok)throw 0;return r.blob();})" +
+            ".then(function(b){if(b.size>16777216)throw 0;" +
+            "var fr=new FileReader();" +
+            "fr.onloadend=function(){SearchApp.saveBlobImage(t,fr.result);};" +
+            "fr.onerror=function(){SearchApp.saveBlobFailed(t);};" +
+            "fr.readAsDataURL(b);})" +
+            ".catch(function(){SearchApp.saveBlobFailed(t);});" +
+            "}catch(e){SearchApp.saveBlobFailed(t);}})(" +
+            JSONObject.quote(url) + "," + JSONObject.quote(token) + ");"
+        web.evaluateJavascript(js, null)
+    }
+
+    private fun saveDataImage(url: String) {
+        try {
+            val comma = url.indexOf(',')
+            if (comma < 0) { imageSaveFailed(); return }
+            val header = url.substring(5, comma)
+            val mime = header.substringBefore(';').ifBlank { "image/png" }
+            val body = url.substring(comma + 1)
+            val bytes = if (header.contains("base64"))
+                android.util.Base64.decode(body, android.util.Base64.DEFAULT)
+            else java.net.URLDecoder.decode(body, "UTF-8").toByteArray()
+            if (bytes.isEmpty()) { imageSaveFailed(); return }
+            writeImage(bytes, mime)
+        } catch (e: Exception) {
+            imageSaveFailed()
+        }
+    }
+
+    private fun writeImage(bytes: ByteArray, mime: String) {
+        val ext = when {
+            mime.contains("png") -> "png"
+            mime.contains("webp") -> "webp"
+            mime.contains("gif") -> "gif"
+            else -> "jpg"
+        }
+        val name = "IMG_" + System.currentTimeMillis() + "." + ext
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= 29) {
+                val values = android.content.ContentValues().apply {
+                    put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, name)
+                    put(android.provider.MediaStore.Images.Media.MIME_TYPE, mime)
+                    put(
+                        android.provider.MediaStore.Images.Media.RELATIVE_PATH,
+                        android.os.Environment.DIRECTORY_PICTURES + "/Search"
+                    )
+                    put(android.provider.MediaStore.Images.Media.IS_PENDING, 1)
+                }
+                val uri = contentResolver.insert(
+                    android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values
+                ) ?: run { imageSaveFailed(); return }
+                contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+                values.clear()
+                values.put(android.provider.MediaStore.Images.Media.IS_PENDING, 0)
+                contentResolver.update(uri, values, null, null)
+            } else {
+                val dir = java.io.File(
+                    android.os.Environment.getExternalStoragePublicDirectory(
+                        android.os.Environment.DIRECTORY_PICTURES
+                    ), "Search"
+                )
+                if (!dir.exists()) dir.mkdirs()
+                val f = java.io.File(dir, name)
+                java.io.FileOutputStream(f).use { it.write(bytes) }
+                // Without the scan the file is on disk but no gallery lists it,
+                // which reads to the user as another failed save.
+                android.media.MediaScannerConnection.scanFile(
+                    this, arrayOf(f.absolutePath), arrayOf(mime), null
+                )
+            }
+            runOnUiThread { toast("Image saved to Pictures/Search") }
+        } catch (e: Exception) {
+            imageSaveFailed()
+        }
+    }
+
+    private fun imageSaveFailed() {
+        runOnUiThread { toast("Couldn't save image") }
+    }
+
+    private fun toast(msg: String) {
+        android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_SHORT).show()
     }
 
     private fun displayUrl(url: String?): String =
