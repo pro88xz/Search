@@ -204,8 +204,12 @@ class MainActivity : AppCompatActivity() {
     }
     private var suggestAdapter: SuggestAdapter? = null
     private var suggestSeq = 0
+    // The list's own bottom padding from the layout, kept so the keyboard
+    // inset can be added on top of it rather than replacing it.
+    private var suggestBasePad = -1
 
     private fun setupSuggestOverlay() {
+        if (suggestBasePad < 0) suggestBasePad = binding.suggestOverlay.paddingBottom
         suggestAdapter = SuggestAdapter(emptyList(), { item ->
             if (suggestListMoving()) return@SuggestAdapter
             val kind = item.optString("kind")
@@ -484,6 +488,26 @@ class MainActivity : AppCompatActivity() {
         androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(binding.root) { v, insets ->
             val bars = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars())
             v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+
+            // Under edge-to-edge the keyboard never resizes the window - it just
+            // arrives as an inset. Nothing read it, so the tail of the suggestion
+            // list rendered behind the keyboard and its last rows could not be
+            // scrolled to. Pad the list by whatever the keyboard covers beyond
+            // what the root already gives back for the navigation bar; with
+            // clipToPadding=false that becomes scrollable room, not dead space.
+            // Applied here rather than from a listener on the list itself,
+            // because a ViewGroup with its own listener stops dispatching insets
+            // down to its children.
+            val ime = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.ime()).bottom
+            val extra = (ime - bars.bottom).coerceAtLeast(0)
+            val base = if (suggestBasePad >= 0) suggestBasePad
+                else binding.suggestOverlay.paddingBottom
+            binding.suggestOverlay.setPadding(
+                binding.suggestOverlay.paddingLeft,
+                binding.suggestOverlay.paddingTop,
+                binding.suggestOverlay.paddingRight,
+                base + extra
+            )
             insets
         }
         setupSuggestOverlay()
