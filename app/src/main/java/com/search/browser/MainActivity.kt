@@ -50,6 +50,13 @@ class MainActivity : AppCompatActivity() {
     // Tracks the site-settings signature last applied, so we only reload when it changed.
     private var lastSiteSig: String = ""
 
+    // ---- HTML5 fullscreen video ----
+    private var fullscreenView: View? = null
+    private var fullscreenCallback: WebChromeClient.CustomViewCallback? = null
+    private var fullscreenContainer: android.widget.FrameLayout? = null
+    private var savedOrientation =
+        android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+
     // Voice search launcher (RecognizerIntent -> go()).
     private val voiceLauncher = registerForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
@@ -477,6 +484,8 @@ class MainActivity : AppCompatActivity() {
             override fun handleOnBackPressed() {
                 val web = activeWeb()
                 when {
+                    // Fullscreen is a mode over the whole app, so it unwinds first.
+                    fullscreenView != null -> exitFullscreen()
                     findActive -> closeFindBar()
                     searchMode -> exitSearchMode()
                     binding.menuScrim.visibility == View.VISIBLE -> closeMenu()
@@ -896,6 +905,21 @@ class MainActivity : AppCompatActivity() {
         }
 
         web.webChromeClient = object : WebChromeClient() {
+            // HTML5 fullscreen: YouTube's expand button, and every other player,
+            // calls the fullscreen API. The default implementation ignores it,
+            // so without these two the button does nothing at all.
+            override fun onShowCustomView(
+                view: View?,
+                callback: WebChromeClient.CustomViewCallback?
+            ) {
+                if (view == null) { callback?.onCustomViewHidden(); return }
+                enterFullscreen(view, callback)
+            }
+
+            override fun onHideCustomView() {
+                exitFullscreen()
+            }
+
             // Location: honor the Site setting.
             override fun onGeolocationPermissionsShowPrompt(
                 origin: String?,
@@ -992,6 +1016,80 @@ class MainActivity : AppCompatActivity() {
             positionAdSlot(v as android.webkit.WebView, scrollY)
         }
         return web
+    }
+
+    // ---------- HTML5 fullscreen video ----------
+
+    private fun enterFullscreen(view: View, cb: WebChromeClient.CustomViewCallback?) {
+        // Some players fire this twice. The second must be refused, or the first
+        // view is orphaned and the page can never come back out of fullscreen.
+        if (fullscreenView != null) { cb?.onCustomViewHidden(); return }
+
+        fullscreenView = view
+        fullscreenCallback = cb
+        savedOrientation = requestedOrientation
+
+        // Hosted in the activity content root, which is the PARENT of our app
+        // root - so it covers the inset padding, the top bar and the toolbar
+        // without any of them needing to know fullscreen exists. Clickable so
+        // player taps cannot fall through to the chrome underneath.
+        val root = findViewById<android.widget.FrameLayout>(android.R.id.content)
+        val holder = android.widget.FrameLayout(this).apply {
+            setBackgroundColor(android.graphics.Color.BLACK)
+            isClickable = true
+            isFocusable = true
+        }
+        holder.addView(
+            view,
+            android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.view.Gravity.CENTER
+            )
+        )
+        root.addView(
+            holder,
+            android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+        fullscreenContainer = holder
+
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        setSystemBarsVisible(false)
+        requestedOrientation =
+            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+    }
+
+    private fun exitFullscreen() {
+        val holder = fullscreenContainer ?: return
+        val root = findViewById<android.widget.FrameLayout>(android.R.id.content)
+        holder.removeAllViews()
+        root.removeView(holder)
+        fullscreenContainer = null
+        fullscreenView = null
+
+        window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        setSystemBarsVisible(true)
+        requestedOrientation = savedOrientation
+
+        // Last, deliberately: the player tears its surface down here, and doing
+        // that before the view is detached leaves a black frame on some devices.
+        fullscreenCallback?.onCustomViewHidden()
+        fullscreenCallback = null
+    }
+
+    private fun setSystemBarsVisible(show: Boolean) {
+        val c = androidx.core.view.WindowCompat
+            .getInsetsController(window, window.decorView)
+        if (show) {
+            c.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        } else {
+            c.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat
+                .BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            c.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        }
     }
 
     private fun displayUrl(url: String?): String =
