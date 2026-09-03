@@ -1923,9 +1923,24 @@ class MainActivity : AppCompatActivity() {
      * already sits. Anywhere earlier, push it down by whatever scrolling is
      * left, and it rides up into the gap as the end of the feed arrives.
      */
+    // Far enough down to be off screen whatever the card's height, so a slot
+    // that is switched on before its place is known shows nothing at all.
+    private fun adSlotParkedY(): Float =
+        (binding.root.height.takeIf { it > 0 }
+            ?: resources.displayMetrics.heightPixels).toFloat()
+
     private fun positionAdSlot(web: android.webkit.WebView, scrollY: Int) {
         if (binding.adSlot.visibility != View.VISIBLE) return
         val content = (web.contentHeight * web.scale).toInt()
+        // contentHeight reads 0 while the page lays out. Taken at face value it
+        // gives maxScroll 0, so remaining is 0, so the card seats itself at the
+        // bottom of the viewport mid-load and then jumps away once the real
+        // height lands. Stay parked instead until there is a document to
+        // measure against; a late correction is invisible from up there.
+        if (content <= 0) {
+            binding.adSlot.translationY = adSlotParkedY()
+            return
+        }
         val maxScroll = (content - web.height).coerceAtLeast(0)
         // contentHeight * scale is a rounded estimate, so the last few pixels
         // never arrive; settle the card once it is within a hair of seated.
@@ -1943,7 +1958,14 @@ class MainActivity : AppCompatActivity() {
         val h = binding.adSlot.height
         val css = if (visible && h > 0) (h / scale).toInt() else 0
         web.evaluateJavascript("window.__setAdSlot && window.__setAdSlot($css)", null)
-        if (visible) binding.adSlot.post { positionAdSlot(web, web.scrollY) }
+        if (visible) {
+            binding.adSlot.post { positionAdSlot(web, web.scrollY) }
+            // The reserve above lengthens the document, and contentHeight only
+            // catches up after the page re-lays out - which has not happened by
+            // the time the post above runs. One late pass settles the card. It
+            // stays parked until then, so the wait costs nothing on screen.
+            binding.adSlot.postDelayed({ positionAdSlot(web, web.scrollY) }, 250L)
+        }
     }
 
     // Home page only, and never over the search sheet or the tab deck.
@@ -1952,8 +1974,19 @@ class MainActivity : AppCompatActivity() {
         val onHome = (url == null || url == homePage)
         val show = nativeAd != null && onHome && !searchMode && !deckVisible
         val changed = (binding.adSlot.visibility == View.VISIBLE) != show
+        // THE FLICKER. translationY 0 means "seated at the bottom of the
+        // viewport", which is exactly where a fully scrolled page shows the
+        // card. Switching the slot on before positionAdSlot has run therefore
+        // paints it on screen for a frame, then shoves it down out of the way -
+        // read as a flash on app open, because that is when the ad arrives.
+        // Park it first; positionAdSlot brings it to wherever it belongs.
+        if (show && changed) binding.adSlot.translationY = adSlotParkedY()
         binding.adSlot.visibility = if (show) View.VISIBLE else View.GONE
-        if (changed) binding.adSlot.post { syncAdSlotReserve() }
+        // Re-sent whenever the card is up, not only on a change: a home reload
+        // (accent change, private toggle, tab switch) drops the page's CSS
+        // reserve back to 0 without the slot's visibility ever changing, and
+        // the card then overlaps the last feed card.
+        if (changed || show) binding.adSlot.post { syncAdSlotReserve() }
     }
 
     override fun onDestroy() {
