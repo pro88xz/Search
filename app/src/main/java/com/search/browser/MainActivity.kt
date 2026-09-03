@@ -637,7 +637,11 @@ class MainActivity : AppCompatActivity() {
                 val host = try {
                     android.net.Uri.parse(e.url).host ?: continue
                 } catch (ex: Exception) { continue }
+                // Mobile hosts stripped too, or labelFromDomain takes the first
+                // label of m.youtube.com and titles the tile "M" - and the dedup
+                // below counts m.youtube.com and youtube.com as two sites.
                 val domain = host.removePrefix("www.")
+                    .removePrefix("mobile.").removePrefix("m.")
                 if (domain.isBlank() || !seen.add(domain)) continue
                 if (count > 0) out.append(",")
                 val safeUrl = e.url.replace("\\", "\\\\").replace("\"", "\\\"")
@@ -686,10 +690,22 @@ class MainActivity : AppCompatActivity() {
         return (marks + hist).distinctBy { it.third }.take(limit)
     }
 
+    /**
+     * Prefix-first. The old test was contains() anywhere in the title or the
+     * whole URL, so a single letter matched most of history and "ube" matched
+     * youtube.com - the rows never looked like they were responding to typing.
+     * Now the domain has to start with what was typed, or some word in the
+     * title does, so a row appears as the user closes in on it.
+     */
     private fun matchesQuery(title: String, url: String, query: String): Boolean {
         if (query.isEmpty()) return true
         val q = query.lowercase()
-        return title.lowercase().contains(q) || url.lowercase().contains(q)
+        val host = try {
+            (android.net.Uri.parse(url).host ?: "").lowercase()
+                .removePrefix("www.").removePrefix("mobile.").removePrefix("m.")
+        } catch (e: Exception) { "" }
+        if (host.startsWith(q)) return true
+        return title.lowercase().split(' ', '-', '|', ':', '/').any { it.startsWith(q) }
     }
 
     private fun fetchWebSuggestions(query: String): List<String> {
@@ -719,10 +735,21 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // Second line for history/bookmark rows: the address, minus the noise.
-    private fun suggestSub(url: String): String = url
-        .removePrefix("https://").removePrefix("http://").removePrefix("www.")
-        .trimEnd('/')
+    /**
+     * The site a row came from - "Youtube", "Deezer" - for the second line of a
+     * history or bookmark suggestion. It used to be the address with the scheme
+     * filed off, which on any real page meant a wall of query string.
+     */
+    private fun siteNameOf(url: String): String = try {
+        val host = (android.net.Uri.parse(url).host ?: "").lowercase()
+            .removePrefix("www.").removePrefix("mobile.").removePrefix("m.")
+        val name = host.substringBefore('.')
+        if (name.isBlank()) host else name.replaceFirstChar { it.uppercase() }
+    } catch (e: Exception) {
+        ""
+    }
+
+    private fun suggestSub(url: String): String = siteNameOf(url)
 
     private var lastSuggestScroll = 0L
 
