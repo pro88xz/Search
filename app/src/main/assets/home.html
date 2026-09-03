@@ -164,9 +164,11 @@
   .feed-card { animation:cardIn .45s cubic-bezier(.22,.61,.36,1) both; }
   /* Ripple on tappable surfaces */
   .tile .fav, .feed-card, .ficon { position:relative; overflow:hidden; }
+  /* Follows the user's accent. It was pinned to one purple, so every other
+     accent left taps flashing a colour from a theme nobody had chosen. */
   .ripple {
     position:absolute; border-radius:50%; transform:scale(0);
-    background:rgba(139,107,216,0.28); pointer-events:none;
+    background:var(--accent); opacity:0.26; pointer-events:none;
     animation:rippleOut .55s ease-out;
   }
   @keyframes rippleOut { to { transform:scale(2.4); opacity:0; } }
