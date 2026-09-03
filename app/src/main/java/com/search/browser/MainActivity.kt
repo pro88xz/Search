@@ -1477,6 +1477,10 @@ class MainActivity : AppCompatActivity() {
     // 54dp bar changes, so the page cannot jump or reflow while scrolling.
     private var homeBarAnim: android.animation.Animator? = null
     private var homeBarSeq = 0
+    // Where the row actually is: 1f icons full, 0f fully collapsed. Kept here
+    // because the row's width cannot answer it - snapHomeBar restores every
+    // width to full and encodes the collapsed state in visibility instead.
+    private var homeBarProgress = 1f
     private var homeRowWidths: List<Int>? = null
 
     private fun homeBarRow(): List<View> = listOf(
@@ -1500,6 +1504,7 @@ class MainActivity : AppCompatActivity() {
      * frame - so the two states cross over rather than one replacing the other.
      */
     private fun setHomeBarProgress(t: Float) {
+        homeBarProgress = t
         val widths = homeRowWidths()
         homeBarRow().forEachIndexed { i, v ->
             val lp = v.layoutParams
@@ -1511,6 +1516,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun snapHomeBar(compact: Boolean) {
+        homeBarProgress = if (compact) 0f else 1f
         val widths = homeRowWidths()
         homeBarRow().forEachIndexed { i, v ->
             val lp = v.layoutParams
@@ -1546,15 +1552,20 @@ class MainActivity : AppCompatActivity() {
         // crossfade. Expanding does the reverse, restyling once alpha reaches 0.
         if (compact) styleUrlBar(FIELD_COMPACT)
 
-        val widths = homeRowWidths()
         homeBarRow().forEach { it.visibility = View.VISIBLE; it.translationY = 0f }
         binding.urlBarContainer.visibility = View.VISIBLE
         binding.urlBarContainer.translationY = 0f
 
         // Start from wherever a cancelled transition left the row, so reversing
         // mid-way continues from the current position instead of jumping.
-        val from = (binding.homeBtn.layoutParams.width.toFloat() /
-            widths[0].coerceAtLeast(1).toFloat()).coerceIn(0f, 1f)
+        //
+        // This used to read the row's width as if it were progress. It is not:
+        // snapHomeBar sets every width back to full and hides the row with
+        // visibility, so after a completed collapse the width claimed 1.0 while
+        // the row sat at 0. Expanding then measured a span of 0 and ran for the
+        // 90ms floor instead of its 440ms - the abrupt snap back. Reversing
+        // mid-flight was equally wrong, despite what the line above promised.
+        val from = homeBarProgress
         val to = if (compact) 0f else 1f
         // Expanding is the slower half: things arriving on screen should settle,
         // where things leaving can go quickly. Duration also scales with the
