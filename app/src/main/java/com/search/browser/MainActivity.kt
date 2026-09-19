@@ -104,6 +104,12 @@ class MainActivity : AppCompatActivity() {
     // spent on first use - the bridge is on every page, so without this any
     // site could write to the gallery unprompted.
     @Volatile private var blobSaveToken: String? = null
+    // Same one-shot idea for a blob: download. The bridge is reachable from
+    // every page, so without a ticket any site could drop a file into the
+    // user's Downloads folder unprompted.
+    @Volatile private var blobDownloadToken: String? = null
+    private var blobDownloadName: String = "download"
+    private var blobDownloadMime: String? = null
     private val storagePermLauncher = registerForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -650,6 +656,25 @@ class MainActivity : AppCompatActivity() {
             if (token == null || token != blobSaveToken) return
             blobSaveToken = null
             imageSaveFailed()
+        }
+
+        @JavascriptInterface
+        fun saveBlobFile(token: String?, dataUrl: String?) {
+            if (token == null || token != blobDownloadToken) return
+            blobDownloadToken = null
+            val name = blobDownloadName
+            val mime = blobDownloadMime
+            if (dataUrl == null || !dataUrl.startsWith("data:")) {
+                downloadFailed(); return
+            }
+            Thread { saveDataDownload(dataUrl, name, mime) }.start()
+        }
+
+        @JavascriptInterface
+        fun saveBlobFileFailed(token: String?) {
+            if (token == null || token != blobDownloadToken) return
+            blobDownloadToken = null
+            downloadFailed()
         }
 
         @JavascriptInterface
@@ -2726,6 +2751,22 @@ class MainActivity : AppCompatActivity() {
                 return
             }
         }
+        // DownloadManager fetches over http and https and nothing else. A blob:
+        // or data: address is the page's own in-memory data, which no other
+        // process can fetch at all - so it is read out through the page and
+        // written here instead of handed over. Without this, every export out
+        // of a web app ended in "Download failed".
+        if (url.startsWith("data:", true)) {
+            toast("Saving\u2026")
+            val name = downloadName(url, contentDisposition, mimeType)
+            Thread { saveDataDownload(url, name, mimeType) }.start()
+            return
+        }
+        if (url.startsWith("blob:", true)) {
+            toast("Saving\u2026")
+            requestBlobDownload(url, downloadName(url, contentDisposition, mimeType), mimeType)
+            return
+        }
         try {
             val fileName = android.webkit.URLUtil.guessFileName(url, contentDisposition, mimeType)
             val request = android.app.DownloadManager.Request(android.net.Uri.parse(url))
@@ -2759,6 +2800,116 @@ class MainActivity : AppCompatActivity() {
             android.widget.Toast.makeText(
                 this, "Download failed", android.widget.Toast.LENGTH_SHORT
             ).show()
+        }
+    }
+
+    private fun downloadFailed() {
+        runOnUiThread { toast("Couldn't save the file") }
+    }
+
+    /** A filename carrying an extension that matches the type, whatever the
+     *  address happens to say - a blob: address carries no name at all. */
+    private fun downloadName(url: String, cd: String?, mime: String?): String {
+        val guessed = try {
+            android.webkit.URLUtil.guessFileName(url, cd, mime)
+        } catch (e: Exception) { "" }
+        val base = guessed.ifBlank { "download_" + System.currentTimeMillis() }
+        if (base.substringAfterLast('.', "").isNotBlank()) return base
+        val ext = mime?.let {
+            android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(it)
+        }
+        return if (ext.isNullOrBlank()) base else base + "." + ext
+    }
+
+    /**
+     * Only the page that minted a blob: URL can read it, so the page is asked
+     * to: fetch it, turn it into a data: URL and hand that back.
+     *
+     * Capped at 16MB because the whole thing crosses the bridge in one piece,
+     * and base64 inflates it by a third on the way. A larger file is refused
+     * outright rather than risking an out-of-memory kill on a modest phone -
+     * a clear "too large" beats the browser dying mid-save.
+     */
+    private fun requestBlobDownload(url: String, name: String, mime: String?) {
+        val web = activeWeb() ?: run { downloadFailed(); return }
+        val token = java.util.UUID.randomUUID().toString()
+        blobDownloadToken = token
+        blobDownloadName = name
+        blobDownloadMime = mime
+        val js = "(function(u,t){try{" +
+            "fetch(u).then(function(r){if(!r.ok)throw 0;return r.blob();})" +
+            ".then(function(b){if(b.size>16777216)throw 0;" +
+            "var fr=new FileReader();" +
+            "fr.onloadend=function(){SearchApp.saveBlobFile(t,fr.result);};" +
+            "fr.onerror=function(){SearchApp.saveBlobFileFailed(t);};" +
+            "fr.readAsDataURL(b);})" +
+            ".catch(function(){SearchApp.saveBlobFileFailed(t);});" +
+            "}catch(e){SearchApp.saveBlobFileFailed(t);}})(" +
+            JSONObject.quote(url) + "," + JSONObject.quote(token) + ");"
+        web.evaluateJavascript(js, null)
+    }
+
+    private fun saveDataDownload(dataUrl: String, name: String, mime: String?) {
+        try {
+            val comma = dataUrl.indexOf(',')
+            if (comma < 0) { downloadFailed(); return }
+            val header = dataUrl.substring(5, comma)
+            val body = dataUrl.substring(comma + 1)
+            val bytes = if (header.contains("base64"))
+                android.util.Base64.decode(body, android.util.Base64.DEFAULT)
+            else java.net.URLDecoder.decode(body, "UTF-8").toByteArray()
+            if (bytes.isEmpty()) { downloadFailed(); return }
+            val type = mime?.takeIf { it.isNotBlank() }
+                ?: header.substringBefore(';').ifBlank { "application/octet-stream" }
+            writeDownloadBytes(bytes, type, name)
+        } catch (e: Exception) {
+            downloadFailed()
+        }
+    }
+
+    /**
+     * Writes into the public Downloads folder, the same place DownloadManager
+     * puts everything else, so a file saved this way is where the user will
+     * look for it rather than somewhere only this app knows about.
+     */
+    private fun writeDownloadBytes(bytes: ByteArray, mime: String, name: String) {
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= 29) {
+                val values = android.content.ContentValues().apply {
+                    put(android.provider.MediaStore.Downloads.DISPLAY_NAME, name)
+                    put(android.provider.MediaStore.Downloads.MIME_TYPE, mime)
+                    put(android.provider.MediaStore.Downloads.IS_PENDING, 1)
+                }
+                val uri = contentResolver.insert(
+                    android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values
+                ) ?: run { downloadFailed(); return }
+                contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+                values.clear()
+                values.put(android.provider.MediaStore.Downloads.IS_PENDING, 0)
+                contentResolver.update(uri, values, null, null)
+            } else {
+                val dir = android.os.Environment.getExternalStoragePublicDirectory(
+                    android.os.Environment.DIRECTORY_DOWNLOADS)
+                if (!dir.exists()) dir.mkdirs()
+                // Never overwrite a file already sitting there.
+                val stem = name.substringBeforeLast('.', name)
+                val ext = name.substringAfterLast('.', "")
+                var f = java.io.File(dir, name)
+                var n = 1
+                while (f.exists()) {
+                    val alt = stem + "(" + n + ")" + if (ext.isBlank()) "" else "." + ext
+                    f = java.io.File(dir, alt)
+                    n++
+                }
+                java.io.FileOutputStream(f).use { it.write(bytes) }
+                // Without the scan the file is on disk but nothing lists it,
+                // which reads to the user as another failed save.
+                android.media.MediaScannerConnection.scanFile(
+                    this, arrayOf(f.absolutePath), arrayOf(mime), null)
+            }
+            runOnUiThread { toast("Saved to Downloads: " + name) }
+        } catch (e: Exception) {
+            downloadFailed()
         }
     }
 
