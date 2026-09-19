@@ -9,7 +9,7 @@ import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 
 class DownloadsAdapter(
-    private val items: List<Downloads.Item>,
+    private var items: List<Downloads.Item>,
     private val onOpen: (Downloads.Item) -> Unit,
     private val onDelete: (Downloads.Item) -> Unit
 ) : RecyclerView.Adapter<DownloadsAdapter.VH>() {
@@ -41,11 +41,23 @@ class DownloadsAdapter(
         holder.itemView.setOnClickListener { onOpen(d) }
         holder.itemView.setOnLongClickListener { anchor ->
             val menu = PopupMenu(anchor.context, anchor)
-            menu.menu.add("Remove")
+            // DownloadManager.remove() deletes the file from disk, not just
+            // the row, so the label has to say what actually happens.
+            menu.menu.add("Delete file")
             menu.setOnMenuItemClickListener { onDelete(d); true }
             menu.show()
             true
         }
+    }
+
+    /**
+     * Swaps the rows in place. Building a fresh adapter on every refresh would
+     * drop the user's scroll position, which a list that refreshes while a
+     * download is running cannot afford.
+     */
+    fun submit(newItems: List<Downloads.Item>) {
+        items = newItems
+        notifyDataSetChanged()
     }
 
     override fun getItemCount() = items.size

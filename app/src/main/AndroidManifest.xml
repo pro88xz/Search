@@ -77,6 +77,22 @@
         </receiver>
 
 
+        <!--
+          Hands a downloaded file to another app as a content:// URI that app is
+          allowed to read. Passing a raw file:// URI across apps has thrown
+          FileUriExposedException since Android 7, which is why opening a
+          download never worked on any file type.
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
             android:value="ca-app-pub-9121922395304175~5269303770" />

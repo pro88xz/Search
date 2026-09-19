@@ -1129,6 +1129,13 @@ class MainActivity : AppCompatActivity() {
 
         // Handle file downloads via Android's DownloadManager.
         web.setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
+            // A download usually begins life as an ordinary navigation, so
+            // onPageStarted has already written this address into the tab and
+            // the address bar before the server's Content-Disposition turns it
+            // into a download. The page itself never changes, so the tab is put
+            // back where it was - otherwise a download address is left sitting
+            // in the bar over the home page, belonging to nothing on screen.
+            restoreAfterDownload(web)
             startDownload(url, userAgent, contentDisposition, mimeType)
         }
 
@@ -2283,55 +2290,169 @@ class MainActivity : AppCompatActivity() {
     }
 
     private var downloadsOpen = false
+    private var downloadsAdapter: DownloadsAdapter? = null
+
+    /**
+     * A download in flight changes underneath the list. The rows used to be a
+     * single snapshot taken when the list opened, so a download that finished
+     * while you watched still read "Downloading 40%" until you backed out and
+     * came in again - the browser looked like the last thing to notice its own
+     * download had landed.
+     *
+     * Re-queries itself while the list is on screen and stops on its own once
+     * it is not, so nothing has to remember to cancel it.
+     */
+    private val downloadsPoll = object : Runnable {
+        override fun run() {
+            if (!downloadsOpen || !deckVisible) return
+            refreshDownloads()
+            binding.downloadList.postDelayed(this, 1200L)
+        }
+    }
+
     private fun showDownloads() {
-        val items = Downloads.load(this)
-        val adapter = DownloadsAdapter(
-            items = items,
-            onOpen = { d -> openDownloadedFile(d) },
-            onDelete = { d ->
-                try {
-                    (getSystemService(DOWNLOAD_SERVICE) as android.app.DownloadManager).remove(d.id)
-                } catch (_: Exception) {}
-                showDownloads()
-            }
-        )
-        binding.downloadList.layoutManager =
-            androidx.recyclerview.widget.LinearLayoutManager(this)
-        binding.downloadList.adapter = adapter
+        if (downloadsAdapter == null) {
+            downloadsAdapter = DownloadsAdapter(
+                items = emptyList(),
+                onOpen = { d -> openDownloadedFile(d) },
+                onDelete = { d ->
+                    try {
+                        (getSystemService(DOWNLOAD_SERVICE)
+                            as android.app.DownloadManager).remove(d.id)
+                    } catch (_: Exception) {}
+                    refreshDownloads()
+                }
+            )
+            binding.downloadList.layoutManager =
+                androidx.recyclerview.widget.LinearLayoutManager(this)
+            binding.downloadList.adapter = downloadsAdapter
+        }
         binding.tabList.visibility = View.GONE
         binding.historyList.visibility = View.GONE
         binding.bookmarkList.visibility = View.GONE
+        downloadsOpen = true
+        historyOpen = false
+        bookmarksOpen = false
+        // First pass on the main thread so the list is populated in the same
+        // frame the deck appears; refreshes after this one run off it.
+        applyDownloads(Downloads.load(this))
+        binding.downloadList.removeCallbacks(downloadsPoll)
+        binding.downloadList.postDelayed(downloadsPoll, 1200L)
+    }
+
+    private fun refreshDownloads() {
+        Thread {
+            val items = Downloads.load(this)
+            runOnUiThread { applyDownloads(items) }
+        }.start()
+    }
+
+    private fun applyDownloads(items: List<Downloads.Item>) {
+        if (!downloadsOpen || isFinishing || isDestroyed) return
+        downloadsAdapter?.submit(items)
         if (items.isEmpty()) {
-            showDeckEmpty(R.drawable.menu_history, "No downloads yet", "Files you download will show up here.")
+            showDeckEmpty(R.drawable.menu_history, "No downloads yet",
+                "Files you download will show up here.")
             binding.downloadList.visibility = View.GONE
         } else {
             binding.deckEmpty.visibility = View.GONE
             binding.downloadList.visibility = View.VISIBLE
         }
-        downloadsOpen = true
-        historyOpen = false
-        bookmarksOpen = false
     }
 
-    /** Opens a completed download with the appropriate app; toasts if not ready. */
+    /**
+     * Opens a finished download in whatever app handles it.
+     *
+     * The old path handed DownloadManager's COLUMN_LOCAL_URI straight to
+     * ACTION_VIEW. For anything saved to the public Downloads folder that
+     * column is a file:// URI, and handing one to another app has thrown
+     * FileUriExposedException since Android 7. It was caught here as a plain
+     * Exception, so every tap reported "No app to open this file" however many
+     * viewers were installed - PDFs, audio, video, all of it. Nothing could
+     * ever be opened, and the message blamed the phone.
+     *
+     * Two things were missing: a URI another app is allowed to read, and a type
+     * worth routing on. DownloadManager issues a content:// URI of its own;
+     * where a device still hands back file://, it goes out through FileProvider
+     * instead. The stored media type is frequently blank or octet-stream, which
+     * matches no viewer, so the file extension decides - that is what puts a
+     * PDF in a PDF reader and an mp4 in a video player.
+     */
     private fun openDownloadedFile(d: Downloads.Item) {
-        if (!d.isComplete || d.localUri == null) {
-            android.widget.Toast.makeText(this,
-                if (d.isRunning) "Still downloading…" else "File not available",
-                android.widget.Toast.LENGTH_SHORT).show()
+        if (!d.isComplete) {
+            toast(if (d.isRunning) "Still downloading\u2026" else "File not available")
             return
         }
-        try {
-            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-                setDataAndType(android.net.Uri.parse(d.localUri), d.mimeType ?: "*/*")
-                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            startActivity(intent)
-        } catch (e: Exception) {
-            android.widget.Toast.makeText(this, "No app to open this file",
-                android.widget.Toast.LENGTH_SHORT).show()
+        val uri = resolveDownloadUri(d)
+        if (uri == null) {
+            toast("That file is no longer on this phone")
+            return
         }
+        val mime = mimeForDownload(d)
+        // Specific type first - it is what routes a PDF to a PDF reader rather
+        // than to a generic file browser. A wildcard type is the fallback for
+        // one that nothing claims outright.
+        if (startViewer(uri, mime)) return
+        if (!mime.equals("*/*", true) && startViewer(uri, "*/*")) return
+        toast("No app on this phone opens this kind of file")
+    }
+
+    private fun startViewer(uri: android.net.Uri, mime: String): Boolean = try {
+        startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, mime)
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        })
+        true
+    } catch (e: Exception) {
+        false
+    }
+
+    /** A URI another app can read, or null if the file is gone. */
+    private fun resolveDownloadUri(d: Downloads.Item): android.net.Uri? {
+        // DownloadManager's own content:// URI is the first choice: it is
+        // readable by another app as soon as the read grant is attached.
+        try {
+            val dm = getSystemService(DOWNLOAD_SERVICE) as android.app.DownloadManager
+            val own = dm.getUriForDownloadedFile(d.id)
+            if (own != null && own.scheme.equals("content", true)) return own
+        } catch (e: Exception) { /* fall through to the stored path */ }
+
+        val parsed = try {
+            android.net.Uri.parse(d.localUri ?: return null)
+        } catch (e: Exception) { return null }
+        if (parsed.scheme.equals("content", true)) return parsed
+
+        // A file:// path. Wrap it rather than pass it: the raw URI is exactly
+        // what the platform refuses to let another app receive.
+        val file = java.io.File(parsed.path ?: return null)
+        if (!file.exists()) return null
+        return try {
+            androidx.core.content.FileProvider.getUriForFile(
+                this, packageName + ".files", file)
+        } catch (e: Exception) { null }
+    }
+
+    /**
+     * A type a viewer will actually match on. Servers frequently send nothing
+     * useful - blank, or octet-stream for a perfectly ordinary PDF - and that
+     * is a type no app claims, so the extension wins whenever the stored one
+     * says nothing.
+     */
+    private fun mimeForDownload(d: Downloads.Item): String {
+        val declared = d.mimeType?.trim().orEmpty()
+        val useful = declared.isNotBlank() &&
+            !declared.equals("*/*", true) &&
+            !declared.equals("application/octet-stream", true) &&
+            !declared.equals("binary/octet-stream", true)
+        if (useful) return declared
+        val name = (d.localUri?.substringAfterLast('/')?.substringBefore('?') ?: d.title)
+        val ext = android.net.Uri.decode(name).substringAfterLast('.', "").lowercase()
+        if (ext.isNotBlank()) {
+            android.webkit.MimeTypeMap.getSingleton()
+                .getMimeTypeFromExtension(ext)?.let { return it }
+        }
+        return declared.ifBlank { "*/*" }
     }
 
     private fun showHistory() {
@@ -2514,6 +2635,27 @@ class MainActivity : AppCompatActivity() {
     // ---------- Downloads ----------
 
     /**
+     * Returns a tab to the page it is actually showing, after a navigation
+     * turned out to be a download.
+     *
+     * The committed history entry is the truth here: a navigation that became a
+     * download never commits, so currentItem still names the page the user is
+     * looking at, while web.url can briefly report the address being fetched.
+     */
+    private fun restoreAfterDownload(web: WebView) {
+        val tab = tabs.tabs.firstOrNull { it.webView === web } ?: return
+        val committed = try {
+            web.copyBackForwardList().currentItem?.url
+        } catch (e: Exception) { null }
+        val real = committed ?: web.url ?: homePage
+        tab.url = real
+        if (web === activeWeb()) {
+            if (!binding.urlBar.hasFocus()) binding.urlBar.setText(displayUrl(real))
+            refreshOmniboxVisibility(real)
+        }
+    }
+
+    /**
      * Security gate: every download — whether the user tapped it or a site
      * triggered it silently — must be confirmed here before it proceeds.
      * This stops websites from secretly downloading files to the device.
@@ -2589,6 +2731,17 @@ class MainActivity : AppCompatActivity() {
             val request = android.app.DownloadManager.Request(android.net.Uri.parse(url))
             request.setMimeType(mimeType)
             userAgent?.let { request.addRequestHeader("User-Agent", it) }
+            // DownloadManager fetches in its own process, with none of the
+            // WebView's state. Without the session cookie, anything behind a
+            // sign-in hands back the sign-in page instead of the file, and the
+            // download "succeeds" - you get a saved HTML page named report.pdf.
+            // Some hosts also refuse a request that arrives with no referer.
+            android.webkit.CookieManager.getInstance().getCookie(url)?.let {
+                if (it.isNotBlank()) request.addRequestHeader("Cookie", it)
+            }
+            activeWeb()?.url?.let {
+                if (it.startsWith("http")) request.addRequestHeader("Referer", it)
+            }
             request.setTitle(fileName)
             request.setDescription("Downloading…")
             request.setNotificationVisibility(

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  What FileProvider is allowed to hand out. Downloads land in the public
+  Downloads folder, which sits under external storage, so that root is what
+  matters here; the rest cover files this app writes itself.
+-->
+<paths>
+    <external-path name="external" path="." />
+    <external-files-path name="external_files" path="." />
+    <cache-path name="cache" path="." />
+    <files-path name="files" path="." />
+</paths>
