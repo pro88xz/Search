@@ -20,5 +20,13 @@ class Tab(
     var savedState: Bundle? = null
     var thumbnail: Bitmap? = null
 
+    /**
+     * Id of the tab whose page called window.open() to create this one, or null
+     * for a tab the user opened. A sign-in pop-up hands its result back through
+     * window.opener, so closing it has to return to that exact tab - not to
+     * whichever tab happens to sit last in the list.
+     */
+    var openerId: Long? = null
+
     val isLive: Boolean get() = webView != null
 }

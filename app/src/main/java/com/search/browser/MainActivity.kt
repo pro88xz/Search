@@ -886,11 +886,16 @@ class MainActivity : AppCompatActivity() {
             textZoom = Settings.getTextScale(this@MainActivity)
 
             // --- Security toggles ---
-            // Block pop-ups: disallow auto-opening windows when enabled.
-            val blockPopups = Settings.getBool(
-                this@MainActivity, Settings.SEC_BLOCK_POPUPS, true)
-            javaScriptCanOpenWindowsAutomatically = !blockPopups
-            setSupportMultipleWindows(!blockPopups)
+            // Multiple windows stay ON whatever the pop-up setting says, because
+            // window.open() is how every OAuth sign-in hands control to the
+            // provider and gets it back. Turning it off makes window.open()
+            // return null: the provider authenticates, calls back into an opener
+            // that does not exist, and the flow dead-ends on a blank page.
+            // The setting is enforced in onCreateWindow instead, where
+            // isUserGesture tells a pop-up the user asked for apart from a site
+            // spawning windows on its own.
+            javaScriptCanOpenWindowsAutomatically = true
+            setSupportMultipleWindows(true)
 
             // Safe Browsing (WebView built-in), where supported.
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
@@ -912,6 +917,34 @@ class MainActivity : AppCompatActivity() {
         web.addJavascriptInterface(SearchAppBridge(), "SearchApp")
 
         web.webViewClient = object : WebViewClient() {
+            /**
+             * A WebView can only load web schemes. Anything else - a mail link,
+             * a phone number, a map pin, a Play listing, the custom scheme an
+             * app registers for its own sign-in callback - fails inside it with
+             * ERR_UNKNOWN_URL_SCHEME, which this browser then paints as "this
+             * site can't be reached". The site was fine; the link was simply
+             * never ours to load. Hand those to the system, as every other
+             * browser does.
+             */
+            override fun shouldOverrideUrlLoading(
+                view: WebView?,
+                request: android.webkit.WebResourceRequest?
+            ): Boolean {
+                val uri = request?.url ?: return false
+                val scheme = (uri.scheme ?: "").lowercase()
+                // Web content and our own asset pages: load here as normal.
+                if (scheme == "http" || scheme == "https" || scheme == "file" ||
+                    scheme == "about" || scheme == "data" || scheme == "blob"
+                ) return false
+                // A navigation must never be a way to run script.
+                if (scheme == "javascript") return true
+                // Only a top-level navigation may leave the app. Without this a
+                // hidden iframe could throw the user into another app on its own.
+                if (!request.isForMainFrame) return true
+                openExternal(uri.toString())
+                return true
+            }
+
             override fun shouldInterceptRequest(
                 view: WebView?,
                 request: android.webkit.WebResourceRequest?
@@ -1041,10 +1074,18 @@ class MainActivity : AppCompatActivity() {
                 resultMsg: android.os.Message?
             ): Boolean {
                 if (resultMsg == null) return false
+                // Where "block pop-ups" is actually enforced. A pop-up that
+                // follows a tap carries a gesture and is let through - every
+                // sign-in pop-up is one. A site opening windows by itself does
+                // not, and is refused, so ad pop-ups stay blocked.
+                if (!isUserGesture && Settings.getBool(
+                        this@MainActivity, Settings.SEC_BLOCK_POPUPS, true)) return false
                 // Validate the transport BEFORE creating any tab, so a malformed
                 // window.open() can't leave an orphan about:blank tab in the list.
                 val transport = resultMsg.obj as? WebView.WebViewTransport ?: return false
+                val opener = tabs.activeTab
                 val popupTab = tabs.createTab("about:blank")
+                popupTab.openerId = opener?.id
                 popupTab.title = "Opening\u2026"
                 val popupWeb = newWebView()
                 popupTab.webView = popupWeb
@@ -1053,7 +1094,8 @@ class MainActivity : AppCompatActivity() {
                 openTab(popupTab)
                 return true
             }
-            // When a popup finishes (window.close), fall back to the previous tab.
+            // When a pop-up finishes (window.close), fall back to the tab that
+            // opened it. closeTabFromDeck resolves the opener and re-attaches it.
             override fun onCloseWindow(window: WebView?) {
                 super.onCloseWindow(window)
                 val closing = tabs.tabs.firstOrNull { it.webView == window }
@@ -1729,6 +1771,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun freezeTab(tab: Tab) {
         val web = tab.webView ?: return
+        // Never freeze a tab that opened a pop-up still on screen. Freezing
+        // destroys the WebView, and with it the window.opener handle the pop-up
+        // needs to hand its result back - which is what a sign-in callback rides
+        // on. Only reachable with several tabs live at once.
+        if (tabs.tabs.any { it.openerId == tab.id }) return
         softwareCapture(tab)
         val state = Bundle()
         web.saveState(state)
@@ -2185,10 +2232,20 @@ class MainActivity : AppCompatActivity() {
         hideKeyboard()
         binding.tabDeck.visibility = View.GONE
         deckVisible = false
+        // refreshAdSlot() refuses to show the card while the deck is up, and
+        // closing the deck is the moment that condition clears. Without this,
+        // any refresh that lands while the deck is open leaves the card hidden
+        // until the next navigation. Restore-only: it can never hide the card
+        // in a state that already allowed it.
+        refreshAdSlot()
     }
 
     private fun closeTabFromDeck(tab: Tab) {
         val wasActive = tab == tabs.activeTab
+        // Resolved before teardown, while the tab is still in the list.
+        val fallback = tab.openerId?.let { id ->
+            tabs.tabs.firstOrNull { it.id == id && it !== tab }
+        }
         tab.webView?.let { w ->
             (w.parent as? ViewGroup)?.removeView(w)
             w.destroy()
@@ -2198,7 +2255,13 @@ class MainActivity : AppCompatActivity() {
         tab.thumbnail = null
         tabs.removeTab(tab)
         if (tabs.count() == 0) { closeDeck(); addNewTab(homePage) }
-        else if (wasActive) tabs.tabs.lastOrNull()?.let { tabs.setActive(it) }
+        else if (wasActive) {
+            // Re-attach, don't just re-point. setActive moves a pointer and
+            // nothing else, so the container is left holding the view we just
+            // destroyed - the blank screen a sign-in pop-up leaves behind when
+            // it closes itself. openTab puts a real view back on screen.
+            (fallback ?: tabs.tabs.lastOrNull())?.let { openTab(it) }
+        }
         tabAdapter.notifyDataSetChanged()
         updateTabCount()
     }
@@ -2746,6 +2809,68 @@ class MainActivity : AppCompatActivity() {
             android.widget.Toast.makeText(this,
                 "Voice search not available", android.widget.Toast.LENGTH_SHORT).show()
         }
+    }
+
+    /**
+     * Hands a non-web link to whichever app on the phone claims it.
+     *
+     * intent:// URLs are unpacked rather than passed straight through, and
+     * stripped of the parts that would turn a link into a way to reach inside
+     * another app - or back into this one. A page gets to name an action; it
+     * does not get to name a component. Any URI grant a page tried to attach is
+     * dropped for the same reason.
+     *
+     * Nothing here uses resolveActivity: under package visibility it reports
+     * "nothing handles this" for apps we cannot see, while startActivity would
+     * have worked. Trying and catching is both simpler and more accurate.
+     */
+    private fun openExternal(url: String): Boolean {
+        val isIntentUri = url.startsWith("intent://", ignoreCase = true)
+        val intent = try {
+            if (isIntentUri) {
+                android.content.Intent.parseUri(
+                    url, android.content.Intent.URI_INTENT_SCHEME
+                ).apply {
+                    component = null
+                    selector = null
+                    addCategory(android.content.Intent.CATEGORY_BROWSABLE)
+                    // A web page must not be able to open this app's own screens.
+                    if (`package` == packageName) `package` = null
+                }
+            } else {
+                android.content.Intent(
+                    android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
+            }
+        } catch (e: Exception) {
+            return false
+        }
+        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        intent.flags = intent.flags and
+            android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION.inv() and
+            android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION.inv()
+        try {
+            startActivity(intent)
+            return true
+        } catch (e: Exception) { /* no app claims it - fall through */ }
+
+        // intent:// can name a web page to use when the app isn't installed.
+        val fallback = try {
+            if (isIntentUri) android.content.Intent.parseUri(
+                url, android.content.Intent.URI_INTENT_SCHEME
+            ).getStringExtra("browser_fallback_url") else null
+        } catch (e: Exception) { null }
+        if (!fallback.isNullOrBlank() &&
+            (fallback.startsWith("http://") || fallback.startsWith("https://"))
+        ) {
+            activeWeb()?.loadUrl(fallback)
+            return true
+        }
+        // Say so plainly. The old path showed "this site can't be reached",
+        // which blamed the site for a missing app.
+        android.widget.Toast.makeText(
+            this, "No app on this phone opens that kind of link",
+            android.widget.Toast.LENGTH_SHORT).show()
+        return true
     }
 
     /**
