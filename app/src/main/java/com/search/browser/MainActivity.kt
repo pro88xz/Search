@@ -451,6 +451,76 @@ class MainActivity : AppCompatActivity() {
             (26 * d).toInt(), top, ((if (empty) 120 else 60) * d).toInt(), bottom)
     }
 
+    /**
+     * The same curve the home bar collapses on. Search and scroll are the two
+     * things that move this chrome, and they were never going to read as one
+     * app while they used different easing.
+     */
+    private val searchEase = android.view.animation.PathInterpolator(0.2f, 0f, 0f, 1f)
+
+    /**
+     * The field rises, and the sheet follows it up.
+     *
+     * The stagger is the whole effect: 40ms behind and travelling further, the
+     * suggestions read as being pulled up BY the field rather than the two
+     * appearing together. Without it they arrive as one block and it looks
+     * like a screen being swapped rather than a bar being opened.
+     *
+     * [fieldWasShowing] is why this does not blink on a web page. There the
+     * bar is already on screen with the address in it, so fading it from zero
+     * would flash it out and back. Only the home page, where the field is not
+     * there at rest, gets the rise.
+     */
+    private fun animateSearchIn(fieldWasShowing: Boolean) {
+        val d = resources.displayMetrics.density
+        val bar = binding.urlBarContainer
+        val sheet = binding.suggestOverlay
+
+        bar.animate().cancel()
+        sheet.animate().cancel()
+
+        if (!fieldWasShowing) {
+            bar.alpha = 0f
+            bar.translationY = 10 * d
+            bar.animate().alpha(1f).translationY(0f)
+                .setDuration(200L).setInterpolator(searchEase).start()
+        } else {
+            bar.alpha = 1f
+            bar.translationY = 0f
+        }
+
+        sheet.alpha = 0f
+        sheet.translationY = 24 * d
+        sheet.animate().alpha(1f).translationY(0f)
+            .setDuration(260L).setStartDelay(40L)
+            .setInterpolator(searchEase).start()
+    }
+
+    /**
+     * The reverse, and deliberately quicker - leaving should feel like getting
+     * out of the way, not like a second performance.
+     *
+     * The rows are cleared at the end rather than the start, or the sheet
+     * would empty itself and then fade an empty panel out.
+     */
+    private fun animateSearchOut() {
+        val d = resources.displayMetrics.density
+        val sheet = binding.suggestOverlay
+        sheet.animate().cancel()
+        sheet.animate().alpha(0f).translationY(16 * d)
+            .setDuration(170L).setInterpolator(searchEase)
+            .withEndAction {
+                // Search may have been re-entered while this was running, in
+                // which case the sheet is wanted and must not be hidden.
+                if (!searchMode) {
+                    sheet.visibility = View.GONE
+                    suggestAdapter?.submit(emptyList())
+                }
+                sheet.alpha = 1f
+                sheet.translationY = 0f
+            }.start()
+    }
+
     private fun enterSearchMode() {
         if (searchMode) return
         searchMode = true
@@ -464,6 +534,9 @@ class MainActivity : AppCompatActivity() {
         binding.tabCountBtn.visibility = View.GONE
         binding.settingsBtn.visibility = View.GONE
         binding.starBtn.visibility = View.GONE
+        // Captured before it is shown: on home the field is not on screen at
+        // rest, on a page it already is, and the two want different entrances.
+        val fieldWasShowing = binding.urlBarContainer.visibility == View.VISIBLE
         binding.urlBarContainer.visibility = View.VISIBLE
         styleUrlBarForSearch(true)
         val current = tabs.activeTab?.url
@@ -475,6 +548,7 @@ class MainActivity : AppCompatActivity() {
         val imm = getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
         imm.showSoftInput(binding.urlBar, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
         binding.suggestOverlay.visibility = View.VISIBLE
+        animateSearchIn(fieldWasShowing)
         fetchSuggests(binding.urlBar.text.toString())
     }
 
@@ -482,8 +556,13 @@ class MainActivity : AppCompatActivity() {
         if (!searchMode) return
         searchMode = false
         styleUrlBarForSearch(false)
-        binding.suggestOverlay.visibility = View.GONE
-        suggestAdapter?.submit(emptyList())
+        animateSearchOut()
+        // Nothing transient left on the field: applyHomeCompact below may
+        // animate it, and it should start from rest rather than from whatever
+        // the entrance left behind.
+        binding.urlBarContainer.animate().cancel()
+        binding.urlBarContainer.alpha = 1f
+        binding.urlBarContainer.translationY = 0f
         binding.homeBtn.visibility = View.VISIBLE
         binding.reloadBtn.visibility = View.VISIBLE
         binding.tabCountBtn.visibility = View.VISIBLE
