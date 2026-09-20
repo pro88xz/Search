@@ -310,7 +310,7 @@
         android:id="@+id/suggestOverlay"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_marginTop="54dp"
+        android:layout_marginTop="58dp"
         android:paddingTop="8dp"
         android:paddingBottom="8dp"
         android:clipToPadding="false"
@@ -428,7 +428,7 @@
     <LinearLayout
         android:id="@+id/findBar"
         android:layout_width="match_parent"
-        android:layout_height="54dp"
+        android:layout_height="58dp"
         android:layout_gravity="top"
         android:orientation="horizontal"
         android:gravity="center_vertical"
