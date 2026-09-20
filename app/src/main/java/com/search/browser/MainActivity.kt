@@ -540,7 +540,7 @@ class MainActivity : AppCompatActivity() {
         val enc = try {
             java.net.URLEncoder.encode(httpUrl, "UTF-8")
         } catch (e: Exception) { "" }
-        view?.loadUrl("file:///android_asset/insecure.html?u=" + enc)
+        loadInto(view, "file:///android_asset/insecure.html?u=" + enc)
     }
 
     // Night Owl (private browsing) mode state.
@@ -1332,10 +1332,10 @@ class MainActivity : AppCompatActivity() {
                         val enc = try {
                             java.net.URLEncoder.encode(lastFailedUrl ?: "", "UTF-8")
                         } catch (e: Exception) { "" }
-                        view?.loadUrl("file:///android_asset/error.html?u=$enc")
+                        loadInto(view, "file:///android_asset/error.html?u=$enc")
                     } else {
                         // Genuinely no connectivity: show the offline page.
-                        view?.loadUrl("file:///android_asset/offline.html")
+                        loadInto(view, "file:///android_asset/offline.html")
                     }
                 }
             }
@@ -2091,15 +2091,36 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) { if (!full.isRecycled) full.recycle() }
     }
 
+    /**
+     * Loads a url, settling the bridge's privilege before the page can ask.
+     *
+     * onPageStarted cannot be relied on for this. It arrives on the main
+     * thread; the document's script runs in the renderer. For an asset page
+     * there is no network latency between them, so a busy main thread loses
+     * the race and the page is told it is unprivileged - which it then renders
+     * as an ordinary, non-private home page.
+     *
+     * Deciding it here is exact: the caller already knows the url. Privilege is
+     * granted only to app asset pages and taken away for everything else, so a
+     * tab leaving home.html for a website drops it in the same instant rather
+     * than whenever the callback happens to land.
+     */
+    private fun loadInto(web: WebView?, url: String) {
+        val target = web ?: return
+        (target.tag as? SearchAppBridge)?.privileged =
+            url.startsWith("file:///android_asset/")
+        target.loadUrl(url)
+    }
+
     private fun openTab(tab: Tab, loadUrl: String? = null) {
         binding.webContainer.removeAllViews()
         if (tab.webView == null) {
             val web = newWebView()
             tab.webView = web
             val restored = tab.savedState?.let { web.restoreState(it) != null } ?: false
-            if (!restored) web.loadUrl(loadUrl ?: tab.url)
+            if (!restored) loadInto(web, loadUrl ?: tab.url)
         } else if (loadUrl != null) {
-            tab.webView!!.loadUrl(loadUrl)
+            loadInto(tab.webView, loadUrl)
         }
         binding.webContainer.addView(tab.webView)
         tabs.setActive(tab)
@@ -2433,7 +2454,7 @@ class MainActivity : AppCompatActivity() {
         // If we're on the home page, reload it so it drops the private empty-state
         // and shows the normal tiles/feed again immediately.
         val current = activeWeb()?.url
-        if (current == null || current == homePage) activeWeb()?.loadUrl(homePage)
+        if (current == null || current == homePage) loadInto(activeWeb(), homePage)
         android.widget.Toast.makeText(this,
             "Night Owl off", android.widget.Toast.LENGTH_SHORT).show()
     }
@@ -3214,7 +3235,7 @@ class MainActivity : AppCompatActivity() {
         }
         view.findViewById<android.widget.TextView>(R.id.owlGoHome).setOnClickListener {
             dialog.dismiss()
-            activeWeb()?.loadUrl(homePage)
+            loadInto(activeWeb(), homePage)
         }
         dialog.show()
         dialog.window?.let { w ->
