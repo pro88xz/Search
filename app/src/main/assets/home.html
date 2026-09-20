@@ -68,43 +68,65 @@
      One plane only. The previous version sat a --field well with a --line
      border inside a --field card with a --line border, so the nesting had
      no contrast to justify it and read as clutter rather than hierarchy. */
+  /* margin-top replaces what the "Quick access" heading used to carry: it had
+     34 above and 16 below, and taking the heading out without putting anything
+     back would have dropped the tiles straight onto the search pill. 22 is the
+     old 50 minus the lift. */
   .shortcuts {
     width:100%; max-width:420px;
-    display:grid; grid-template-columns:repeat(4,1fr);
-    gap:4px;
-    margin-bottom:4px;
+    display:grid; grid-template-columns:repeat(5,1fr);
+    gap:10px 0;
+    margin-top:18px; margin-bottom:4px;
   }
   .shortcuts.hidden { display:none; }
   .tile {
-    display:flex; flex-direction:column; align-items:center; gap:12px;
-    padding:6px 2px;
+    display:flex; flex-direction:column; align-items:center; gap:8px;
+    padding:4px 0;
     text-decoration:none; color:var(--fg);
   }
+  /* One frame for every tile: same size, same shape, always.
+     That uniformity is the whole of what Samsung has. Their icons look
+     consistent because each one is a real app icon already drawn as a rounded
+     square - X is a black one, Facebook a blue one - so the row lines up by
+     construction. Favicons do not: they arrive as circles, squares and
+     silhouettes, and letting each keep its own outline is what made this row
+     read as mixed.
+     So the frame is imposed here instead, and the icon fills it. An icon that
+     is already a full square (X, ChatGPT, Wikipedia) takes the frame over
+     completely and reads as its own app icon. One that is a circle sits in the
+     frame with its corners showing - the same way Google, Wikipedia and Amazon
+     sit on a white tile on Samsung's own home.
+     44px rather than 48: five across a 360dp phone leaves 64 to a cell, and
+     the smaller mark is what stops two full rows reading as clutter. */
   .tile .fav {
-    width:62px; height:62px; border-radius:50%;
+    width:44px; height:44px; border-radius:12px;
     background:var(--field); border:1px solid var(--line);
+    box-shadow:0 1px 2px rgba(0,0,0,0.05);
     display:flex; align-items:center; justify-content:center;
-    font-size:24px; font-weight:600; color:var(--accent);
+    font-size:17px; font-weight:600; color:var(--accent);
     overflow:hidden;
     transition:transform .12s ease;
   }
   /* Press shrinks the icon. The old :active painted a rounded-rect wash
      behind the tile, which without a shell to sit in reads as a stray box. */
   .tile:active .fav { transform:scale(0.92); }
-  .tile .fav img { width:62%; height:62%; object-fit:contain; border-radius:6px; }
+  /* contain, not cover: cover fills by cropping, and the first thing it would
+     crop off a non-square icon is exactly the protruding part that makes it
+     recognisable - Reddit's ears. Nothing is cut. */
+  .tile .fav img { width:100%; height:100%; object-fit:contain; display:block; }
   .tile span {
-    font-size:12px; font-weight:500; color:var(--fg); max-width:100%;
+    font-size:11px; font-weight:500; color:var(--fg); max-width:100%;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
 
   /* News feed */
-  .feed { width:100%; max-width:600px; margin-top:34px; }
+  .feed { width:100%; max-width:600px; margin-top:12px; }
   .feed.hidden { display:none; }
   .feed-head, .qa-head {
     font-size:14px; font-weight:600; color:var(--muted);
     letter-spacing:-0.005em; margin:0 4px 10px;
   }
-  .qa-head { width:100%; max-width:420px; margin-top:34px; margin-bottom:16px; }
+  .qa-head { width:100%; max-width:420px; margin-top:22px; margin-bottom:16px; }
   .qa-head.hidden { display:none; }
   .feed-card {
     display:flex; flex-direction:column; align-items:stretch;
@@ -226,7 +248,6 @@
         <svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"><path d="M40 88V56a16 16 0 0 1 16-16h32M168 40h32a16 16 0 0 1 16 16v32M216 168v32a16 16 0 0 1-16 16h-32M88 216H56a16 16 0 0 1-16-16v-32M40 128h176"/></svg>
       </span>
     </label>
-    <div class="qa-head" id="qaHead">Quick access</div>
     <div class="shortcuts" id="tiles"></div>
     <div class="feed hidden" id="feed"></div>
     <div class="nightowl-empty" id="nightMsg">
@@ -296,7 +317,17 @@
    * shortcuts still fetch, and those are constants in the app: they say
    * nothing about where this user has been.
    */
-  function buildTile(label, url, builtIn){
+  /**
+   * scale trims or bleeds one icon inside the shared frame.
+   *
+   * The frame is uniform, but the art inside it is not: some favicons are
+   * drawn to the edge of their square, some float small in the middle, and a
+   * circle inscribed in a square can never reach the corners of one. Rather
+   * than bend the frame per icon - which is what broke the row's consistency
+   * last time - the icon is nudged to fit the frame it is given.
+   * Above 1 it bleeds past the edges and clips; below 1 it sits in.
+   */
+  function buildTile(label, url, builtIn, scale){
     var a=document.createElement('a'); a.className='tile'; a.href='javascript:void(0)';
     a.onclick=function(){ if(window.SearchApp&&window.SearchApp.open) window.SearchApp.open(url); };
     var fav=document.createElement('div'); fav.className='fav';
@@ -307,9 +338,16 @@
       .replace(/^www\./,'').replace(/^mobile\./,'').replace(/^m\./,'');
 
     var img=document.createElement('img');
+    // The frame clips, so a scale above 1 fills the corners rather than
+    // spilling onto the page.
+    if (scale && scale !== 1) img.style.transform = 'scale(' + scale + ')';
     // Handlers before src: a cached icon can fire load before they attach,
     // which is why a tile sometimes kept its letter for no reason at all.
-    img.onload=function(){ fav.textContent=''; fav.appendChild(img); };
+    img.onload=function(){
+      fav.textContent='';
+      fav.classList.add('has-icon');   // drops the card behind a real icon
+      fav.appendChild(img);
+    };
 
     if (!builtIn) {
       var local='';
@@ -333,7 +371,29 @@
     img.src='https://www.google.com/s2/favicons?domain='+dom+'&sz=256';
   }
 
-  var DEFAULTS=[{label:'YouTube',url:'https://m.youtube.com'},{label:'Facebook',url:'https://m.facebook.com'},{label:'ChatGPT',url:'https://chatgpt.com'},{label:'Wikipedia',url:'https://m.wikipedia.org'}];
+  /* The global top sites, in rank order (Similarweb, Aug 2026), minus two
+     that do not belong in a browser's shortcut row: Bing, because a second
+     search engine is redundant when the whole top bar is search, and
+     WhatsApp, because web.whatsapp.com is the QR-pairing desktop client and
+     is useless on a phone. Wikipedia is kept at the end on merit - it sits
+     just outside the top ten and is worth more here than the sites that
+     edged it out. */
+  var DEFAULTS=[
+    {label:'Google',    url:'https://www.google.com'},
+    // Drawn hard to the edge of its square, so it read a size larger than
+    // everything beside it.
+    {label:'YouTube',   url:'https://m.youtube.com',    scale:0.82},
+    // A circle inside a squircle leaves four white corners. 1.2 is the ratio
+    // that pushes the blue past the frame's corner arc, so the clip takes a
+    // sliver off the circle's edge and the white goes. The white f sits well
+    // inside and is untouched.
+    {label:'Facebook',  url:'https://m.facebook.com',   scale:1.2},
+    {label:'Instagram', url:'https://www.instagram.com'},
+    {label:'ChatGPT',   url:'https://chatgpt.com'},
+    {label:'X',         url:'https://x.com'},
+    {label:'Reddit',    url:'https://www.reddit.com'},
+    {label:'Wikipedia', url:'https://m.wikipedia.org'}
+  ];
 
   function renderTiles(){
     host.innerHTML='';
@@ -355,10 +415,14 @@
     } catch(e){ recent=[]; }
 
     // Recent sites (newest first) push in from the left; defaults fill the rest.
-    // Always show exactly 4, defaults falling off the right as recent grows.
+    // Ten now rather than four - two full rows of five - with the built-ins
+    // falling off the right as real history takes their places.
     var combined = [];
     recent.forEach(function(r){
-      combined.push({label:labelFromDomain(r.domain), url:r.url, builtIn:false});
+      // History keeps the frame as-is: an ordinary favicon is an opaque
+      // square almost every time, which fills it correctly already.
+      combined.push({label:labelFromDomain(r.domain), url:r.url,
+                     builtIn:false});
     });
     DEFAULTS.forEach(function(d){
       // avoid duplicating a default that's already in recent
@@ -366,9 +430,12 @@
       var dup = combined.some(function(c){
         return c.url.replace(/^https?:\/\//,'').split('/')[0].replace(/^www\./,'') === dom;
       });
-      if (!dup) combined.push({label:d.label, url:d.url, builtIn:true});
+      if (!dup) combined.push({label:d.label, url:d.url, builtIn:true,
+                              scale:d.scale});
     });
-    combined.slice(0,4).forEach(function(t){ buildTile(t.label, t.url, t.builtIn); });
+    combined.slice(0,10).forEach(function(t){
+      buildTile(t.label, t.url, t.builtIn, t.scale);
+    });
   }
 
   renderTiles();
