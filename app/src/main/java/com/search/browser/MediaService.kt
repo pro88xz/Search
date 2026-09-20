@@ -51,20 +51,49 @@ class MediaService : Service() {
         }
     }
 
+    // The last state that arrived with real values. A forwarded media-button
+    // intent carries a key event and no extras, so without this the
+    // notification would rebuild itself as "Media" with no host, paused, every
+    // time the user pressed play.
+    private var lastTitle = "Media"
+    private var lastHost = ""
+    private var lastPlaying = false
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
-            ACTION_STOP -> { stopSelfSafely(); return START_NOT_STICKY }
-            else -> {
-                val title = intent?.getStringExtra(EXTRA_TITLE) ?: "Media"
-                val host = intent?.getStringExtra(EXTRA_HOST) ?: ""
-                val playing = intent?.getBooleanExtra(EXTRA_PLAYING, false) ?: false
-                updateSession(title, host, playing)
-                startForeground(notifId, buildNotification(title, host, playing))
-            }
+        if (intent?.action == ACTION_STOP) {
+            stopSelfSafely()
+            return START_NOT_STICKY
         }
-        // Let MediaButtonReceiver handle media button intents.
+
+        if (intent?.action == Intent.ACTION_MEDIA_BUTTON) {
+            // Forwarded here by MediaButtonReceiver, which started this service
+            // with startForegroundService - so it still has to be promoted
+            // within a few seconds or the system takes the app down. Rebuilt
+            // from what was last known, because the intent carries nothing.
+            promote(lastTitle, lastHost, lastPlaying)
+            MediaButtonReceiver.handleIntent(session, intent)
+            return START_NOT_STICKY
+        }
+
+        lastTitle = intent?.getStringExtra(EXTRA_TITLE) ?: "Media"
+        lastHost = intent?.getStringExtra(EXTRA_HOST) ?: ""
+        lastPlaying = intent?.getBooleanExtra(EXTRA_PLAYING, false) ?: false
+        updateSession(lastTitle, lastHost, lastPlaying)
+        promote(lastTitle, lastHost, lastPlaying)
         MediaButtonReceiver.handleIntent(session, intent)
         return START_NOT_STICKY
+    }
+
+    private fun promote(title: String, host: String, playing: Boolean) {
+        try {
+            startForeground(notifId, buildNotification(title, host, playing))
+        } catch (e: Exception) {
+            // Android 12 and up refuse a foreground start from the background in
+            // some states. There is nothing useful to do from here, and letting
+            // it throw would take the app with it - which is the failure being
+            // fixed, in a different costume.
+            stopSelfSafely()
+        }
     }
 
     private fun updateSession(title: String, host: String, playing: Boolean) {

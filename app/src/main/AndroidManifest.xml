@@ -82,10 +82,21 @@
             android:name=".SupportActivity"
             android:exported="false"
             android:theme="@style/Theme.Search" />
+        <!--
+          The intent-filter is what stops MediaButtonReceiver crashing.
+          Its onReceive looks for a service declaring MEDIA_BUTTON, then for a
+          media browser service, and throws IllegalStateException when it finds
+          neither. There was no filter anywhere but on the receiver itself, so
+          every play/pause tap on the media notification threw.
+        -->
         <service
             android:name=".MediaService"
             android:exported="false"
-            android:foregroundServiceType="mediaPlayback" />
+            android:foregroundServiceType="mediaPlayback">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </service>
         <!--
           The system delivers MEDIA_BUTTON from another process, so a receiver
           that is not exported never hears a headset or Bluetooth play/pause.
