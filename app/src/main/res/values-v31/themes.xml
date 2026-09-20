@@ -2,8 +2,31 @@
 <resources>
     <style name="Theme.Search.Splash" parent="Theme.MaterialComponents.NoActionBar">
         <item name="android:windowSplashScreenBackground">@color/splashBg</item>
-        <item name="android:windowSplashScreenIconBackgroundColor">@color/splashIconBg</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_owl</item>
+        <!--
+          No icon background.
+
+          windowSplashScreenIconBackgroundColor paints a shape behind the icon,
+          for icons that would otherwise have no contrast against the splash.
+          The owl is light on dark and the splash is dark, so it never needed
+          one - and keeping it meant keeping two colours in step. They fell out
+          of step: values-night overrides splashBg and not splashIconBg, so in
+          dark mode the patch stayed #220549 while the splash moved to #2A1E48
+          and the shape became visible. Light mode hid it only because the two
+          values happened to be equal.
+
+          Removing it deletes the whole class of bug rather than adding a night
+          variant that has to be remembered next time either colour changes.
+        -->
+        <!--
+          The same owl as the launcher icon, so the two do not disagree.
+          splash_owl.webp was a 21-frame animation of the OLD owl; keeping it
+          meant the splash showed one owl and the home screen another.
+          Sized for the splash rather than the launcher: with no icon
+          background the art gets a 240dp circle of a 288dp canvas, where the
+          launcher mask only allows 66%, so this one is larger than the icon
+          foreground and must stay a separate file.
+        -->
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_owl_static</item>
         <item name="android:windowNoTitle">true</item>
     </style>
 </resources>
