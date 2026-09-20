@@ -939,14 +939,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
         @JavascriptInterface
-        fun cacheFavicon(domain: String, dataUrl: String) {
-            if (!privileged) return
-            if (domain.isBlank() || dataUrl.isBlank()) return
-            getSharedPreferences("favicon_cache", Context.MODE_PRIVATE)
-                .edit().putString(domain, dataUrl).apply()
-        }
-
-        @JavascriptInterface
         fun getCachedFavicon(domain: String): String {
             if (!privileged) return ""
             if (domain.isBlank() || domain == "__order") return ""
@@ -1033,14 +1025,6 @@ class MainActivity : AppCompatActivity() {
             val accent = Settings.getHomeAccent(this@MainActivity)
             val tiles = Settings.getBool(this@MainActivity, Settings.HOME_SHOW_TILES, true)
             return "{\"background\":\"$bg\",\"accent\":\"$accent\",\"tiles\":$tiles,\"nightOwl\":$nightOwl}"
-        }
-        @JavascriptInterface
-        fun suggest(query: String, requestId: Int) {
-            if (!privileged) return
-            Thread {
-                val items = buildSuggestions(query.trim())
-                runOnUiThread { pushSuggestions(requestId, items) }
-            }.start()
         }
         @JavascriptInterface
         fun getFeed(requestId: Int) {
@@ -1177,14 +1161,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
         return out
-    }
-
-    private fun pushSuggestions(requestId: Int, items: List<JSONObject>) {
-        val web = activeWeb() ?: return
-        val payload = JSONArray(items).toString()
-        val js = "window.__onSuggest && window.__onSuggest(" + requestId + ", JSON.parse(" +
-            JSONObject.quote(payload) + "));"
-        web.evaluateJavascript(js, null)
     }
 
     // ---------- WebView creation / lifecycle ----------
@@ -1374,7 +1350,6 @@ class MainActivity : AppCompatActivity() {
                 super.onPageStarted(view, url, favicon)
                 if (view == tabs.activeTab?.webView) {
                     if (!binding.urlBar.hasFocus()) binding.urlBar.setText(displayUrl(url))
-                    updateNavButtons()
                     refreshOmniboxVisibility(url)
                 }
                 url?.let { tabs.activeTab?.url = it }
@@ -1425,7 +1400,7 @@ class MainActivity : AppCompatActivity() {
                     } catch (e: Exception) { /* not an addressable page */ }
                 }
                 if (view == tabs.activeTab?.webView) {
-                    updateNavButtons(); refreshStar(); refreshOmniboxVisibility(url)
+                    refreshStar(); refreshOmniboxVisibility(url)
                     pushAccentToPage(view)
                 }
             }
@@ -2130,7 +2105,6 @@ class MainActivity : AppCompatActivity() {
         tabs.setActive(tab)
         tabs.markLive(tab)
         binding.urlBar.setText(displayUrl(tab.url))
-        updateNavButtons()
         updateTabCount()
         refreshStar()
         refreshOmniboxVisibility(tab.url)
@@ -2899,10 +2873,6 @@ class MainActivity : AppCompatActivity() {
 
     private var historyOpen = false
 
-    private fun toggleHistory() {
-        if (historyOpen) hideHistory() else showHistory()
-    }
-
     /** Shows the deck empty-state with the given icon and message. */
     private fun showDeckEmpty(iconRes: Int, title: String, subtitle: String) {
         binding.deckEmptyIcon.setImageResource(iconRes)
@@ -2938,10 +2908,7 @@ class MainActivity : AppCompatActivity() {
                 items = emptyList(),
                 onOpen = { d -> openDownloadedFile(d) },
                 onDelete = { d ->
-                    try {
-                        (getSystemService(DOWNLOAD_SERVICE)
-                            as android.app.DownloadManager).remove(d.id)
-                    } catch (_: Exception) {}
+                    deleteDownload(d)
                     refreshDownloads()
                 }
             )
@@ -2960,6 +2927,31 @@ class MainActivity : AppCompatActivity() {
         applyDownloads(Downloads.load(this))
         binding.downloadList.removeCallbacks(downloadsPoll)
         binding.downloadList.postDelayed(downloadsPoll, 1200L)
+    }
+
+    /**
+     * Removes a download, by whichever route it arrived. A file this app wrote
+     * has no DownloadManager entry to remove, so calling remove() on it would
+     * delete nothing and report nothing - the row would simply reappear.
+     */
+    private fun deleteDownload(d: Downloads.Item) {
+        if (d.managed) {
+            try {
+                (getSystemService(DOWNLOAD_SERVICE) as android.app.DownloadManager)
+                    .remove(d.id)
+            } catch (e: Exception) { /* already gone */ }
+            return
+        }
+        val uri = d.localUri ?: return
+        try {
+            val parsed = android.net.Uri.parse(uri)
+            if (parsed.scheme.equals("content", true)) {
+                contentResolver.delete(parsed, null, null)
+            } else {
+                parsed.path?.let { java.io.File(it).delete() }
+            }
+        } catch (e: Exception) { /* already gone from disk */ }
+        SavedFiles.remove(this, uri)
     }
 
     private fun refreshDownloads() {
@@ -3033,12 +3025,15 @@ class MainActivity : AppCompatActivity() {
     /** A URI another app can read, or null if the file is gone. */
     private fun resolveDownloadUri(d: Downloads.Item): android.net.Uri? {
         // DownloadManager's own content:// URI is the first choice: it is
-        // readable by another app as soon as the read grant is attached.
-        try {
-            val dm = getSystemService(DOWNLOAD_SERVICE) as android.app.DownloadManager
-            val own = dm.getUriForDownloadedFile(d.id)
-            if (own != null && own.scheme.equals("content", true)) return own
-        } catch (e: Exception) { /* fall through to the stored path */ }
+        // readable by another app as soon as the read grant is attached. Only
+        // worth asking for a download it actually handled.
+        if (d.managed) {
+            try {
+                val dm = getSystemService(DOWNLOAD_SERVICE) as android.app.DownloadManager
+                val own = dm.getUriForDownloadedFile(d.id)
+                if (own != null && own.scheme.equals("content", true)) return own
+            } catch (e: Exception) { /* fall through to the stored path */ }
+        }
 
         val parsed = try {
             android.net.Uri.parse(d.localUri ?: return null)
@@ -3107,10 +3102,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private var bookmarksOpen = false
-
-    private fun toggleBookmarks() {
-        if (bookmarksOpen) hideBookmarks() else showBookmarks()
-    }
 
     private fun showBookmarks() {
         val entries = Bookmarks.load(this).map { History.Entry(it.title, it.url, it.time) }
@@ -3470,6 +3461,8 @@ class MainActivity : AppCompatActivity() {
      * look for it rather than somewhere only this app knows about.
      */
     private fun writeDownloadBytes(bytes: ByteArray, mime: String, name: String) {
+        // Where it ended up, so it can be listed and opened later.
+        var savedUri: String? = null
         try {
             if (android.os.Build.VERSION.SDK_INT >= 29) {
                 val values = android.content.ContentValues().apply {
@@ -3484,6 +3477,7 @@ class MainActivity : AppCompatActivity() {
                 values.clear()
                 values.put(android.provider.MediaStore.Downloads.IS_PENDING, 0)
                 contentResolver.update(uri, values, null, null)
+                savedUri = uri.toString()
             } else {
                 val dir = android.os.Environment.getExternalStoragePublicDirectory(
                     android.os.Environment.DIRECTORY_DOWNLOADS)
@@ -3503,7 +3497,9 @@ class MainActivity : AppCompatActivity() {
                 // which reads to the user as another failed save.
                 android.media.MediaScannerConnection.scanFile(
                     this, arrayOf(f.absolutePath), arrayOf(mime), null)
+                savedUri = android.net.Uri.fromFile(f).toString()
             }
+            SavedFiles.add(this, name, savedUri, mime, bytes.size.toLong())
             runOnUiThread { toast("Saved to Downloads: " + name) }
         } catch (e: Exception) {
             downloadFailed()
@@ -3832,7 +3828,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun activeWeb(): WebView? = tabs.activeTab?.webView
 
-    private fun updateNavButtons() { /* system back handles page-back */ }
 
     private fun updateTabCount() { binding.tabCountBtn.text = tabs.count().toString() }
 

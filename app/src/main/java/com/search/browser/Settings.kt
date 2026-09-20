@@ -89,7 +89,6 @@ object Settings {
     const val SITE_LOCATION = "site_location"          // default true (ask)
     const val SITE_CAMERA_MIC = "site_camera_mic"      // default true (ask)
     const val SITE_BLOCK_AUTOPLAY = "site_block_autoplay" // default true
-    const val SITE_FORCE_DARK = "site_force_dark"      // default false
     const val SITE_BLOCK_IMAGES = "site_block_images"  // default false
 
     // Customize your Search (home page)

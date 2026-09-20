@@ -15,7 +15,13 @@ object Downloads {
         val bytesTotal: Long,
         val bytesSoFar: Long,
         val localUri: String?,
-        val mimeType: String?
+        val mimeType: String?,
+        val time: Long = 0L,
+        /**
+         * False for a file this app wrote itself. DownloadManager holds no
+         * record of those, so neither its uri nor its removal go through it.
+         */
+        val managed: Boolean = true
     ) {
         val isComplete get() = status == DownloadManager.STATUS_SUCCESSFUL
         val isFailed get() = status == DownloadManager.STATUS_FAILED
@@ -39,6 +45,8 @@ object Downloads {
                 val soFarI = cur.getColumnIndex(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)
                 val uriI = cur.getColumnIndex(DownloadManager.COLUMN_LOCAL_URI)
                 val mimeI = cur.getColumnIndex(DownloadManager.COLUMN_MEDIA_TYPE)
+                val timeI = cur.getColumnIndex(
+                    DownloadManager.COLUMN_LAST_MODIFIED_TIMESTAMP)
                 while (cur.moveToNext()) {
                     out.add(
                         Item(
@@ -48,7 +56,8 @@ object Downloads {
                             bytesTotal = if (totalI >= 0) cur.getLong(totalI) else 0,
                             bytesSoFar = if (soFarI >= 0) cur.getLong(soFarI) else 0,
                             localUri = if (uriI >= 0) cur.getString(uriI) else null,
-                            mimeType = if (mimeI >= 0) cur.getString(mimeI) else null
+                            mimeType = if (mimeI >= 0) cur.getString(mimeI) else null,
+                            time = if (timeI >= 0) cur.getLong(timeI) else 0L
                         )
                     )
                 }
@@ -58,8 +67,24 @@ object Downloads {
         } finally {
             cur?.close()
         }
-        // Newest first (DownloadManager returns oldest-first by default).
-        return out.reversed()
+        // Everything this app saved without DownloadManager's help - the blob:
+        // and data: downloads it cannot fetch - merged in so one list means all
+        // of them. They are already complete by the time they are recorded.
+        val saved = SavedFiles.load(c).map { e ->
+            Item(
+                id = -1L,
+                title = e.name,
+                status = DownloadManager.STATUS_SUCCESSFUL,
+                bytesTotal = e.size,
+                bytesSoFar = e.size,
+                localUri = e.uri,
+                mimeType = e.mime,
+                time = e.time,
+                managed = false
+            )
+        }
+        // Newest first, across both sources.
+        return (out + saved).sortedByDescending { it.time }
     }
 
     /** Human-readable size, e.g. "2.4 MB". */
