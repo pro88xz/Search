@@ -1619,9 +1619,21 @@ class MainActivity : AppCompatActivity() {
                 } catch (e: Exception) { null } ?: return
                 // Copied here and now: the WebView owns the bitmap it handed
                 // over and is free to recycle it the moment this returns.
+                // Kept at the size the site sent, up to 256.
+                //
+                // This was a hard 64x64, which was already too small when the
+                // tiles were 62px circles and is plainly blurry now: a 44dp
+                // tile is about 154 real pixels on a high-density phone, and a
+                // 64px source stretched over that is soft no matter what else
+                // is done to it.
+                //
+                // Never scaled UP, only down. Enlarging a 32px favicon to 256
+                // adds no detail, just bytes.
                 val copy = try {
-                    val b = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888)
-                    Canvas(b).drawBitmap(src, null, android.graphics.Rect(0, 0, 64, 64), null)
+                    val w = src.width.coerceIn(1, 256)
+                    val h = src.height.coerceIn(1, 256)
+                    val b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                    Canvas(b).drawBitmap(src, null, android.graphics.Rect(0, 0, w, h), null)
                     b
                 } catch (e: Exception) { return }
                 Thread { storeFavicon(host, copy) }.start()
@@ -2124,14 +2136,18 @@ class MainActivity : AppCompatActivity() {
                 bytes.toByteArray(), android.util.Base64.NO_WRAP)
             // A 64x64 PNG is a couple of kB; anything far past that is not an
             // icon and is not worth carrying across the bridge.
-            if (dataUrl.length > 40000) return
+            // Room for a real 256px icon, which the 40k cap would have
+            // thrown away - the very icons worth keeping were the ones being
+            // rejected. Paired with a smaller cache below, since all of this
+            // is held in SharedPreferences and loaded into memory at once.
+            if (dataUrl.length > 60000) return
             val prefs = getSharedPreferences("favicon_cache", Context.MODE_PRIVATE)
             val order = (prefs.getString("__order", "") ?: "")
                 .split(",").filter { it.isNotBlank() && it != domain }
                 .toMutableList()
             order.add(domain)
             val edit = prefs.edit().putString(domain, dataUrl)
-            while (order.size > 60) {
+            while (order.size > 40) {
                 edit.remove(order.removeAt(0))
             }
             edit.putString("__order", order.joinToString(",")).apply()

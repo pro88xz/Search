@@ -44,7 +44,7 @@
     width:100%; max-width:680px;
     display:flex; align-items:center; gap:10px;
     background:var(--field); border:1px solid var(--line);
-    border-radius:34px; padding:19px 20px 19px 26px;
+    border-radius:999px; padding:19px 20px 19px 26px;
     box-shadow:0 2px 6px rgba(0,0,0,0.05), 0 12px 30px rgba(0,0,0,0.07);
     transition:border-color .15s ease, box-shadow .15s ease;
   }
@@ -141,7 +141,7 @@
   .feed-card {
     display:flex; flex-direction:column; align-items:stretch;
     background:var(--field); border:1px solid var(--line);
-    border-radius:20px; overflow:hidden; margin-bottom:16px;
+    border-radius:24px; overflow:hidden; margin-bottom:16px;
     text-decoration:none; color:var(--fg);
     box-shadow:0 1px 2px rgba(0,0,0,0.07), 0 4px 12px rgba(0,0,0,0.07);
   }
@@ -170,7 +170,7 @@
   }
   .feed-card .cardfoot .src { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .feed-card .favicon {
-    width:16px; height:16px; flex:none; border-radius:4px; display:block;
+    width:16px; height:16px; flex:none; border-radius:6px; display:block;
     object-fit:contain; background:rgba(128,128,128,0.08);
   }
   .feed-card .sharebtn {
@@ -216,7 +216,7 @@
   .skel-card {
     display:flex; flex-direction:column; align-items:stretch;
     background:var(--field); border:1px solid var(--line);
-    border-radius:20px; overflow:hidden; margin-bottom:16px;
+    border-radius:24px; overflow:hidden; margin-bottom:16px;
     box-shadow:0 1px 2px rgba(0,0,0,0.07), 0 4px 12px rgba(0,0,0,0.07);
   }
   .skel-thumb { width:100%; height:180px; }
@@ -314,18 +314,19 @@
   }
 
   /**
-   * builtIn marks one of the four shortcuts shipped with the app, as opposed to
-   * a site pulled from the user's own history.
+   * canFetch says whether this tile is allowed to go and get an icon.
    *
-   * Every tile used to fetch its icon from Google's favicon service, falling
-   * back to DuckDuckGo's - which meant that opening a new tab announced the
-   * list of sites in your history to two third parties, by name, every single
-   * time. A browser with a privacy policy cannot be doing that quietly.
+   * Every tile used to fetch from Google's favicon service, falling back to
+   * DuckDuckGo's - which meant opening a new tab announced the list of sites
+   * in your history to two third parties, by name, every single time. A
+   * browser with a privacy policy cannot be doing that quietly.
    *
-   * A site from history now uses the icon captured from the site itself when
-   * it was visited, and asks nobody if there isn't one. Only the four built-in
-   * shortcuts still fetch, and those are constants in the app: they say
-   * nothing about where this user has been.
+   * The line is drawn at intent rather than at origin. A built-in shortcut is
+   * a constant in the app, and one the user pinned through the plus is a
+   * deliberate choice about their own home screen; neither says anything about
+   * where they have been browsing. A site that is merely in history says
+   * exactly that, so it never asks - it shows the icon captured when it was
+   * visited, or its accent letter.
    */
   /**
    * scale trims or bleeds one icon inside the shared frame.
@@ -337,7 +338,7 @@
    * last time - the icon is nudged to fit the frame it is given.
    * Above 1 it bleeds past the edges and clips; below 1 it sits in.
    */
-  function buildTile(label, url, builtIn, scale){
+  function buildTile(label, url, canFetch, scale){
     var a=document.createElement('a'); a.className='tile'; a.href='javascript:void(0)';
 
     // Long press removes. The flag is what stops the press that opened the
@@ -382,18 +383,22 @@
       fav.appendChild(img);
     };
 
-    if (!builtIn) {
-      var local='';
-      try {
-        if (window.SearchApp && window.SearchApp.getCachedFavicon) {
-          local = window.SearchApp.getCachedFavicon(dom) || '';
-        }
-      } catch(e){}
-      // No icon yet means this site has not been visited since the cache was
-      // introduced. The accent letter stands in; nothing is fetched.
-      if (local) img.src = local;
-      return;
-    }
+    // The captured icon wins whenever there is one: it came from the site
+    // itself, it is already on the device, and it costs no request.
+    var local='';
+    try {
+      if (window.SearchApp && window.SearchApp.getCachedFavicon) {
+        local = window.SearchApp.getCachedFavicon(dom) || '';
+      }
+    } catch(e){}
+    if (local) { img.src = local; return; }
+
+    // Nothing captured yet. Only a tile the user chose on purpose may ask for
+    // one - the built-ins, and anything they pinned themselves. A site that is
+    // merely in history never does: fetching for those is what would announce
+    // the browsing history to a third party, which is the whole reason the
+    // capture-on-visit cache exists.
+    if (!canFetch) return;
 
     var fellBack=false;
     img.onerror=function(){
@@ -425,9 +430,7 @@
     {label:'ChatGPT',   url:'https://chatgpt.com'},
     {label:'X',         url:'https://x.com'},
     {label:'Reddit',    url:'https://www.reddit.com'},
-    {label:'TikTok',    url:'https://www.tiktok.com'},
-    {label:'Wikipedia', url:'https://m.wikipedia.org'},
-    {label:'Amazon',    url:'https://www.amazon.com'}
+    {label:'Wikipedia', url:'https://m.wikipedia.org'}
   ];
 
   function renderTiles(){
@@ -481,21 +484,26 @@
 
     // Order of authority: what the user put there, then where they have been,
     // then what shipped with the app.
+    // canFetch, not builtIn: a shortcut the user pinned by hand is a
+    // deliberate choice they made about their own home screen, so it may go
+    // and get its icon like the built-ins do. Otherwise a site added through
+    // the plus shows an accent letter until it happens to be visited, which
+    // is not what adding a shortcut is supposed to feel like.
     custom.forEach(function(c){
       consider({label:c.label || labelFromDomain(keyOf(c.url)), url:c.url,
-                builtIn:false});
+                canFetch:true});
     });
     recent.forEach(function(r){
-      consider({label:labelFromDomain(r.domain), url:r.url, builtIn:false});
+      consider({label:labelFromDomain(r.domain), url:r.url, canFetch:false});
     });
     DEFAULTS.forEach(function(d){
-      consider({label:d.label, url:d.url, builtIn:true, scale:d.scale});
+      consider({label:d.label, url:d.url, canFetch:true, scale:d.scale});
     });
 
     // Eight sites and the plus: nine in a five-wide grid, which is a full row
     // and most of a second.
     combined.slice(0,8).forEach(function(t){
-      buildTile(t.label, t.url, t.builtIn, t.scale);
+      buildTile(t.label, t.url, t.canFetch, t.scale);
     });
     buildAddTile();
   }
