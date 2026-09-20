@@ -83,6 +83,16 @@
     display:flex; flex-direction:column; align-items:center; gap:8px;
     padding:4px 0;
     text-decoration:none; color:var(--fg);
+    /* A long press is ours now, so the system must not also offer to select
+       the label or open its own link menu over the top of it. */
+    -webkit-touch-callout:none; -webkit-user-select:none; user-select:none;
+  }
+  /* The add tile is deliberately not an icon: no border, no shadow, just a
+     soft well with a plus in it, so it reads as an empty slot rather than as
+     another site sitting among the real ones. */
+  .tile.add .fav {
+    background:rgba(128,128,128,0.13); border:none; box-shadow:none;
+    color:var(--muted); font-size:24px; font-weight:400;
   }
   /* One frame for every tile: same size, same shape, always.
      That uniformity is the whole of what Samsung has. Their icons look
@@ -329,7 +339,30 @@
    */
   function buildTile(label, url, builtIn, scale){
     var a=document.createElement('a'); a.className='tile'; a.href='javascript:void(0)';
-    a.onclick=function(){ if(window.SearchApp&&window.SearchApp.open) window.SearchApp.open(url); };
+
+    // Long press removes. The flag is what stops the press that opened the
+    // remove dialog ALSO counting as a tap and loading the site behind it.
+    var held=false, timer=null;
+    function cancelHold(){ if(timer){ clearTimeout(timer); timer=null; } }
+    a.addEventListener('touchstart', function(){
+      held=false;
+      cancelHold();
+      timer=setTimeout(function(){
+        timer=null; held=true;
+        try { if (navigator.vibrate) navigator.vibrate(12); } catch(e){}
+        if(window.SearchApp&&window.SearchApp.removeShortcut){
+          window.SearchApp.removeShortcut(label, url);
+        }
+      }, 500);
+    }, {passive:true});
+    a.addEventListener('touchend', cancelHold, {passive:true});
+    a.addEventListener('touchmove', cancelHold, {passive:true});
+    a.addEventListener('touchcancel', function(){ cancelHold(); held=false; }, {passive:true});
+
+    a.onclick=function(){
+      if (held) { held=false; return; }
+      if(window.SearchApp&&window.SearchApp.open) window.SearchApp.open(url);
+    };
     var fav=document.createElement('div'); fav.className='fav';
     fav.textContent=label.charAt(0).toUpperCase();
     var span=document.createElement('span'); span.textContent=label;
@@ -392,7 +425,9 @@
     {label:'ChatGPT',   url:'https://chatgpt.com'},
     {label:'X',         url:'https://x.com'},
     {label:'Reddit',    url:'https://www.reddit.com'},
-    {label:'Wikipedia', url:'https://m.wikipedia.org'}
+    {label:'TikTok',    url:'https://www.tiktok.com'},
+    {label:'Wikipedia', url:'https://m.wikipedia.org'},
+    {label:'Amazon',    url:'https://www.amazon.com'}
   ];
 
   function renderTiles(){
@@ -414,29 +449,73 @@
       }
     } catch(e){ recent=[]; }
 
+    var custom=[], hidden=[];
+    try {
+      if (window.SearchApp && window.SearchApp.getShortcuts) {
+        var sc = JSON.parse(window.SearchApp.getShortcuts()) || {};
+        custom = sc.custom || [];
+        hidden = sc.hidden || [];
+      }
+    } catch(e){ custom=[]; hidden=[]; }
+
     // Recent sites (newest first) push in from the left; defaults fill the rest.
     // Ten now rather than four - two full rows of five - with the built-ins
     // falling off the right as real history takes their places.
-    var combined = [];
+    // One comparison key for all three sources, so a site cannot appear twice
+    // under two spellings and a removal actually catches it.
+    function keyOf(u){
+      return u.replace(/^https?:\/\//,'').split('/')[0]
+              .replace(/^www\./,'').replace(/^mobile\./,'').replace(/^m\./,'')
+              .toLowerCase();
+    }
+
+    var combined = [], seenKeys = [];
+    function consider(t){
+      var k = keyOf(t.url);
+      if (!k) return;
+      if (hidden.indexOf(k) >= 0) return;      // removed by the user
+      if (seenKeys.indexOf(k) >= 0) return;    // already in from a better source
+      seenKeys.push(k);
+      combined.push(t);
+    }
+
+    // Order of authority: what the user put there, then where they have been,
+    // then what shipped with the app.
+    custom.forEach(function(c){
+      consider({label:c.label || labelFromDomain(keyOf(c.url)), url:c.url,
+                builtIn:false});
+    });
     recent.forEach(function(r){
-      // History keeps the frame as-is: an ordinary favicon is an opaque
-      // square almost every time, which fills it correctly already.
-      combined.push({label:labelFromDomain(r.domain), url:r.url,
-                     builtIn:false});
+      consider({label:labelFromDomain(r.domain), url:r.url, builtIn:false});
     });
     DEFAULTS.forEach(function(d){
-      // avoid duplicating a default that's already in recent
-      var dom = d.url.replace(/^https?:\/\//,'').split('/')[0].replace(/^www\./,'');
-      var dup = combined.some(function(c){
-        return c.url.replace(/^https?:\/\//,'').split('/')[0].replace(/^www\./,'') === dom;
-      });
-      if (!dup) combined.push({label:d.label, url:d.url, builtIn:true,
-                              scale:d.scale});
+      consider({label:d.label, url:d.url, builtIn:true, scale:d.scale});
     });
-    combined.slice(0,10).forEach(function(t){
+
+    // Eight sites and the plus: nine in a five-wide grid, which is a full row
+    // and most of a second.
+    combined.slice(0,8).forEach(function(t){
       buildTile(t.label, t.url, t.builtIn, t.scale);
     });
+    buildAddTile();
   }
+
+  /** The empty slot at the end. Opens the native add dialog. */
+  function buildAddTile(){
+    var a=document.createElement('a');
+    a.className='tile add'; a.href='javascript:void(0)';
+    a.setAttribute('aria-label','Add shortcut');
+    a.onclick=function(){
+      if(window.SearchApp&&window.SearchApp.addShortcut) window.SearchApp.addShortcut();
+    };
+    var fav=document.createElement('div'); fav.className='fav';
+    fav.textContent='+';
+    var span=document.createElement('span'); span.textContent='Add';
+    a.appendChild(fav); a.appendChild(span); host.appendChild(a);
+  }
+
+  // Lets the app redraw the tiles after an add or a remove, with no reload.
+  window.__renderTiles = renderTiles;
 
   renderTiles();
   // Re-render tiles when the page becomes visible again (instant, no manual reload).

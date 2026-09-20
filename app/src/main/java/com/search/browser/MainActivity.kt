@@ -481,18 +481,18 @@ class MainActivity : AppCompatActivity() {
 
         if (!fieldWasShowing) {
             bar.alpha = 0f
-            bar.translationY = 10 * d
+            bar.translationY = 18 * d
             bar.animate().alpha(1f).translationY(0f)
-                .setDuration(200L).setInterpolator(searchEase).start()
+                .setDuration(300L).setInterpolator(searchEase).start()
         } else {
             bar.alpha = 1f
             bar.translationY = 0f
         }
 
         sheet.alpha = 0f
-        sheet.translationY = 24 * d
+        sheet.translationY = 44 * d
         sheet.animate().alpha(1f).translationY(0f)
-            .setDuration(260L).setStartDelay(40L)
+            .setDuration(380L).setStartDelay(60L)
             .setInterpolator(searchEase).start()
     }
 
@@ -507,8 +507,8 @@ class MainActivity : AppCompatActivity() {
         val d = resources.displayMetrics.density
         val sheet = binding.suggestOverlay
         sheet.animate().cancel()
-        sheet.animate().alpha(0f).translationY(16 * d)
-            .setDuration(170L).setInterpolator(searchEase)
+        sheet.animate().alpha(0f).translationY(28 * d)
+            .setDuration(210L).setInterpolator(searchEase)
             .withEndAction {
                 // Search may have been re-entered while this was running, in
                 // which case the sheet is wanted and must not be hidden.
@@ -1093,6 +1093,33 @@ class MainActivity : AppCompatActivity() {
                 out.put(JSONObject().put("domain", domain).put("url", e.url))
             }
             return out.toString()
+        }
+
+        @JavascriptInterface
+        fun getShortcuts(): String {
+            // "{}" when unprivileged, and the page treats that as "no answer"
+            // rather than "no shortcuts" - the difference matters, or a failed
+            // read would look like the user had deleted everything.
+            if (!privileged) return "{}"
+            val custom = JSONArray()
+            Shortcuts.loadCustom(this@MainActivity).forEach {
+                custom.put(JSONObject().put("label", it.label).put("url", it.url))
+            }
+            val hidden = JSONArray()
+            Shortcuts.loadHidden(this@MainActivity).forEach { hidden.put(it) }
+            return JSONObject().put("custom", custom).put("hidden", hidden).toString()
+        }
+
+        @JavascriptInterface
+        fun addShortcut() {
+            if (!privileged) return
+            runOnUiThread { showAddShortcutDialog() }
+        }
+
+        @JavascriptInterface
+        fun removeShortcut(label: String, url: String) {
+            if (!privileged) return
+            runOnUiThread { showRemoveShortcutDialog(label, url) }
         }
 
         @JavascriptInterface
@@ -2109,6 +2136,64 @@ class MainActivity : AppCompatActivity() {
             }
             edit.putString("__order", order.joinToString(",")).apply()
         } catch (e: Exception) { /* an icon is not worth a crash */ }
+    }
+
+    /** Re-draws the home tiles in place, with no page reload and no flash. */
+    private fun refreshHomeTiles() {
+        activeWeb()?.evaluateJavascript(
+            "window.__renderTiles && window.__renderTiles()", null)
+    }
+
+    private fun showAddShortcutDialog() {
+        val d = resources.displayMetrics.density
+        val input = android.widget.EditText(this).apply {
+            hint = "example.com"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                android.text.InputType.TYPE_TEXT_VARIATION_URI
+            setSingleLine()
+        }
+        val box = android.widget.FrameLayout(this).apply {
+            setPadding((24 * d).toInt(), (8 * d).toInt(), (24 * d).toInt(), 0)
+            addView(input)
+        }
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Add shortcut")
+            .setView(box)
+            .setPositiveButton("Add") { _, _ ->
+                val typed = input.text.toString().trim()
+                // A phrase is a search, not a site. Without this the tile
+                // would be a frozen search results page.
+                if (typed.isBlank() || typed.contains(' ')) return@setPositiveButton
+                val url = UrlHelper.toUrlOrSearch(typed, Settings.getEngineUrl(this))
+                val dom = Shortcuts.domainOf(url)
+                if (dom.isBlank()) return@setPositiveButton
+                val label = dom.substringBefore('.')
+                    .replaceFirstChar { it.uppercase() }
+                Shortcuts.addCustom(this, label, url)
+                refreshHomeTiles()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+        input.requestFocus()
+    }
+
+    private fun showRemoveShortcutDialog(label: String, url: String) {
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Remove " + label.ifBlank { "this shortcut" } + "?")
+            .setMessage("It comes off the home page. Your history and bookmarks are not touched.")
+            .setPositiveButton("Remove") { _, _ ->
+                val dom = Shortcuts.domainOf(url)
+                // One the user added is simply forgotten. A built-in or a site
+                // from history is generated every render, so the only way to
+                // keep it gone is to remember that it was removed.
+                val wasCustom = Shortcuts.loadCustom(this)
+                    .any { Shortcuts.domainOf(it.url) == dom }
+                if (wasCustom) Shortcuts.removeCustom(this, url)
+                else Shortcuts.hide(this, dom)
+                refreshHomeTiles()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun displayUrl(url: String?): String =
