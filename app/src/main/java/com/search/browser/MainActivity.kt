@@ -2382,6 +2382,16 @@ class MainActivity : AppCompatActivity() {
     private fun enterNightOwl() {
         nightOwl = true
         nightOwlHosts.clear()
+        // The card goes now, and the ad it was bound to goes with it, so
+        // nothing from before the private session stays behind it.
+        //
+        // No refreshAdSlot() here on purpose: addNewTab below reaches it
+        // through openTab -> refreshOmniboxVisibility. Calling it here as well
+        // only adds main-thread work between asking for the page and the page
+        // being answered, which is the window that caused this morning's bug.
+        binding.adSlot.removeAllViews()
+        nativeAd?.destroy()
+        nativeAd = null
         binding.nightOwlBadge.visibility = View.VISIBLE
         applyNightOwlChrome(true)
         // The private settings ride on the tab itself, in newWebView, so this
@@ -2455,6 +2465,11 @@ class MainActivity : AppCompatActivity() {
         // and shows the normal tiles/feed again immediately.
         val current = activeWeb()?.url
         if (current == null || current == homePage) loadInto(activeWeb(), homePage)
+        // The private session is over, so the feed can carry an ad again.
+        // Nothing was requested while it was on, so this is the first request
+        // since - including the case where the app started in Night Owl and
+        // has never asked for one at all.
+        loadFeedAd()
         android.widget.Toast.makeText(this,
             "Night Owl off", android.widget.Toast.LENGTH_SHORT).show()
     }
@@ -2576,6 +2591,17 @@ class MainActivity : AppCompatActivity() {
 
     private var lastWebScroll = 0L
 
+    /** MobileAds.initialize has finished. Loading before it has is not valid. */
+    private var adsReady = false
+    /**
+     * A request is in flight.
+     *
+     * Leaving Night Owl asks for an ad, so without this a quick off/on/off
+     * would put two requests out at once. Cleared on both outcomes - the SDK
+     * calls exactly one of forNativeAd or onAdFailedToLoad for every request.
+     */
+    private var adLoading = false
+
     private fun initAds() {
         // Gestures are mirrored onto the page so it scrolls under the card;
         // only the tap that halts a fling is withheld.
@@ -2588,15 +2614,42 @@ class MainActivity : AppCompatActivity() {
         // start. Loading is bounced back to the main thread, where it must run.
         Thread {
             com.google.android.gms.ads.MobileAds.initialize(this) {
-                runOnUiThread { if (!isFinishing && !isDestroyed) loadFeedAd() }
+                runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+                    adsReady = true
+                    // Not gated on Night Owl here: loadFeedAd makes that call,
+                    // so initialization finishing DURING a private session is
+                    // handled by the same test as every other path in.
+                    loadFeedAd()
+                }
             }
         }.start()
     }
 
+    /**
+     * Asks for the one feed ad this session shows.
+     *
+     * Safe to call from anywhere: every reason not to ask is tested here rather
+     * than at the call sites, so no caller has to remember them.
+     */
     private fun loadFeedAd() {
+        // Night Owl: no request at all. The card being hidden is not the point
+        // - an ad request carries device signals for targeting, and a private
+        // session is exactly when those should not be sent.
+        if (nightOwl) return
+        if (!adsReady || adLoading) return
+        // One ad per session. Without this, leaving Night Owl a second time
+        // would ask again for a card that is already on screen.
+        if (nativeAd != null) return
+        adLoading = true
         com.google.android.gms.ads.AdLoader.Builder(this, feedAdUnit)
             .forNativeAd { ad ->
+                adLoading = false
                 if (isFinishing || isDestroyed) { ad.destroy(); return@forNativeAd }
+                // Night Owl was turned on while this was in flight. The request
+                // is already out and cannot be recalled, but the card does not
+                // appear and nothing is kept.
+                if (nightOwl) { ad.destroy(); return@forNativeAd }
                 nativeAd?.destroy()
                 nativeAd = ad
                 bindFeedAd(ad)
@@ -2606,6 +2659,7 @@ class MainActivity : AppCompatActivity() {
                     // Code 3 is no-fill, which a new unit does for hours and is
                     // not a wiring fault. 0 internal, 1 invalid request (bad unit
                     // id or app id mismatch), 2 network.
+                    adLoading = false
                     binding.adSlot.visibility = View.GONE
                 }            })
             // Muted is the SDK default, but stated outright: a video ad that
@@ -2755,7 +2809,8 @@ class MainActivity : AppCompatActivity() {
     private fun refreshAdSlot() {
         val url = tabs.activeTab?.url
         val onHome = (url == null || url == homePage)
-        val show = nativeAd != null && onHome && !searchMode && !deckVisible
+        val show = nativeAd != null && onHome && !searchMode &&
+            !deckVisible && !nightOwl
         val changed = (binding.adSlot.visibility == View.VISIBLE) != show
         // THE FLICKER. translationY 0 means "seated at the bottom of the
         // viewport", which is exactly where a fully scrolled page shows the
