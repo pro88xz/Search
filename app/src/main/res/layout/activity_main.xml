@@ -13,7 +13,7 @@
         <!-- ===== TOP navigation bar ===== -->
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="54dp"
+            android:layout_height="58dp"
             android:orientation="horizontal"
             android:gravity="center_vertical"
             android:paddingStart="@dimen/space_xxs"
@@ -48,7 +48,7 @@
             <FrameLayout
                 android:id="@+id/urlBarContainer"
                 android:layout_width="0dp"
-                android:layout_height="40dp"
+                android:layout_height="48dp"
                 android:layout_weight="1"
                 android:layout_marginStart="@dimen/space_xxs"
                 android:layout_marginEnd="@dimen/space_xxs">
@@ -69,26 +69,26 @@
 
                 <ImageButton
                     android:id="@+id/starBtn"
-                    android:layout_width="30dp"
-                    android:layout_height="30dp"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
                     android:layout_gravity="end|center_vertical"
                     android:layout_marginEnd="@dimen/space_xs"
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:src="@drawable/ic_star_outline"
                     android:scaleType="fitCenter"
-                    android:padding="5dp"
+                    android:padding="14dp"
                     android:contentDescription="Bookmark" />
 
                 <ImageButton
                     android:id="@+id/clearBtn"
-                    android:layout_width="34dp"
-                    android:layout_height="34dp"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
                     android:layout_gravity="end|center_vertical"
                     android:layout_marginEnd="7dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:src="@drawable/ic_clear"
                     android:scaleType="fitCenter"
-                    android:padding="7dp"
+                    android:padding="14dp"
                     android:visibility="gone"
                     android:contentDescription="Clear" />
 
@@ -104,12 +104,12 @@
 
                     <ImageButton
                         android:id="@+id/micBtn"
-                        android:layout_width="34dp"
-                        android:layout_height="34dp"
+                        android:layout_width="48dp"
+                        android:layout_height="48dp"
                         android:background="?attr/selectableItemBackgroundBorderless"
                         android:src="@drawable/ic_mic"
                         android:scaleType="fitCenter"
-                        android:padding="6dp"
+                        android:padding="13dp"
                         android:contentDescription="Voice search" />
 
                     <View
@@ -121,28 +121,29 @@
 
                     <ImageButton
                         android:id="@+id/scanBtn"
-                        android:layout_width="34dp"
-                        android:layout_height="34dp"
+                        android:layout_width="48dp"
+                        android:layout_height="48dp"
                         android:background="?attr/selectableItemBackgroundBorderless"
                         android:src="@drawable/ic_scan"
                         android:scaleType="fitCenter"
-                        android:padding="6dp"
+                        android:padding="13dp"
                         android:contentDescription="Scan" />
                 </LinearLayout>
             </FrameLayout>
 
             <ImageButton
                 android:id="@+id/reloadBtn"
-                android:layout_width="42dp"
-                android:layout_height="42dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:padding="3dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:src="@android:drawable/ic_menu_rotate"
                 android:contentDescription="Reload" />
 
             <TextView
                 android:id="@+id/tabCountBtn"
-                android:layout_width="42dp"
-                android:layout_height="42dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
                 android:gravity="center"
                 android:text="1"
                 android:textSize="15sp"
@@ -153,12 +154,12 @@
 
             <ImageButton
                 android:id="@+id/settingsBtn"
-                android:layout_width="46dp"
-                android:layout_height="46dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:src="@drawable/ic_settings"
                 android:scaleType="fitCenter"
-                android:padding="5dp"
+                android:padding="6dp"
                 android:contentDescription="Settings" />
         </LinearLayout>
 

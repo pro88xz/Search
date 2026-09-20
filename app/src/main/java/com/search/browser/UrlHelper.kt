@@ -1,7 +1,6 @@
 package com.search.browser
 
 import android.net.Uri
-import android.util.Patterns
 
 object UrlHelper {
 
@@ -60,8 +59,14 @@ object UrlHelper {
         }
 
         // 3. Raw IP (+ optional port/path)
-        val hostForIp = text.substringBefore("/").substringBefore(":")
-        if (Patterns.IP_ADDRESS.matcher(hostForIp).matches()) return "http://$text"
+        val beforePath = text.substringBefore("/")
+        val hostForIp = if (beforePath.startsWith("[")) {
+            // Bracketed IPv6, with any port after the bracket dropped.
+            beforePath.substringBefore("]") + "]"
+        } else {
+            beforePath.substringBefore(":")
+        }
+        if (looksLikeIp(hostForIp)) return "http://$text"
 
         // 4. Spaces -> search
         if (text.contains(" ")) return search(text, searchPrefix)
@@ -71,6 +76,27 @@ object UrlHelper {
 
         // 6. Fallback -> search
         return search(text, searchPrefix)
+    }
+
+    /**
+     * A bare IPv4 address, or a bracketed IPv6 one.
+     *
+     * android.util.Patterns.IP_ADDRESS is deprecated and only ever understood
+     * IPv4, so "[::1]" was treated as a search term. Done directly here, which
+     * is also cheaper than a regex on every keystroke.
+     */
+    private fun looksLikeIp(host: String): Boolean {
+        if (host.startsWith("[") && host.endsWith("]")) {
+            val inner = host.substring(1, host.length - 1)
+            return inner.isNotEmpty() &&
+                inner.all { it in "0123456789abcdefABCDEF:." }
+        }
+        val parts = host.split(".")
+        if (parts.size != 4) return false
+        return parts.all { p ->
+            p.isNotEmpty() && p.length <= 3 &&
+                p.all { it in '0'..'9' } && (p.toIntOrNull() ?: 999) <= 255
+        }
     }
 
     private fun looksLikeDomain(text: String): Boolean {

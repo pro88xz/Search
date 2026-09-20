@@ -53,7 +53,19 @@ object MediaDetect {
   scan();
   report();
   // Catch dynamically added players.
-  var mo = new MutationObserver(function(){ scan(); });
+  //
+  // Throttled, because this observes childList over the whole subtree: on a
+  // feed or any React-shaped page it fires continuously, and it used to run a
+  // querySelectorAll across the entire document every single time. That is a
+  // page-wide scan several times a second, on every page the browser has open,
+  // for the sake of noticing a <video> that might appear - paid for in battery
+  // and in scroll smoothness.
+  var scanQueued = false;
+  var mo = new MutationObserver(function(){
+    if (scanQueued) return;
+    scanQueued = true;
+    setTimeout(function(){ scanQueued = false; scan(); }, 500);
+  });
   try { mo.observe(document.documentElement, {childList:true, subtree:true}); } catch(e){}
 })();
 """.trim()

@@ -370,6 +370,13 @@ class MainActivity : AppCompatActivity() {
     private val FIELD_COMPACT = 1
     private val FIELD_SEARCH = 2
 
+    // The pill's height in each state, in dp. Named rather than written into
+    // the when below, because the collapse animation has to travel between two
+    // of them instead of jumping.
+    private val FIELD_H_NORMAL = 48f
+    private val FIELD_H_COMPACT = 52f
+    private val FIELD_H_SEARCH = 56f
+
     private fun styleUrlBar(mode: Int) {
         val d = resources.displayMetrics.density
         val pill = mode != FIELD_NORMAL
@@ -394,17 +401,22 @@ class MainActivity : AppCompatActivity() {
         } else {
             binding.clearBtn.visibility = View.GONE
             binding.searchActions.visibility = View.GONE
-            binding.urlBar.setPaddingRelative((14 * d).toInt(), top, (38 * d).toInt(), bottom)
+            // 48dp star + its 8dp margin. Was 38 for a 30dp star.
+            binding.urlBar.setPaddingRelative((14 * d).toInt(), top, (56 * d).toInt(), bottom)
         }
 
         val lp = binding.urlBarContainer.layoutParams
             as? android.widget.LinearLayout.LayoutParams ?: return
         lp.marginStart = ((if (pill) 6 else 4) * d).toInt()
         lp.marginEnd = ((if (pill) 6 else 4) * d).toInt()
+        // Each of these has to hold a 48dp control, which is what a touch
+        // target has to be. The three sizes stay three sizes - the step between
+        // browsing and collapsed is the same 4dp it was - they just start from
+        // a height a thumb can actually hit.
         lp.height = (when (mode) {
-            FIELD_SEARCH -> 50
-            FIELD_COMPACT -> 44
-            else -> 40
+            FIELD_SEARCH -> FIELD_H_SEARCH
+            FIELD_COMPACT -> FIELD_H_COMPACT
+            else -> FIELD_H_NORMAL
         } * d).toInt()
         binding.urlBarContainer.layoutParams = lp
     }
@@ -432,8 +444,11 @@ class MainActivity : AppCompatActivity() {
         val empty = binding.urlBar.text.isNullOrEmpty()
         binding.searchActions.visibility = if (empty) View.VISIBLE else View.GONE
         binding.clearBtn.visibility = if (empty) View.GONE else View.VISIBLE
+        // Empty: mic 48 + 9dp divider + scan 48 + 8dp margin, plus breathing
+        // room. Otherwise: clear 48 + its 7dp margin, same. Both grew with the
+        // controls; left as they were, a long address would run under them.
         binding.urlBar.setPaddingRelative(
-            (26 * d).toInt(), top, ((if (empty) 92 else 46) * d).toInt(), bottom)
+            (26 * d).toInt(), top, ((if (empty) 120 else 60) * d).toInt(), bottom)
     }
 
     private fun enterSearchMode() {
@@ -494,6 +509,39 @@ class MainActivity : AppCompatActivity() {
         if (onHome && homeCompact) applyHomeCompact(true)
     }
 
+
+    // ---- HTTPS-only ----
+    //
+    // The setting reads "Always try to connect securely and warn on insecure
+    // sites". It did neither: the upgrade happened only in go(), so it covered
+    // what was typed into the address bar and nothing else. Every http link
+    // tapped on a page loaded in the clear, and there was no warning anywhere.
+
+    /**
+     * Hosts the user has chosen to open over http anyway, for this run of the
+     * app only. A decision to give up encryption should not outlive the
+     * session that made it, and should never be written to disk.
+     */
+    private val httpAllowed = mutableSetOf<String>()
+    /** https addresses produced here, mapped back to the http they came from. */
+    private val upgradedFrom = HashMap<String, String>()
+    /** When each host was last upgraded, to break a redirect loop. */
+    private val upgradedAt = HashMap<String, Long>()
+    private var pendingInsecure: String? = null
+
+    private fun httpsOnly() = Settings.getBool(this, Settings.SEC_HTTPS_ONLY, true)
+
+    /**
+     * Shows the warning in place of the page, holding the address so
+     * "Continue anyway" has somewhere to go.
+     */
+    private fun showInsecureWarning(view: WebView?, httpUrl: String) {
+        pendingInsecure = httpUrl
+        val enc = try {
+            java.net.URLEncoder.encode(httpUrl, "UTF-8")
+        } catch (e: Exception) { "" }
+        view?.loadUrl("file:///android_asset/insecure.html?u=" + enc)
+    }
 
     // Night Owl (private browsing) mode state.
     private var nightOwl = false
@@ -862,6 +910,25 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread { onMediaState(state, title, host) }
         }
 
+        /**
+         * Only ever reached from the warning page, which is an asset page, so
+         * the privilege gate covers it: a site cannot talk the browser into
+         * dropping to http by calling this itself.
+         */
+        @JavascriptInterface
+        fun continueInsecure() {
+            if (!privileged) return
+            runOnUiThread {
+                val target = pendingInsecure ?: return@runOnUiThread
+                pendingInsecure = null
+                try {
+                    android.net.Uri.parse(target).host
+                        ?.let { httpAllowed.add(it) }
+                } catch (e: Exception) { /* unparseable; load it anyway */ }
+                activeWeb()?.loadUrl(target)
+            }
+        }
+
         @JavascriptInterface
         fun retry() {
             if (!privileged) return
@@ -882,6 +949,7 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun getCachedFavicon(domain: String): String {
             if (!privileged) return ""
+            if (domain.isBlank() || domain == "__order") return ""
             return getSharedPreferences("favicon_cache", Context.MODE_PRIVATE)
                 .getString(domain, "") ?: ""
         }
@@ -1221,6 +1289,28 @@ class MainActivity : AppCompatActivity() {
             ): Boolean {
                 val uri = request?.url ?: return false
                 val scheme = (uri.scheme ?: "").lowercase()
+                // HTTPS-only: a tapped http link is upgraded here, which is
+                // the half that was missing. Sub-resources are left alone -
+                // this is about where the user is being taken.
+                if (scheme == "http" && request.isForMainFrame && httpsOnly()) {
+                    val target = uri.toString()
+                    val host = uri.host ?: ""
+                    if (!httpAllowed.contains(host)) {
+                        val now = android.os.SystemClock.uptimeMillis()
+                        if (now - (upgradedAt[host] ?: 0L) < 10_000L) {
+                            // Upgraded moments ago and sent straight back to
+                            // http: the site is redirecting, so https is not
+                            // the answer here. Ask rather than loop.
+                            showInsecureWarning(view, target)
+                        } else {
+                            upgradedAt[host] = now
+                            val https = "https://" + target.substring("http://".length)
+                            upgradedFrom[https] = target
+                            view?.loadUrl(https)
+                        }
+                        return true
+                    }
+                }
                 // Web content and our own asset pages: load here as normal.
                 if (scheme == "http" || scheme == "https" || scheme == "file" ||
                     scheme == "about" || scheme == "data" || scheme == "blob"
@@ -1251,6 +1341,14 @@ class MainActivity : AppCompatActivity() {
                 super.onReceivedError(view, request, error)
                 // Only replace the main-frame failure (not sub-resources like images/ads).
                 if (request?.isForMainFrame == true) {
+                    // If this was our own https attempt, the site may simply
+                    // not offer https. Say that, rather than reporting it as
+                    // unreachable - which was both wrong and a dead end.
+                    val original = request.url?.toString()?.let { upgradedFrom.remove(it) }
+                    if (original != null) {
+                        showInsecureWarning(view, original)
+                        return
+                    }
                     lastFailedUrl = request.url?.toString()
                     if (hasNetwork()) {
                         // Online but the site failed (bad address, host down, refused):
@@ -1282,6 +1380,8 @@ class MainActivity : AppCompatActivity() {
                 url?.let { tabs.activeTab?.url = it }
             }
             override fun onPageFinished(view: WebView?, url: String?) {
+                // The upgrade worked, so nothing needs remembering about it.
+                url?.let { upgradedFrom.remove(it) }
                 // Restated here as well, so a page that arrives by a route
                 // which skips the start callback - a restored tab, say - still
                 // ends up with the right answer.
@@ -1420,6 +1520,30 @@ class MainActivity : AppCompatActivity() {
                         onDeny = { req.deny() }
                     )
                 }
+            }
+
+            /**
+             * Keeps each site's own favicon, so the home tiles can be drawn
+             * without asking anyone who the user has been visiting.
+             *
+             * Never in Night Owl: a private visit leaving an icon behind on
+             * disk is a record of that visit.
+             */
+            override fun onReceivedIcon(view: WebView?, icon: Bitmap?) {
+                super.onReceivedIcon(view, icon)
+                if (nightOwl) return
+                val src = icon ?: return
+                val host = try {
+                    android.net.Uri.parse(view?.url ?: return).host
+                } catch (e: Exception) { null } ?: return
+                // Copied here and now: the WebView owns the bitmap it handed
+                // over and is free to recycle it the moment this returns.
+                val copy = try {
+                    val b = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888)
+                    Canvas(b).drawBitmap(src, null, android.graphics.Rect(0, 0, 64, 64), null)
+                    b
+                } catch (e: Exception) { return }
+                Thread { storeFavicon(host, copy) }.start()
             }
 
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
@@ -1621,16 +1745,19 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // Parameter named as the supertype names it. Renaming one in an override
+    // is legal but means a named-argument call goes to the wrong place, which
+    // is why the compiler warns about it.
     override fun onPictureInPictureModeChanged(
-        isInPip: Boolean,
+        isInPictureInPictureMode: Boolean,
         newConfig: android.content.res.Configuration
     ) {
-        super.onPictureInPictureModeChanged(isInPip, newConfig)
-        inPip = isInPip
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        inPip = isInPictureInPictureMode
         // Closed from the PiP window rather than expanded back into the app:
         // the activity is on its way to stopped, so tear the player down now
         // instead of leaving a fullscreen view behind for the next launch.
-        if (!isInPip &&
+        if (!isInPictureInPictureMode &&
             lifecycle.currentState == androidx.lifecycle.Lifecycle.State.CREATED) {
             exitFullscreen()
         }
@@ -1897,6 +2024,39 @@ class MainActivity : AppCompatActivity() {
      * "file:///android_asset/error.html?u=https%3A%2F%2F..." sitting in the
      * bar, which is neither where the user is nor anywhere they can go.
      */
+    /**
+     * Writes one site's icon into the cache the home page reads.
+     *
+     * Bounded: an icon per site visited would grow without limit, so the
+     * oldest fall out past a cap. Off the main thread - PNG encoding and a
+     * base64 of it are not free.
+     */
+    private fun storeFavicon(host: String, bmp: android.graphics.Bitmap) {
+        try {
+            val domain = host.removePrefix("www.")
+                .removePrefix("mobile.").removePrefix("m.")
+            if (domain.isBlank()) return
+            val bytes = java.io.ByteArrayOutputStream()
+            bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, bytes)
+            bmp.recycle()
+            val dataUrl = "data:image/png;base64," + android.util.Base64.encodeToString(
+                bytes.toByteArray(), android.util.Base64.NO_WRAP)
+            // A 64x64 PNG is a couple of kB; anything far past that is not an
+            // icon and is not worth carrying across the bridge.
+            if (dataUrl.length > 40000) return
+            val prefs = getSharedPreferences("favicon_cache", Context.MODE_PRIVATE)
+            val order = (prefs.getString("__order", "") ?: "")
+                .split(",").filter { it.isNotBlank() && it != domain }
+                .toMutableList()
+            order.add(domain)
+            val edit = prefs.edit().putString(domain, dataUrl)
+            while (order.size > 60) {
+                edit.remove(order.removeAt(0))
+            }
+            edit.putString("__order", order.joinToString(",")).apply()
+        } catch (e: Exception) { /* an icon is not worth a crash */ }
+    }
+
     private fun displayUrl(url: String?): String =
         if (url == null || url.startsWith("file:///android_asset/")) "" else url
 
@@ -2002,7 +2162,7 @@ class MainActivity : AppCompatActivity() {
     // Swaps the native top bar between the icon row (home / reload / tabs /
     // settings) and a single full-width search pill. Nothing is resized and the
     // WebView is never re-laid-out; only child visibility inside the existing
-    // 54dp bar changes, so the page cannot jump or reflow while scrolling.
+    // 58dp bar changes, so the page cannot jump or reflow while scrolling.
     private var homeBarAnim: android.animation.Animator? = null
     private var homeBarSeq = 0
     // Where the row actually is: 1f icons full, 0f fully collapsed. Kept here
@@ -2041,6 +2201,16 @@ class MainActivity : AppCompatActivity() {
             v.alpha = t
         }
         binding.urlBarContainer.alpha = 1f - t
+        // The pill's height rides the same curve as its opacity and the icons'
+        // width. It used to be set once, instantly, at the start of a collapse
+        // and at the end of an expand - so the size changed in a single frame
+        // while everything else moved over a quarter of a second, and it did it
+        // at opposite ends of the two directions. That mismatch is most of what
+        // reads as the bar snapping into place rather than arriving.
+        val lp = binding.urlBarContainer.layoutParams
+        lp.height = (((FIELD_H_COMPACT * (1f - t)) + (FIELD_H_NORMAL * t)) *
+            resources.displayMetrics.density).toInt()
+        binding.urlBarContainer.layoutParams = lp
     }
 
     private fun snapHomeBar(compact: Boolean) {
@@ -2075,9 +2245,10 @@ class MainActivity : AppCompatActivity() {
         val settled = binding.homeBtn.visibility == (if (compact) View.GONE else View.VISIBLE)
         if (!animate || settled) { snapHomeBar(compact); return }
 
-        // Collapsing: the pill takes its final look and height now, while it is
-        // still fully transparent, so the only thing the eye follows is the
-        // crossfade. Expanding does the reverse, restyling once alpha reaches 0.
+        // Collapsing: the pill takes its final styling now - background, text
+        // size, hint - while it is still fully transparent, so none of that is
+        // seen changing. Its height is no longer set here; that is animated in
+        // setHomeBarProgress along with everything else.
         if (compact) styleUrlBar(FIELD_COMPACT)
 
         homeBarRow().forEach { it.visibility = View.VISIBLE; it.translationY = 0f }
@@ -2100,10 +2271,22 @@ class MainActivity : AppCompatActivity() {
         // distance left, so reversing part-way does not spend a full beat
         // covering a sliver.
         val span = kotlin.math.abs(to - from)
+        // One motion, whichever way it is going.
+        //
+        // Collapsing ran 240ms on a sharper curve and expanding 440ms on a
+        // softer one - nearly twice as long coming back as going away, on a
+        // different easing. The reasoning was that things arriving should
+        // settle while things leaving can go quickly, which is sound for two
+        // different elements and wrong for one element moving between two
+        // states: the eye reads the pair as the same control behaving
+        // inconsistently, not as considered asymmetry.
+        //
+        // 300ms on Material's standard easing, both directions. Still scaled by
+        // the distance left to cover, so reversing part-way through does not
+        // spend a full beat crossing a sliver.
         val anim = android.animation.ValueAnimator.ofFloat(from, to).apply {
-            duration = ((if (compact) 240 else 440) * span).toLong().coerceAtLeast(90L)
-            interpolator = android.view.animation.PathInterpolator(
-                if (compact) 0.3f else 0.05f, 0f, 0f, 1f)
+            duration = (300 * span).toLong().coerceAtLeast(120L)
+            interpolator = android.view.animation.PathInterpolator(0.2f, 0f, 0f, 1f)
             addUpdateListener { a -> setHomeBarProgress(a.animatedValue as Float) }
             addListener(object : android.animation.AnimatorListenerAdapter() {
                 override fun onAnimationEnd(a: android.animation.Animator) {
@@ -2526,6 +2709,13 @@ class MainActivity : AppCompatActivity() {
         (binding.root.height.takeIf { it > 0 }
             ?: resources.displayMetrics.heightPixels).toFloat()
 
+    // WebView.getScale() has been deprecated since API 17 and still works on
+    // 36, with no removal announced. The replacement is tracking scale through
+    // onScaleChanged, which means reworking the arithmetic that places the ad
+    // card - the one piece of this app that earns anything. A rewrite there
+    // buys a quieter build log and risks the revenue, so the warning is
+    // acknowledged here instead of silenced by accident.
+    @Suppress("DEPRECATION")
     private fun positionAdSlot(web: android.webkit.WebView, scrollY: Int) {
         if (binding.adSlot.visibility != View.VISIBLE) return
         val content = (web.contentHeight * web.scale).toInt()
@@ -2548,6 +2738,7 @@ class MainActivity : AppCompatActivity() {
 
     // Tells the page how much room to leave. Sent after layout, since the card's
     // height is not known until it has measured with a creative in it.
+    @Suppress("DEPRECATION") // See positionAdSlot: same getScale() call.
     private fun syncAdSlotReserve() {
         val web = activeWeb() ?: return
         val scale = web.scale.takeIf { it > 0f } ?: 1f
@@ -3611,10 +3802,21 @@ class MainActivity : AppCompatActivity() {
      */
     private fun resolveInput(input: String): String {
         var url = UrlHelper.toUrlOrSearch(input, Settings.getEngineUrl(this))
-        // HTTPS-only mode: upgrade insecure http links.
-        if (Settings.getBool(this, Settings.SEC_HTTPS_ONLY, true) &&
-            url.startsWith("http://")) {
-            url = "https://" + url.removePrefix("http://")
+        if (httpsOnly() && url.startsWith("http://")) {
+            val host = try {
+                android.net.Uri.parse(url).host
+            } catch (e: Exception) { null }
+            // A host the user has already said yes to stays as typed.
+            if (host == null || !httpAllowed.contains(host)) {
+                val https = "https://" + url.removePrefix("http://")
+                // Recorded so that if https fails, the failure is met with the
+                // warning and a way through, not "site can't be reached".
+                upgradedFrom[https] = url
+                if (host != null) {
+                    upgradedAt[host] = android.os.SystemClock.uptimeMillis()
+                }
+                url = https
+            }
         }
         return url
     }

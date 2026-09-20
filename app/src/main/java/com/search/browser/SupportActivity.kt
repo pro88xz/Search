@@ -29,6 +29,29 @@ class SupportActivity : AppCompatActivity() {
         web = WebView(this)
         web.settings.javaScriptEnabled = true
         web.addJavascriptInterface(SupportBridge(), "SearchApp")
+        // This WebView carries buySupport, so nothing but the page it was made
+        // for may load in it: a remote page here would be a remote page holding
+        // the billing bridge. supporter.html has no outbound links today, so
+        // nothing can currently trigger it - this is the door being shut before
+        // someone adds one.
+        web.webViewClient = object : android.webkit.WebViewClient() {
+            override fun shouldOverrideUrlLoading(
+                view: WebView?,
+                request: android.webkit.WebResourceRequest?
+            ): Boolean {
+                val uri = request?.url ?: return false
+                if (uri.toString().startsWith("file:///android_asset/supporter.html")) {
+                    return false
+                }
+                try {
+                    startActivity(
+                        android.content.Intent(android.content.Intent.ACTION_VIEW, uri)
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                } catch (e: Exception) { /* nothing handles it; stay put */ }
+                return true
+            }
+        }
         web.loadUrl("file:///android_asset/supporter.html")
         container.addView(web)
         setContentView(container)

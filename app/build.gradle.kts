@@ -36,7 +36,13 @@ android {
     }
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("release")
+            // Only when there is a keystore to sign with. Assigning a signing
+            // config whose fields were never set fails the build outright, so
+            // a fresh clone or a CI runner without the key could not produce a
+            // release build at all - not even to check R8 had broken nothing.
+            if (keystorePropertiesFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(

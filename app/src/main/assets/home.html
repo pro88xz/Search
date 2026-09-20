@@ -282,21 +282,50 @@
     return name.charAt(0).toUpperCase() + name.slice(1);
   }
 
-  function buildTile(label, url){
+  /**
+   * builtIn marks one of the four shortcuts shipped with the app, as opposed to
+   * a site pulled from the user's own history.
+   *
+   * Every tile used to fetch its icon from Google's favicon service, falling
+   * back to DuckDuckGo's - which meant that opening a new tab announced the
+   * list of sites in your history to two third parties, by name, every single
+   * time. A browser with a privacy policy cannot be doing that quietly.
+   *
+   * A site from history now uses the icon captured from the site itself when
+   * it was visited, and asks nobody if there isn't one. Only the four built-in
+   * shortcuts still fetch, and those are constants in the app: they say
+   * nothing about where this user has been.
+   */
+  function buildTile(label, url, builtIn){
     var a=document.createElement('a'); a.className='tile'; a.href='javascript:void(0)';
     a.onclick=function(){ if(window.SearchApp&&window.SearchApp.open) window.SearchApp.open(url); };
     var fav=document.createElement('div'); fav.className='fav';
     fav.textContent=label.charAt(0).toUpperCase();
     var span=document.createElement('span'); span.textContent=label;
     a.appendChild(fav); a.appendChild(span); host.appendChild(a);
-    var dom=url.replace(/^https?:\/\//,'').split('/')[0].replace(/^www\./,'');
+    var dom=url.replace(/^https?:\/\//,'').split('/')[0]
+      .replace(/^www\./,'').replace(/^mobile\./,'').replace(/^m\./,'');
+
     var img=document.createElement('img');
-    var fellBack=false;
     // Handlers before src: a cached icon can fire load before they attach,
     // which is why a tile sometimes kept its letter for no reason at all.
     img.onload=function(){ fav.textContent=''; fav.appendChild(img); };
+
+    if (!builtIn) {
+      var local='';
+      try {
+        if (window.SearchApp && window.SearchApp.getCachedFavicon) {
+          local = window.SearchApp.getCachedFavicon(dom) || '';
+        }
+      } catch(e){}
+      // No icon yet means this site has not been visited since the cache was
+      // introduced. The accent letter stands in; nothing is fetched.
+      if (local) img.src = local;
+      return;
+    }
+
+    var fellBack=false;
     img.onerror=function(){
-      // Second provider, then give up and keep the accent letter.
       if(fellBack) return;
       fellBack=true;
       img.src='https://icons.duckduckgo.com/ip3/'+dom+'.ico';
@@ -328,16 +357,18 @@
     // Recent sites (newest first) push in from the left; defaults fill the rest.
     // Always show exactly 4, defaults falling off the right as recent grows.
     var combined = [];
-    recent.forEach(function(r){ combined.push({label:labelFromDomain(r.domain), url:r.url}); });
+    recent.forEach(function(r){
+      combined.push({label:labelFromDomain(r.domain), url:r.url, builtIn:false});
+    });
     DEFAULTS.forEach(function(d){
       // avoid duplicating a default that's already in recent
       var dom = d.url.replace(/^https?:\/\//,'').split('/')[0].replace(/^www\./,'');
       var dup = combined.some(function(c){
         return c.url.replace(/^https?:\/\//,'').split('/')[0].replace(/^www\./,'') === dom;
       });
-      if (!dup) combined.push(d);
+      if (!dup) combined.push({label:d.label, url:d.url, builtIn:true});
     });
-    combined.slice(0,4).forEach(function(t){ buildTile(t.label, t.url); });
+    combined.slice(0,4).forEach(function(t){ buildTile(t.label, t.url, t.builtIn); });
   }
 
   renderTiles();
