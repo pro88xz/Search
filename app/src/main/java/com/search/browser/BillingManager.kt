@@ -31,15 +31,45 @@ class BillingManager(
         )
         .build()
 
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var retries = 0
+    private var finished = false
+    // A tap that arrived before the prices did, carried out once they land.
+    private var pendingLaunch: String? = null
+
     fun start() {
+        if (finished) return
+        if (client.isReady) {
+            queryProducts()
+            queryOwned()
+            return
+        }
         client.startConnection(object : BillingClientStateListener {
             override fun onBillingSetupFinished(result: BillingResult) {
                 if (result.responseCode == BillingClient.BillingResponseCode.OK) {
+                    retries = 0
                     queryProducts()
                     queryOwned()
                 }
             }
-            override fun onBillingServiceDisconnected() { /* reconnect lazily on next action */ }
+            /**
+             * Reconnect, rather than go quiet.
+             *
+             * This was a comment reading "reconnect lazily on next action" over
+             * an empty body - and the next action, launch(), simply returned
+             * when no product details were loaded. So one disconnect left every
+             * support button dead for the rest of the session, with no error
+             * and nothing on screen to suggest anything was wrong.
+             *
+             * Backs off and gives up after a few tries: a phone with no Play
+             * services should not be reconnecting in a loop for as long as the
+             * screen is open.
+             */
+            override fun onBillingServiceDisconnected() {
+                if (finished || retries >= 3) return
+                retries++
+                handler.postDelayed({ start() }, 2000L * retries)
+            }
         })
     }
 
@@ -60,13 +90,27 @@ class BillingManager(
                     pd.oneTimePurchaseOfferDetails?.formattedPrice?.let { prices[pd.productId] = it }
                 }
                 details = map
-                activity.runOnUiThread { onPrices(prices) }
+                activity.runOnUiThread {
+                    onPrices(prices)
+                    // A tap that came in while the prices were still loading.
+                    val waiting = pendingLaunch
+                    pendingLaunch = null
+                    if (waiting != null && details.containsKey(waiting)) launch(waiting)
+                }
             }
         }
     }
 
     fun launch(productId: String) {
-        val pd = details[productId] ?: return
+        val pd = details[productId]
+        if (pd == null) {
+            // Nothing loaded yet - first tap, or the connection dropped. Hold
+            // the choice, reconnect, and carry it out when the details arrive,
+            // instead of silently doing nothing.
+            pendingLaunch = productId
+            start()
+            return
+        }
         val params = BillingFlowParams.newBuilder()
             .setProductDetailsParamsList(
                 listOf(
@@ -104,5 +148,10 @@ class BillingManager(
     fun isSupporter(context: Context): Boolean =
         Settings.getBool(context, Settings.IS_SUPPORTER, false)
 
-    fun end() { client.endConnection() }
+    fun end() {
+        finished = true
+        pendingLaunch = null
+        handler.removeCallbacksAndMessages(null)
+        client.endConnection()
+    }
 }

@@ -293,6 +293,13 @@ class MainActivity : AppCompatActivity() {
             Settings.getBool(this, Settings.SITE_JAVASCRIPT, true),
             Settings.getBool(this, Settings.SITE_BLOCK_IMAGES, false),
             Settings.getBool(this, Settings.SITE_BLOCK_AUTOPLAY, true),
+            // Both of these were read once, when a tab's WebView was built, and
+            // never looked at again. Toggling either did nothing to any tab
+            // already open - and unlike ad blocking, which is consulted per
+            // request, a reload did not help: they are properties of the
+            // WebView, not of the page in it.
+            Settings.getBool(this, Settings.SEC_SAFE_BROWSING, true),
+            Settings.getBool(this, Settings.SEC_BLOCK_3P_COOKIES, false),
             Settings.getTextScale(this)
         ).joinToString("|")
     }
@@ -512,12 +519,23 @@ class MainActivity : AppCompatActivity() {
         val js = Settings.getBool(this, Settings.SITE_JAVASCRIPT, true)
         val blockImg = Settings.getBool(this, Settings.SITE_BLOCK_IMAGES, false)
         val blockAutoplay = Settings.getBool(this, Settings.SITE_BLOCK_AUTOPLAY, true)
+        val safeBrowsing = Settings.getBool(this, Settings.SEC_SAFE_BROWSING, true)
+        val block3p = Settings.getBool(this, Settings.SEC_BLOCK_3P_COOKIES, false)
         tabs.tabs.forEach { tab ->
             tab.webView?.settings?.apply {
                 textZoom = zoom
                 javaScriptEnabled = js
                 blockNetworkImage = blockImg
                 mediaPlaybackRequiresUserGesture = blockAutoplay
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    safeBrowsingEnabled = safeBrowsing
+                }
+            }
+            // Third-party cookies are a property of the WebView held by the
+            // CookieManager, not of its settings object.
+            tab.webView?.let {
+                android.webkit.CookieManager.getInstance()
+                    .setAcceptThirdPartyCookies(it, !block3p)
             }
         }
         // Settings are applied live to the WebView above; we do NOT reload,
@@ -766,8 +784,11 @@ class MainActivity : AppCompatActivity() {
         setIntent(intent)
         val incoming = urlFromIntent(intent)
         if (incoming != null) {
-            addNewTab(homePage)
-            go(incoming)
+            // Straight into the new tab. This used to open home and then
+            // navigate away from it, which left the home page sitting in the
+            // new tab's history - so back, from a link someone had just shared
+            // into the browser, went to the home page instead of leaving.
+            addNewTab(resolveInput(incoming))
         }
     }
 
@@ -913,10 +934,14 @@ class MainActivity : AppCompatActivity() {
             // Return up to 8 most-recent unique domains from history as JSON.
             val entries = History.load(this@MainActivity)
             val seen = LinkedHashSet<String>()
-            val out = StringBuilder("[")
-            var count = 0
+            // Built with the JSON library rather than by hand. The hand-rolled
+            // version escaped the url but not the domain, and neither against
+            // control characters, so one odd address in the history produced
+            // JSON the home page could not parse - and the tiles silently came
+            // back empty with nothing to say why.
+            val out = JSONArray()
             for (e in entries) {
-                if (count >= 8) break
+                if (out.length() >= 8) break
                 val host = try {
                     android.net.Uri.parse(e.url).host ?: continue
                 } catch (ex: Exception) { continue }
@@ -926,13 +951,8 @@ class MainActivity : AppCompatActivity() {
                 val domain = host.removePrefix("www.")
                     .removePrefix("mobile.").removePrefix("m.")
                 if (domain.isBlank() || !seen.add(domain)) continue
-                if (count > 0) out.append(",")
-                val safeUrl = e.url.replace("\\", "\\\\").replace("\"", "\\\"")
-                out.append("{\"domain\":\"").append(domain).append("\",")
-                out.append("\"url\":\"").append(safeUrl).append("\"}")
-                count++
+                out.put(JSONObject().put("domain", domain).put("url", e.url))
             }
-            out.append("]")
             return out.toString()
         }
 
@@ -1111,6 +1131,11 @@ class MainActivity : AppCompatActivity() {
         web.settings.apply {
             javaScriptEnabled = Settings.getBool(this@MainActivity, Settings.SITE_JAVASCRIPT, true)
             domStorageEnabled = true
+            // Applied here, where the private tab is actually built.
+            // enterNightOwl used to set this on the tab that was open at the
+            // time and then immediately create a new one - so the tab the user
+            // browsed privately in was the one that never got it.
+            if (nightOwl) cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
             loadWithOverviewMode = true
             useWideViewPort = true
             builtInZoomControls = true
@@ -1289,6 +1314,15 @@ class MainActivity : AppCompatActivity() {
                 // Record the visited page in history (never in Night Owl mode).
                 if (url != null && !nightOwl) {
                     History.add(this@MainActivity, view?.title ?: "", url)
+                } else if (url != null && nightOwl) {
+                    // Noted so leaving can clear these hosts and only these.
+                    // Held in memory only: a list of privately visited sites
+                    // written to disk would be the very thing being avoided.
+                    try {
+                        android.net.Uri.parse(url).host
+                            ?.takeIf { it.isNotBlank() }
+                            ?.let { nightOwlHosts.add(it) }
+                    } catch (e: Exception) { /* not an addressable page */ }
                 }
                 if (view == tabs.activeTab?.webView) {
                     updateNavButtons(); refreshStar(); refreshOmniboxVisibility(url)
@@ -2160,30 +2194,83 @@ class MainActivity : AppCompatActivity() {
         web.reload()
     }
 
+    /**
+     * Hosts visited while Night Owl was on, so leaving can clear those and
+     * leave every other site alone. In memory only - a list of privately
+     * visited sites written to disk would defeat the point of the mode.
+     */
+    private val nightOwlHosts = linkedSetOf<String>()
+
     private fun enterNightOwl() {
         nightOwl = true
-        // Isolate the private session: no disk cache, no form/password saving.
-        activeWeb()?.settings?.apply {
-            cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
-            saveFormData = false
-        }
-        // Don't persist cookies created during Night Owl.
-        android.webkit.CookieManager.getInstance().setAcceptCookie(true)
-        // Visual indicator.
+        nightOwlHosts.clear()
         binding.nightOwlBadge.visibility = View.VISIBLE
         applyNightOwlChrome(true)
-        // Fresh private tab.
+        // The private settings ride on the tab itself, in newWebView, so this
+        // new tab is built with them rather than having them applied to the
+        // tab being left behind.
         addNewTab(homePage)
         android.widget.Toast.makeText(this,
             "Night Owl on — private browsing", android.widget.Toast.LENGTH_SHORT).show()
     }
 
+    /**
+     * Clears what the private session touched, and nothing else.
+     *
+     * This used to call WebStorage.deleteAllData() and removeSessionCookies()
+     * with no argument. Both are global: turning private browsing off wiped
+     * localStorage for every site the user had ever visited and signed them
+     * out of sessions that had nothing to do with Night Owl. Leaving a mode is
+     * not consent to lose the data from outside it.
+     *
+     * A caveat worth stating plainly: WebView keeps one cookie jar for the
+     * whole process, so this is a clean-up rather than an isolated session.
+     * Cookies are expired per host, which cannot reach one scoped to a parent
+     * domain. Properly isolating a private session needs a separate WebView
+     * data directory in its own process, which the app does not have.
+     */
     private fun exitNightOwl() {
         nightOwl = false
-        // Wipe session data created during Night Owl.
-        android.webkit.CookieManager.getInstance().removeSessionCookies(null)
-        android.webkit.WebStorage.getInstance().deleteAllData()
-        activeWeb()?.clearCache(true)
+        val hosts = nightOwlHosts.toSet()
+        nightOwlHosts.clear()
+
+        val cookies = android.webkit.CookieManager.getInstance()
+        hosts.forEach { host ->
+            listOf("https://" + host, "http://" + host).forEach { origin ->
+                try {
+                    cookies.getCookie(origin)?.split(";")?.forEach { pair ->
+                        val name = pair.substringBefore('=').trim()
+                        if (name.isNotEmpty()) {
+                            cookies.setCookie(origin, name + "=; Max-Age=0; Path=/")
+                        }
+                    }
+                } catch (e: Exception) { /* nothing stored for this one */ }
+            }
+        }
+        try { cookies.flush() } catch (e: Exception) {}
+
+        // Storage is addressable per origin, so this part is exact. getOrigins
+        // reports them in WebView's own spelling, which is why they are matched
+        // by host rather than rebuilt by hand.
+        try {
+            val storage = android.webkit.WebStorage.getInstance()
+            storage.getOrigins { map ->
+                map?.keys?.forEach { key ->
+                    val origin = key?.toString() ?: return@forEach
+                    val host = try {
+                        android.net.Uri.parse(origin).host
+                    } catch (e: Exception) { null }
+                    if (host != null && hosts.contains(host)) {
+                        try { storage.deleteOrigin(origin) } catch (e: Exception) {}
+                    }
+                }
+            }
+        } catch (e: Exception) { /* storage unavailable; cookies already cleared */ }
+
+        // The private tab's own cache. clearCache is process-wide, so it is
+        // aimed at the tab that was private rather than fired blindly.
+        activeWeb()?.clearCache(false)
+
         binding.nightOwlBadge.visibility = View.GONE
         applyNightOwlChrome(false)
         // If we're on the home page, reload it so it drops the private empty-state
@@ -3517,15 +3604,26 @@ class MainActivity : AppCompatActivity() {
         return null
     }
 
-    private fun go(input: String) {
-        if (searchMode) exitSearchMode()
+    /**
+     * What the user typed, or what another app handed over, turned into an
+     * address to load. Shared so a link arriving by intent is treated exactly
+     * like one typed into the bar, rather than skipping these rules.
+     */
+    private fun resolveInput(input: String): String {
         var url = UrlHelper.toUrlOrSearch(input, Settings.getEngineUrl(this))
         // HTTPS-only mode: upgrade insecure http links.
         if (Settings.getBool(this, Settings.SEC_HTTPS_ONLY, true) &&
             url.startsWith("http://")) {
             url = "https://" + url.removePrefix("http://")
         }
-        activeWeb()?.loadUrl(url)
+        return url
+    }
+
+    private fun go(input: String) {
+        if (searchMode) exitSearchMode()
+        // An empty bar has nothing to go to. It used to load a blank search.
+        if (input.isBlank()) { hideKeyboard(); return }
+        activeWeb()?.loadUrl(resolveInput(input))
         hideKeyboard()
         activeWeb()?.requestFocus()
     }

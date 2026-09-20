@@ -7,31 +7,47 @@ object UrlHelper {
 
     private val PASSTHROUGH_SCHEMES = listOf(
         "http://", "https://", "about:", "file:", "data:",
-        "javascript:", "chrome:", "content:", "ftp://"
+        "chrome:", "content:", "ftp://"
     )
 
-    // A pragmatic set of real TLDs. If the suffix isn't here, we search
-    // (so "node.js", "index.php", "main.py" correctly go to search).
-    private val KNOWN_TLDS = setOf(
-        // generic
-        "com", "org", "net", "io", "dev", "app", "co", "edu", "gov", "mil", "int",
-        "info", "biz", "me", "xyz", "tech", "ai", "cc", "tv", "online", "store",
-        "site", "blog", "shop", "cloud", "page", "wiki", "news", "email", "live",
-        "pro", "name", "mobi", "asia", "space", "fun", "life", "world", "today",
-        // country codes (selection incl. West Africa)
-        "sl", "ng", "gh", "gm", "ci", "sn", "lr", "gn",
-        "uk", "us", "ca", "au", "de", "fr", "es", "it", "nl", "se", "no", "fi",
-        "ru", "cn", "jp", "kr", "in", "br", "za", "ke", "eg", "ma", "pt", "ie",
-        "ch", "at", "be", "dk", "pl", "gr", "tr", "ua", "cz", "ro", "hu", "sk",
-        "sg", "hk", "tw", "my", "id", "th", "ph", "vn", "ae", "sa", "il", "mx",
-        "ar", "cl", "pe", "nz"
+    // Deliberately NOT passed through: javascript:. Typed or pasted into the
+    // address bar it runs in whatever page is open, which is how someone is
+    // talked into pasting a line that reads their session back out. Every
+    // mainstream browser refuses it from the address bar for this reason. It
+    // falls through to search, where it is harmless.
+
+    /**
+     * The other way round from a list of real suffixes.
+     *
+     * There were about a hundred TLDs listed here and anything outside them was
+     * sent to search - so .eu, .ac, .gg, .fm, .to, .ly and a thousand others
+     * were unreachable by typing them. There are well over 1500 in use and the
+     * set changes, so an allowlist is a list that is always wrong somewhere.
+     *
+     * The list existed to stop "index.php" and "main.py" being treated as
+     * addresses, so that is what is listed instead: the handful of suffixes
+     * that are overwhelmingly filenames when someone types them into a phone.
+     * A few of these are also real TLDs now - .sh and .zip among them - and
+     * they lose, because on a phone the filename reading is the likelier one.
+     * Typing the full https:// address always wins over this guess.
+     */
+    private val FILE_SUFFIXES = setOf(
+        "js", "mjs", "ts", "tsx", "jsx", "php", "py", "rb", "java", "kt", "kts",
+        "html", "htm", "css", "scss", "json", "xml", "yml", "yaml", "toml",
+        "txt", "md", "log", "csv", "sql", "sh", "bat", "ini", "cfg", "conf",
+        "lock", "env", "gradle", "properties", "class", "jar", "exe", "dll",
+        "zip", "tar", "gz", "apk", "iso", "dmg", "bak", "tmp"
     )
 
     private const val GOOGLE_SEARCH = "https://www.google.com/search?q="
 
     fun toUrlOrSearch(raw: String, searchPrefix: String = GOOGLE_SEARCH): String {
         val text = raw.trim()
-        if (text.isEmpty()) return GOOGLE_SEARCH
+        // Was a hardcoded Google search, ignoring the engine the user picked -
+        // so an accidental Go on an empty bar landed on a blank Google page
+        // even for someone who had chosen DuckDuckGo. Callers skip blank input
+        // anyway; this only decides what an empty string means.
+        if (text.isEmpty()) return searchPrefix
 
         val lower = text.lowercase()
 
@@ -68,8 +84,11 @@ object UrlHelper {
         if (labels.any { it.isEmpty() }) return false
 
         val tld = labels.last().lowercase()
-        // Strict: only a recognized TLD counts as a domain.
-        return tld in KNOWN_TLDS
+        // A suffix that is letters only and a plausible length is a domain,
+        // unless it is one of the few that reads as a filename.
+        if (tld.length < 2 || tld.length > 24) return false
+        if (!tld.all { it in 'a'..'z' }) return false
+        return tld !in FILE_SUFFIXES
     }
 
     private fun search(query: String, prefix: String): String = prefix + Uri.encode(query)
