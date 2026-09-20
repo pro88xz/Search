@@ -593,23 +593,69 @@ class MainActivity : AppCompatActivity() {
 
     // ---------- JS bridge ----------
 
+    /**
+     * The bridge between a page and the app.
+     *
+     * It is attached to every WebView, because a few of its methods have to
+     * work on ordinary web pages: the media detector reports playback from
+     * whatever site is playing, and a blob: save can only be read out of the
+     * page that owns the blob. Everything else here exists for this app's own
+     * asset pages - and every one of them was reachable from any site the user
+     * visited. Three lines of script on any page could read getRecentSites()
+     * and post the user's browsing history back out through open().
+     *
+     * [privileged] separates the two halves. It is set in onPageStarted for the
+     * document loading in this bridge's own WebView, so it is already correct
+     * before that document's script runs, and it fails closed: a method that
+     * cannot show it is talking to an asset page does nothing at all.
+     *
+     * The blob callbacks are deliberately not gated on it. They are meant to
+     * run on real pages, and they carry a one-shot token instead, which is the
+     * right control for them.
+     */
     inner class SearchAppBridge {
+        // Volatile: bridge calls arrive on a WebView thread, not the main one.
+        @Volatile var privileged: Boolean = false
+
         @JavascriptInterface
-        fun submit(query: String) { runOnUiThread { go(query) } }
+        fun submit(query: String) {
+            if (!privileged) return
+            runOnUiThread { go(query) }
+        }
         @JavascriptInterface
-        fun open(url: String) { runOnUiThread { activeWeb()?.loadUrl(url) } }
+        fun open(url: String) {
+            if (!privileged) return
+            runOnUiThread { activeWeb()?.loadUrl(url) }
+        }
         @JavascriptInterface
-        fun focusSearch() { runOnUiThread { enterSearchMode() } }
+        fun focusSearch() {
+            if (!privileged) return
+            runOnUiThread { enterSearchMode() }
+        }
         @JavascriptInterface
         fun homeFieldVisible(visible: Boolean) {
+            if (!privileged) return
             runOnUiThread { applyHomeCompact(!visible, animate = true) }
         }
         @JavascriptInterface
-        fun shareUrl(url: String, title: String) { runOnUiThread { shareLink(url, title) } }
+        fun shareUrl(url: String, title: String) {
+            if (!privileged) return
+            runOnUiThread { shareLink(url, title) }
+        }
         @JavascriptInterface
-        fun startVoice() { runOnUiThread { launchVoiceSearch() } }
+        fun startVoice() {
+            if (!privileged) return
+            runOnUiThread { launchVoiceSearch() }
+        }
         @JavascriptInterface
-        fun startScan() { runOnUiThread { launchScan() } }
+        fun startScan() {
+            // A site being able to open the camera scanner on its own is
+            // exactly the kind of thing this gate is for.
+            if (!privileged) return
+            runOnUiThread { launchScan() }
+        }
+        // Not gated: the media detector runs on whatever site is playing,
+        // which is the whole point of it.
         @JavascriptInterface
         fun mediaState(state: String, title: String, host: String) {
             runOnUiThread { onMediaState(state, title, host) }
@@ -617,6 +663,7 @@ class MainActivity : AppCompatActivity() {
 
         @JavascriptInterface
         fun retry() {
+            if (!privileged) return
             runOnUiThread {
                 val target = lastFailedUrl
                 if (target != null) activeWeb()?.loadUrl(target)
@@ -625,6 +672,7 @@ class MainActivity : AppCompatActivity() {
         }
         @JavascriptInterface
         fun cacheFavicon(domain: String, dataUrl: String) {
+            if (!privileged) return
             if (domain.isBlank() || dataUrl.isBlank()) return
             getSharedPreferences("favicon_cache", Context.MODE_PRIVATE)
                 .edit().putString(domain, dataUrl).apply()
@@ -632,6 +680,7 @@ class MainActivity : AppCompatActivity() {
 
         @JavascriptInterface
         fun getCachedFavicon(domain: String): String {
+            if (!privileged) return ""
             return getSharedPreferences("favicon_cache", Context.MODE_PRIVATE)
                 .getString(domain, "") ?: ""
         }
@@ -679,6 +728,8 @@ class MainActivity : AppCompatActivity() {
 
         @JavascriptInterface
         fun getRecentSites(): String {
+            // The browsing history. This is the call the gate exists for.
+            if (!privileged) return "[]"
             // Return up to 8 most-recent unique domains from history as JSON.
             val entries = History.load(this@MainActivity)
             val seen = LinkedHashSet<String>()
@@ -707,6 +758,9 @@ class MainActivity : AppCompatActivity() {
 
         @JavascriptInterface
         fun getConfig(): String {
+            // Carries nightOwl, so without the gate a site could ask whether
+            // the user believes they are browsing privately.
+            if (!privileged) return "{}"
             val bg = Settings.getHomeBackground(this@MainActivity)
             val accent = Settings.getHomeAccent(this@MainActivity)
             val tiles = Settings.getBool(this@MainActivity, Settings.HOME_SHOW_TILES, true)
@@ -714,6 +768,7 @@ class MainActivity : AppCompatActivity() {
         }
         @JavascriptInterface
         fun suggest(query: String, requestId: Int) {
+            if (!privileged) return
             Thread {
                 val items = buildSuggestions(query.trim())
                 runOnUiThread { pushSuggestions(requestId, items) }
@@ -721,6 +776,7 @@ class MainActivity : AppCompatActivity() {
         }
         @JavascriptInterface
         fun getFeed(requestId: Int) {
+            if (!privileged) return
             Thread {
                 val json = NewsFeed.fetch(this@MainActivity)
                 runOnUiThread { pushFeed(requestId, json) }
@@ -939,7 +995,11 @@ class MainActivity : AppCompatActivity() {
         android.webkit.CookieManager.getInstance()
             .setAcceptThirdPartyCookies(web, !block3p)
 
-        web.addJavascriptInterface(SearchAppBridge(), "SearchApp")
+        // One bridge per WebView, kept on the view itself so the page
+        // callbacks can tell it whether the document now loading is ours.
+        val bridge = SearchAppBridge()
+        web.tag = bridge
+        web.addJavascriptInterface(bridge, "SearchApp")
 
         web.webViewClient = object : WebViewClient() {
             /**
@@ -1003,6 +1063,11 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+                // First, and before this document's script runs: decide whether
+                // it may reach the private half of the bridge. Only pages
+                // shipped inside the app may.
+                (view?.tag as? SearchAppBridge)?.privileged =
+                    url != null && url.startsWith("file:///android_asset/")
                 if (searchMode && url != null && url != homePage) exitSearchMode()
                 super.onPageStarted(view, url, favicon)
                 if (view == tabs.activeTab?.webView) {
@@ -1013,6 +1078,11 @@ class MainActivity : AppCompatActivity() {
                 url?.let { tabs.activeTab?.url = it }
             }
             override fun onPageFinished(view: WebView?, url: String?) {
+                // Restated here as well, so a page that arrives by a route
+                // which skips the start callback - a restored tab, say - still
+                // ends up with the right answer.
+                (view?.tag as? SearchAppBridge)?.privileged =
+                    url != null && url.startsWith("file:///android_asset/")
                 super.onPageFinished(view, url)
                 // Media detection: report HTML5 playback to the app for the
                 // media-control notification (skipped in Night Owl).
