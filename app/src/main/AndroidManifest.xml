@@ -7,8 +7,26 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
+    <!--
+      Needed for the web to reach them at all. A site asking for the camera,
+      the microphone or a location gets nothing unless this app itself holds
+      the matching permission, which is why those features never worked: the
+      request was granted at the WebView and then refused by the system.
+      None is requested up front - each is asked for only when a site asks and
+      the user has agreed to that site. Declared as optional hardware so a
+      phone without a camera can still install the browser.
+    -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <uses-feature android:name="android.hardware.location" android:required="false" />
     <application
         android:allowBackup="true"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:label="Search"
@@ -68,9 +86,15 @@
             android:name=".MediaService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
+        <!--
+          The system delivers MEDIA_BUTTON from another process, so a receiver
+          that is not exported never hears a headset or Bluetooth play/pause.
+          Notification buttons worked because a PendingIntent carries this
+          app's own identity; the hardware ones did not.
+        -->
         <receiver
             android:name="androidx.media.session.MediaButtonReceiver"
-            android:exported="false">
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MEDIA_BUTTON" />
             </intent-filter>

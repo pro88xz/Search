@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 12+. Two separate lists: what may leave the phone for a cloud
+  backup, and what may move in a direct device-to-device transfer. The same
+  browsing data is withheld from both.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+    <!--
+      A browser's own data does not belong in a cloud backup that can be
+      restored onto a different phone. History, the sites you granted the
+      camera to, and the WebView's cookie and storage files are all browsing
+      records; allowBackup was on with no rules, so every one of them was
+      being copied out. Settings stay in - losing your search engine and
+      accent on a new phone is a nuisance with nothing private behind it.
+    -->
+    <exclude domain="sharedpref" path="search_history.xml" />
+    <exclude domain="sharedpref" path="search_bookmarks.xml" />
+    <exclude domain="sharedpref" path="site_permissions.xml" />
+    <exclude domain="sharedpref" path="favicon_cache.xml" />
+    <exclude domain="file" path="feed_cache.json" />
+    <!-- Cookies, localStorage and the http cache all live under here. -->
+    <exclude domain="root" path="app_webview" />
+    </cloud-backup>
+    <device-transfer>
+    <!--
+      A browser's own data does not belong in a cloud backup that can be
+      restored onto a different phone. History, the sites you granted the
+      camera to, and the WebView's cookie and storage files are all browsing
+      records; allowBackup was on with no rules, so every one of them was
+      being copied out. Settings stay in - losing your search engine and
+      accent on a new phone is a nuisance with nothing private behind it.
+    -->
+    <exclude domain="sharedpref" path="search_history.xml" />
+    <exclude domain="sharedpref" path="search_bookmarks.xml" />
+    <exclude domain="sharedpref" path="site_permissions.xml" />
+    <exclude domain="sharedpref" path="favicon_cache.xml" />
+    <exclude domain="file" path="feed_cache.json" />
+    <!-- Cookies, localStorage and the http cache all live under here. -->
+    <exclude domain="root" path="app_webview" />
+    </device-transfer>
+</data-extraction-rules>

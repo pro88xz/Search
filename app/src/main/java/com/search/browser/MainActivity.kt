@@ -1,5 +1,6 @@
 package com.search.browser
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 
 
@@ -117,15 +118,99 @@ class MainActivity : AppCompatActivity() {
         val pi = pendingImageSave
         pendingDownload = null
         pendingImageSave = null
+        // Both, not one or the other: a download waiting on the grant and an
+        // image saved while it waited are two separate requests, and the
+        // second used to be dropped without a word.
         if (granted && pd != null) {
             performDownload(pd.url, pd.userAgent, pd.contentDisposition, pd.mimeType)
-        } else if (granted && pi != null) {
+        }
+        if (granted && pi != null) {
             saveImage(pi)
-        } else if (!granted) {
+        }
+        if (!granted) {
             android.widget.Toast.makeText(this,
                 "Storage permission is needed to download files",
                 android.widget.Toast.LENGTH_SHORT).show()
         }
+    }
+
+    // A site has been allowed something that needs an Android permission too.
+    // The answer is held here so it can be delivered once the system dialog
+    // closes, because the web request cannot be left waiting on a callback.
+    private var pendingWebGrant: (() -> Unit)? = null
+    private var pendingWebDeny: (() -> Unit)? = null
+    private var pendingWebNeedsAll = true
+    private val webPermLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
+    ) { result ->
+        val grant = pendingWebGrant
+        val deny = pendingWebDeny
+        val all = pendingWebNeedsAll
+        pendingWebGrant = null
+        pendingWebDeny = null
+        val ok = if (all) result.values.all { it } else result.values.any { it }
+        if (ok) grant?.invoke() else deny?.invoke()
+    }
+
+    /**
+     * Runs [onGranted] once this app itself holds what the web request needs.
+     *
+     * [needsAll] is false for location, where Android lets the user hand over
+     * the approximate position only - one of the two is a real answer, not a
+     * refusal.
+     */
+    private fun withAndroidPermission(
+        perms: Array<String>,
+        needsAll: Boolean,
+        onGranted: () -> Unit,
+        onDenied: () -> Unit
+    ) {
+        val missing = perms.filter {
+            androidx.core.content.ContextCompat.checkSelfPermission(this, it) !=
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isEmpty()) { onGranted(); return }
+        pendingWebGrant = onGranted
+        pendingWebDeny = onDenied
+        pendingWebNeedsAll = needsAll
+        webPermLauncher.launch(missing.toTypedArray())
+    }
+
+    /**
+     * Asks about one site, once, and remembers the answer.
+     *
+     * Nothing is granted silently any more. Both of these used to be handed to
+     * any site that asked, with no prompt and no record - on by default, so a
+     * page could open the camera or read the user's position without the user
+     * ever being told it had happened.
+     */
+    private fun askSitePermission(
+        origin: String,
+        kind: String,
+        message: String,
+        onAllow: () -> Unit,
+        onDeny: () -> Unit
+    ) {
+        when (SitePermissions.get(this, origin, kind)) {
+            SitePermissions.ALLOW -> { onAllow(); return }
+            SitePermissions.DENY -> { onDeny(); return }
+        }
+        if (isFinishing || isDestroyed) { onDeny(); return }
+        android.app.AlertDialog.Builder(this)
+            .setTitle(origin.ifBlank { "This site" })
+            .setMessage(message)
+            .setCancelable(false)
+            .setPositiveButton("Allow") { d, _ ->
+                d.dismiss()
+                SitePermissions.set(this, origin, kind, SitePermissions.ALLOW)
+                onAllow()
+            }
+            .setNegativeButton("Block") { d, _ ->
+                d.dismiss()
+                SitePermissions.set(this, origin, kind, SitePermissions.DENY)
+                onDeny()
+            }
+            .show()
     }
 
     // File upload (WebView <input type=file>) support.
@@ -447,6 +532,109 @@ class MainActivity : AppCompatActivity() {
         android.webkit.CookieManager.getInstance().flush()
     }
 
+    // Held as a field so onDestroy can tell whether the one installed on
+    // MediaService is still this activity's, rather than a newer one's.
+    private val mediaControl: (String) -> Unit = { action ->
+        runOnUiThread {
+            activeWeb()?.evaluateJavascript(
+                "window.__searchMediaControl && window.__searchMediaControl('" + action + "');", null)
+        }
+    }
+
+    /**
+     * Carries the tab list across an activity recreation.
+     *
+     * The tabs are a plain field of the activity, so a new MainActivity always
+     * began with an empty TabManager. That is why the `tabs.count() == 0` test
+     * in onCreate - commented as preventing tab loss on recreation - could
+     * never once have prevented it: the count is always zero on a new
+     * instance. Every recreation took every tab with it, and changing the
+     * theme in Settings is a recreation.
+     *
+     * A ViewModel outlives the activity but not the process, which is exactly
+     * the right lifetime: it carries the full WebView back/forward state
+     * through a rotation or a theme change. Process death is handled
+     * separately, out of saved instance state, where only addresses survive.
+     */
+    class TabStore : androidx.lifecycle.ViewModel() {
+        class Snap(
+            val url: String,
+            val title: String,
+            val state: Bundle?,
+            // The opener's position in the list, not its id: ids are handed out
+            // afresh by the new TabManager, so an id captured here would point
+            // at the wrong tab or none at all.
+            val openerIndex: Int
+        )
+        var snapshot: List<Snap>? = null
+        var activeIndex: Int = 0
+    }
+
+    private val tabStore: TabStore by viewModels()
+
+    /** Freezes the current tab list into the store, without disturbing it. */
+    private fun snapshotTabs() {
+        val list = tabs.tabs
+        tabStore.snapshot = list.map { t ->
+            val state = t.webView?.let { w -> Bundle().also { b -> w.saveState(b) } }
+                ?: t.savedState
+            TabStore.Snap(
+                url = t.url,
+                title = t.title,
+                state = state,
+                openerIndex = list.indexOfFirst { it.id == t.openerId }
+            )
+        }
+        tabStore.activeIndex = list.indexOf(tabs.activeTab).coerceAtLeast(0)
+    }
+
+    /**
+     * Rebuilds the tab list after a recreation. Returns false when there is
+     * nothing to restore and a fresh tab should be opened instead.
+     */
+    private fun restoreTabs(saved: Bundle?): Boolean {
+        val snaps = tabStore.snapshot
+        if (!snaps.isNullOrEmpty()) {
+            snaps.forEach { s ->
+                val t = tabs.createTab(s.url)
+                t.title = s.title
+                t.savedState = s.state
+            }
+            // Re-link the pop-up relationships once every tab has its new id.
+            snaps.forEachIndexed { i, s ->
+                if (s.openerIndex >= 0) {
+                    tabs.tabs[i].openerId = tabs.tabs.getOrNull(s.openerIndex)?.id
+                }
+            }
+            openTab(tabs.tabs.getOrNull(tabStore.activeIndex) ?: tabs.tabs.first())
+            return true
+        }
+        // The process was killed: the store is gone, but the addresses survived
+        // in instance state. The pages reload rather than resuming, which is a
+        // far smaller loss than the whole session.
+        val urls = saved?.getStringArrayList("tab_urls") ?: return false
+        if (urls.isEmpty()) return false
+        val titles = saved.getStringArrayList("tab_titles") ?: ArrayList()
+        urls.forEachIndexed { i, u ->
+            tabs.createTab(u).title = titles.getOrNull(i) ?: "New Tab"
+        }
+        openTab(tabs.tabs.getOrNull(saved.getInt("tab_active", 0)) ?: tabs.tabs.first())
+        return true
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        snapshotTabs()
+        // Addresses only here, deliberately. Instance state crosses a Binder
+        // transaction with a hard size limit, and a WebView's saved history is
+        // easily big enough to burst it - which fails as a crash on the way
+        // out. The full state rides in the ViewModel instead, where there is
+        // no such limit.
+        outState.putStringArrayList("tab_urls", ArrayList(tabs.tabs.map { it.url }))
+        outState.putStringArrayList("tab_titles", ArrayList(tabs.tabs.map { it.title }))
+        outState.putInt("tab_active", tabStore.activeIndex)
+    }
+
     private lateinit var binding: ActivityMainBinding
     private val homePage = "file:///android_asset/home.html"
     private val tabs = TabManager(maxLiveTabs = 3)
@@ -547,12 +735,7 @@ class MainActivity : AppCompatActivity() {
         setupFindBar()
         initAds()
         // Notification media buttons -> drive the page's media element.
-        MediaService.onControl = { action ->
-            runOnUiThread {
-                activeWeb()?.evaluateJavascript(
-                    "window.__searchMediaControl && window.__searchMediaControl('" + action + "');", null)
-            }
-        }
+        MediaService.onControl = mediaControl
         // Quietly check Play for a newer version on launch; prompts only if one
         // exists. Guarded to run once per process so an activity recreation
         // doesn't re-trigger the update prompt.
@@ -561,17 +744,14 @@ class MainActivity : AppCompatActivity() {
             checkForUpdate(fromUser = false)
         }
 
-        // Only create the initial home tab on a genuine fresh start.
-        // Prevents losing your open tab if the activity is recreated (e.g. returning from Settings).
-        if (tabs.count() == 0) {
+        // A recreation must not re-handle the intent that launched the app, or
+        // every rotation would reopen the link it was started with.
+        val fresh = savedInstanceState == null && tabStore.snapshot == null
+        if (!restoreTabs(savedInstanceState)) {
             // If launched by a tapped/shared link, open that; otherwise home.
-            val incoming = urlFromIntent(intent)
-            val startUrl = incoming ?: homePage
+            val startUrl = (if (fresh) urlFromIntent(intent) else null) ?: homePage
             val first = tabs.createTab(startUrl)
             openTab(first, startUrl)
-        } else {
-            // Re-attach the existing active tab's view.
-            tabs.activeTab?.let { openTab(it) }
         }
         updateTabCount()
 
@@ -931,7 +1111,6 @@ class MainActivity : AppCompatActivity() {
         web.settings.apply {
             javaScriptEnabled = Settings.getBool(this@MainActivity, Settings.SITE_JAVASCRIPT, true)
             domStorageEnabled = true
-            databaseEnabled = true
             loadWithOverviewMode = true
             useWideViewPort = true
             builtInZoomControls = true
@@ -1134,20 +1313,78 @@ class MainActivity : AppCompatActivity() {
                 exitFullscreen()
             }
 
-            // Location: honor the Site setting.
             override fun onGeolocationPermissionsShowPrompt(
                 origin: String?,
                 callback: android.webkit.GeolocationPermissions.Callback?
             ) {
-                val allow = Settings.getBool(this@MainActivity, Settings.SITE_LOCATION, true)
-                callback?.invoke(origin, allow, false)
+                val cb = callback ?: return
+                val site = origin ?: ""
+                runOnUiThread {
+                    // Master switch off: refuse without troubling the user.
+                    if (!Settings.getBool(this@MainActivity, Settings.SITE_LOCATION, true)) {
+                        cb.invoke(site, false, false)
+                        return@runOnUiThread
+                    }
+                    askSitePermission(
+                        site, SitePermissions.LOCATION,
+                        "This site wants to know where you are.",
+                        onAllow = {
+                            withAndroidPermission(
+                                arrayOf(
+                                    android.Manifest.permission.ACCESS_FINE_LOCATION,
+                                    android.Manifest.permission.ACCESS_COARSE_LOCATION
+                                ),
+                                needsAll = false,
+                                onGranted = { cb.invoke(site, true, false) },
+                                onDenied = { cb.invoke(site, false, false) }
+                            )
+                        },
+                        onDeny = { cb.invoke(site, false, false) }
+                    )
+                }
             }
 
-            // Camera & microphone: honor the Site setting.
             override fun onPermissionRequest(request: android.webkit.PermissionRequest?) {
-                val allow = Settings.getBool(this@MainActivity, Settings.SITE_CAMERA_MIC, true)
+                val req = request ?: return
                 runOnUiThread {
-                    if (allow) request?.grant(request.resources) else request?.deny()
+                    val wanted = req.resources
+                    val needCam = wanted.contains(
+                        android.webkit.PermissionRequest.RESOURCE_VIDEO_CAPTURE)
+                    val needMic = wanted.contains(
+                        android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE)
+                    if (!needCam && !needMic) {
+                        // Neither camera nor microphone. In practice this is the
+                        // protected-media id a DRM video player asks for, which
+                        // is not what this gate is about - refusing it would
+                        // break paid video for no privacy gain here.
+                        req.grant(wanted)
+                        return@runOnUiThread
+                    }
+                    if (!Settings.getBool(this@MainActivity, Settings.SITE_CAMERA_MIC, true)) {
+                        req.deny()
+                        return@runOnUiThread
+                    }
+                    val what = when {
+                        needCam && needMic -> "camera and microphone"
+                        needCam -> "camera"
+                        else -> "microphone"
+                    }
+                    val perms = ArrayList<String>()
+                    if (needCam) perms.add(android.Manifest.permission.CAMERA)
+                    if (needMic) perms.add(android.Manifest.permission.RECORD_AUDIO)
+                    askSitePermission(
+                        req.origin?.toString() ?: "", SitePermissions.CAMERA_MIC,
+                        "This site wants to use your " + what + ".",
+                        onAllow = {
+                            withAndroidPermission(
+                                perms.toTypedArray(),
+                                needsAll = true,
+                                onGranted = { req.grant(wanted) },
+                                onDenied = { req.deny() }
+                            )
+                        },
+                        onDeny = { req.deny() }
+                    )
                 }
             }
 
@@ -1620,8 +1857,14 @@ class MainActivity : AppCompatActivity() {
         android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_SHORT).show()
     }
 
+    /**
+     * What the address bar shows. The app's own pages have no address worth
+     * showing: a failed load used to leave
+     * "file:///android_asset/error.html?u=https%3A%2F%2F..." sitting in the
+     * bar, which is neither where the user is nor anywhere they can go.
+     */
     private fun displayUrl(url: String?): String =
-        if (url == null || url == homePage) "" else url
+        if (url == null || url.startsWith("file:///android_asset/")) "" else url
 
     private fun captureThumbnail(tab: Tab, onDone: (() -> Unit)? = null) {
         val web = tab.webView
@@ -2259,6 +2502,12 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         nativeAd?.destroy()
         nativeAd = null
+        // MediaService.onControl is a companion field holding a lambda that
+        // captures this activity. Left set, a destroyed MainActivity and its
+        // whole view tree - WebViews included - stay reachable for the life of
+        // the process. Only clear it if it is still ours: a recreated activity
+        // has already replaced it by now.
+        if (MediaService.onControl === mediaControl) MediaService.onControl = null
         super.onDestroy()
     }
 

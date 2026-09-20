@@ -17,9 +17,12 @@ object History {
     data class Entry(val title: String, val url: String, val time: Long)
 
     fun add(context: Context, title: String, url: String) {
-        // Skip blanks and the local home page.
+        // Skip blanks and every page shipped inside the app. Only home.html was
+        // skipped before, so a failed load wrote the error page into history -
+        // and with the failed address baked into its query string, the history
+        // list filled up with entries nobody visited and nobody can revisit.
         if (url.isBlank() || url == "about:blank" ||
-            url.startsWith("file:///android_asset/home.html")
+            url.startsWith("file:///android_asset/")
         ) return
 
         val list = load(context).toMutableList()

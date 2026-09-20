@@ -77,6 +77,32 @@ class SectionActivity : AppCompatActivity() {
             "Ask before any file downloads, so nothing saves without your OK.",
             Settings.SEC_CONFIRM_DOWNLOADS, true
         )
+        // Answers about camera, microphone and location are remembered per
+        // site, so without this there is no way to change your mind.
+        addAction(
+            "Reset site permissions",
+            "Forget which sites you allowed to use the camera, microphone or " +
+                "your location. Each will ask again."
+        ) {
+            val n = SitePermissions.count(this)
+            if (n == 0) {
+                android.widget.Toast.makeText(
+                    this, "No site permissions saved yet",
+                    android.widget.Toast.LENGTH_SHORT).show()
+            } else {
+                android.app.AlertDialog.Builder(this)
+                    .setTitle("Reset site permissions")
+                    .setMessage("Forget all remembered answers? Sites will ask again.")
+                    .setPositiveButton("Reset") { _, _ ->
+                        SitePermissions.clearAll(this)
+                        android.widget.Toast.makeText(
+                            this, "Site permissions reset",
+                            android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+            }
+        }
     }
 
     private fun buildAdblock() {
@@ -277,6 +303,36 @@ class SectionActivity : AppCompatActivity() {
         div.layoutParams = LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, dp(1)
         )
+        div.setBackgroundColor(0x22808080)
+        content.addView(div)
+    }
+
+    /** A tappable row that reads like the toggles above it, minus the switch. */
+    private fun addAction(title: String, desc: String, onTap: () -> Unit) {
+        val col = LinearLayout(this)
+        col.orientation = LinearLayout.VERTICAL
+        col.setPadding(dp(20), dp(14), dp(20), dp(14))
+        col.isClickable = true
+        col.setOnClickListener { onTap() }
+
+        val t = TextView(this)
+        t.text = title
+        t.textSize = 16f
+        t.setTextColor(resolveTextColor())
+
+        val d = TextView(this)
+        d.text = desc
+        d.textSize = 13f
+        d.setTextColor(0xFF8A8A8F.toInt())
+        d.setPadding(0, dp(2), 0, 0)
+
+        col.addView(t)
+        col.addView(d)
+        content.addView(col)
+
+        val div = TextView(this)
+        div.layoutParams = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(1))
         div.setBackgroundColor(0x22808080)
         content.addView(div)
     }

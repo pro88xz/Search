@@ -20,3 +20,7 @@ local.properties
 *.apk
 *.aab
 keystore.properties
+
+# Stray compiler output
+a.out
+*.o
