@@ -1,33 +1,39 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Traced from the 96x96 PNG this replaces, at its own measurements: bars
-     6 units thick with round caps on rows at y 29.5 / 47.5 / 65.5, knobs of
-     radius 6 centred at x 61.5 / 33.5 / 57.5. The viewport is kept at 96 so
-     those numbers appear here unconverted.
+<!-- Settings, at the weight of the row it lives in.
 
-     The gap around each knob was a near-white halo baked into the PNG, which
-     would have shown as a pale ring on a dark top bar. It is a gap now, so it
-     is whatever colour the bar behind it is. -->
+     Same drawing as the traced original - rows at y 29.5 / 47.5 / 65.5, knobs
+     centred at x 61.5 / 33.5 / 57.5 - carrying a heavier stroke: bars 8 units
+     rather than 6, knobs radius 7 rather than 6.
+
+     That is not a taste call. Rendered and counted, the 6-unit version put
+     252 dp-squared of ink on screen against the reload ring's 339, so it was
+     the one thin thing in a row with a bold wordmark and a solid mark in it.
+     8 and 7 land on 342, which is 1.01x the ring.
+
+     The two short stubs are widened to the stroke width. A segment narrower
+     than its own stroke has no straight part left, and the rounded-rect path
+     below would cross its own ends over and invert. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
     android:viewportWidth="96"
     android:viewportHeight="96">
     <path android:fillColor="#5E44A0"
-        android:pathData="M20,26.5 L48,26.5 A3,3 0 0 1 48,32.5 L20,32.5 A3,3 0 0 1 20,26.5 Z" />
+        android:pathData="M 21.000,25.500 L 47.000,25.500 A 4.00,4.00 0 0 1 47.000,33.500 L 21.000,33.500 A 4.00,4.00 0 0 1 21.000,25.500 Z" />
     <path android:fillColor="#5E44A0"
-        android:pathData="M75,26.5 L75,26.5 A3,3 0 0 1 75,32.5 L75,32.5 A3,3 0 0 1 75,26.5 Z" />
+        android:pathData="M 75.000,25.500 L 75.000,25.500 A 4.00,4.00 0 0 1 75.000,33.500 L 75.000,33.500 A 4.00,4.00 0 0 1 75.000,25.500 Z" />
     <path android:fillColor="#5E44A0"
-        android:pathData="M20,44.5 L20,44.5 A3,3 0 0 1 20,50.5 L20,50.5 A3,3 0 0 1 20,44.5 Z" />
+        android:pathData="M 20.000,43.500 L 20.000,43.500 A 4.00,4.00 0 0 1 20.000,51.500 L 20.000,51.500 A 4.00,4.00 0 0 1 20.000,43.500 Z" />
     <path android:fillColor="#5E44A0"
-        android:pathData="M47,44.5 L75,44.5 A3,3 0 0 1 75,50.5 L47,50.5 A3,3 0 0 1 47,44.5 Z" />
+        android:pathData="M 48.000,43.500 L 74.000,43.500 A 4.00,4.00 0 0 1 74.000,51.500 L 48.000,51.500 A 4.00,4.00 0 0 1 48.000,43.500 Z" />
     <path android:fillColor="#5E44A0"
-        android:pathData="M20,62.5 L44,62.5 A3,3 0 0 1 44,68.5 L20,68.5 A3,3 0 0 1 20,62.5 Z" />
+        android:pathData="M 21.000,61.500 L 43.000,61.500 A 4.00,4.00 0 0 1 43.000,69.500 L 21.000,69.500 A 4.00,4.00 0 0 1 21.000,61.500 Z" />
     <path android:fillColor="#5E44A0"
-        android:pathData="M71,62.5 L75,62.5 A3,3 0 0 1 75,68.5 L71,68.5 A3,3 0 0 1 71,62.5 Z" />
+        android:pathData="M 72.000,61.500 L 74.000,61.500 A 4.00,4.00 0 0 1 74.000,69.500 L 72.000,69.500 A 4.00,4.00 0 0 1 72.000,61.500 Z" />
     <path android:fillColor="#8B6BD8"
-        android:pathData="M55.5,29.5 a6,6 0 1 0 12,0 a6,6 0 1 0 -12,0 Z" />
+        android:pathData="M 54.500,29.500 a 7.00,7.00 0 1 0 14.00,0 a 7.00,7.00 0 1 0 -14.00,0 Z" />
     <path android:fillColor="#8B6BD8"
-        android:pathData="M27.5,47.5 a6,6 0 1 0 12,0 a6,6 0 1 0 -12,0 Z" />
+        android:pathData="M 26.500,47.500 a 7.00,7.00 0 1 0 14.00,0 a 7.00,7.00 0 1 0 -14.00,0 Z" />
     <path android:fillColor="#8B6BD8"
-        android:pathData="M51.5,65.5 a6,6 0 1 0 12,0 a6,6 0 1 0 -12,0 Z" />
+        android:pathData="M 50.500,65.500 a 7.00,7.00 0 1 0 14.00,0 a 7.00,7.00 0 1 0 -14.00,0 Z" />
 </vector>

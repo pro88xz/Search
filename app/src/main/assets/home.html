@@ -134,7 +134,10 @@
   .feed.hidden { display:none; }
   .feed-head, .qa-head {
     font-size:14px; font-weight:600; color:var(--muted);
-    letter-spacing:-0.005em; margin:0 4px 10px;
+    /* No side margin. The wrap already insets everything by 14px, so 4px
+       here put the label 18px in while every card beside it sat at 14 - a
+       3.6dp step that reads as a section that was not quite placed. */
+    letter-spacing:-0.005em; margin:0 0 10px;
   }
   .qa-head { width:100%; max-width:420px; margin-top:22px; margin-bottom:16px; }
   .qa-head.hidden { display:none; }

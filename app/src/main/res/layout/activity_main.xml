@@ -135,7 +135,7 @@
                 android:id="@+id/reloadBtn"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
-                android:padding="7dp"
+                android:padding="9dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:src="@drawable/ic_reload"
                 android:scaleType="fitCenter"
