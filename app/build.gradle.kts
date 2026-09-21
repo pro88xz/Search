@@ -20,7 +20,7 @@ android {
         applicationId = "com.devbangs.search"
         minSdk = 24
         targetSdk = 36
-        versionCode = 14
+        versionCode = 16
         versionName = "1.2.0"
     }
 
@@ -86,5 +86,10 @@ dependencies {
     implementation("androidx.media:media:1.7.0")
     implementation("com.google.android.play:app-update:2.1.0")
     implementation("com.google.android.play:app-update-ktx:2.1.0")
+    // 2.0.2, October 2024 - the current partitioned library. The deprecated
+    // one is the monolithic com.google.android.play:core, which this project
+    // has never used.
+    implementation("com.google.android.play:review:2.0.2")
+    implementation("com.google.android.play:review-ktx:2.0.2")
     implementation("com.android.billingclient:billing-ktx:8.0.0")
 }

@@ -61,6 +61,14 @@ object Settings {
         prefs(c).edit().putInt(KEY_THEME, mode).apply()
     }
 
+    // ---- Generic counters and timestamps ----
+    fun getLong(c: Context, key: String, default: Long): Long =
+        prefs(c).getLong(key, default)
+
+    fun setLong(c: Context, key: String, value: Long) {
+        prefs(c).edit().putLong(key, value).apply()
+    }
+
     // ---- Generic boolean toggles (security, adblock, etc.) ----
     fun getBool(c: Context, key: String, default: Boolean): Boolean =
         prefs(c).getBoolean(key, default)

@@ -39,6 +39,9 @@ class MainActivity : AppCompatActivity() {
         // Runs the launch update check once per process, so recreating the
         // activity (e.g. a theme change) doesn't re-trigger the update prompt.
         private var didLaunchUpdateCheck = false
+        // Same reasoning for the review prompt, and more so: two Play dialogs
+        // in one session would be a lot to put in front of someone.
+        private var didOfferReview = false
     }
 
     // ---- Native search-page mode ----
@@ -944,6 +947,18 @@ class MainActivity : AppCompatActivity() {
         if (!didLaunchUpdateCheck) {
             didLaunchUpdateCheck = true
             checkForUpdate(fromUser = false)
+        }
+
+        // One launch counted per process, next to the update check for the
+        // same reason: a rotation is not a launch.
+        if (!didOfferReview) {
+            didOfferReview = true
+            Reviews.noteLaunch(this)
+            // Not now. The window is still settling, tabs are being restored,
+            // and the update check above may be about to put its own dialog
+            // up. A few seconds in, the app is idle and the home page is
+            // there - which is the only moment this is not an interruption.
+            binding.root.postDelayed({ maybeAskForReview() }, 6000L)
         }
 
         // A recreation must not re-handle the intent that launched the app, or
@@ -4195,6 +4210,52 @@ class MainActivity : AppCompatActivity() {
 
     // Public entry point for the Settings "Check for updates" row.
     fun checkForUpdateFromSettings() = checkForUpdate(fromUser = true)
+
+    // ---------- In-app review (Google Play) ----------
+    /**
+     * Asks Play to show its review dialog, if this is a fair moment to.
+     *
+     * Deliberately has no caller anywhere the user can reach. Play's policy
+     * forbids a "Rate us" button and forbids gating the prompt behind a
+     * question like "enjoying the app?" - showing the real dialog only to
+     * people who answered yes is review gating, which is a violation rather
+     * than a funnel. So this fires on its own or not at all.
+     *
+     * Nothing may be branched on the outcome. The listener below is called
+     * whether the user wrote a review, dismissed the sheet, or never saw one
+     * because Play's quota suppressed it - the API reports none of that, by
+     * design, so that apps cannot treat reviewers differently.
+     */
+    private fun maybeAskForReview() {
+        if (isFinishing || isDestroyed) return
+        // Never during a private session, and never over something else.
+        if (nightOwl || searchMode || deckVisible) return
+        val current = tabs.activeTab?.url
+        if (!(current == null || current == homePage)) return
+        if (!Reviews.eligible(this)) return
+
+        // FakeReviewManager runs the whole flow and shows nothing, which is
+        // the only way to prove the plumbing works: the real dialog cannot be
+        // summoned on demand, since quota decides whether it appears.
+        val manager = if (BuildConfig.DEBUG) {
+            com.google.android.play.core.review.testing.FakeReviewManager(this)
+        } else {
+            com.google.android.play.core.review.ReviewManagerFactory.create(this)
+        }
+
+        manager.requestReviewFlow().addOnCompleteListener { request ->
+            if (!request.isSuccessful) return@addOnCompleteListener
+            if (isFinishing || isDestroyed) return@addOnCompleteListener
+            manager.launchReviewFlow(this, request.result).addOnCompleteListener {
+                // Recorded on the attempt, not on a result, because there is
+                // no result to wait for. If quota swallowed the dialog this
+                // spends the window on nothing - which is the trade for never
+                // pestering someone who did see it and closed it.
+                Reviews.noteAsked(this)
+                if (BuildConfig.DEBUG) toast("Review flow ran (fake in debug)")
+            }
+        }
+    }
 
     // ---------- Media control notification ----------
     private var mediaActive = false
