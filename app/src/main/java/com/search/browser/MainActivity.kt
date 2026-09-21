@@ -3230,10 +3230,7 @@ class MainActivity : AppCompatActivity() {
             downloadsAdapter = DownloadsAdapter(
                 items = emptyList(),
                 onOpen = { d -> openDownloadedFile(d) },
-                onDelete = { d ->
-                    deleteDownload(d)
-                    refreshDownloads()
-                }
+                onMore = { d -> showDownloadActions(d) }
             )
             binding.downloadList.layoutManager =
                 androidx.recyclerview.widget.LinearLayoutManager(this)
@@ -3718,6 +3715,87 @@ class MainActivity : AppCompatActivity() {
 
     private fun downloadFailed() {
         runOnUiThread { toast("Couldn't save the file") }
+    }
+
+    /**
+     * The owl, summoned for one file.
+     *
+     * Deliberately not a PopupMenu. Deleting a download is the one thing in
+     * this app that destroys something the user cannot get back -
+     * DownloadManager.remove takes the file off the disk, not just the row
+     * off the list - and the menu this replaces did it on a single tap, from
+     * a long-press nothing advertised. Naming the file and making the choice
+     * explicit is the confirmation that was missing; the owl is the app's own
+     * voice rather than a system menu's.
+     */
+    private fun showDownloadActions(d: Downloads.Item) {
+        val view = layoutInflater.inflate(R.layout.dialog_download_actions, null)
+        applyOwlArtIn(view)
+        // Middle ellipsis, not the end. The extension is the most useful part
+        // of a long filename - it is what tells you the thing is an mp3 - and
+        // trimming from the right is exactly what throws it away.
+        view.findViewById<android.widget.TextView>(R.id.dlaName).text =
+            d.title.ifBlank { "this file" }
+
+        val dialog = android.app.AlertDialog.Builder(this).setView(view).create()
+        dialog.window?.setBackgroundDrawable(
+            android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT)
+        )
+        dialog.window?.attributes?.windowAnimations = R.style.OwlDialogAnim
+
+        view.findViewById<android.widget.TextView>(R.id.dlaShare).setOnClickListener {
+            dialog.dismiss()
+            shareDownload(d)
+        }
+        view.findViewById<android.widget.TextView>(R.id.dlaDelete).setOnClickListener {
+            dialog.dismiss()
+            deleteDownload(d)
+            refreshDownloads()
+            toast("Gone")
+        }
+        view.findViewById<android.widget.TextView>(R.id.dlaCancel).setOnClickListener {
+            dialog.dismiss()
+        }
+        dialog.show()
+        dialog.window?.let { w ->
+            val width = (resources.displayMetrics.widthPixels * 0.86f).toInt()
+            w.setLayout(width, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+    }
+
+    /**
+     * Hands a finished download to whatever the user picks.
+     *
+     * The same two things that broke opening a file break sharing one, for
+     * the same reasons: another app cannot read a file:// URI - that has
+     * thrown FileUriExposedException since Android 7 - and the stored media
+     * type is frequently blank or octet-stream, which no share target claims.
+     * resolveDownloadUri and mimeForDownload already answer both, so this
+     * leans on them rather than growing a second, slightly different answer
+     * that will drift from the first.
+     */
+    private fun shareDownload(d: Downloads.Item) {
+        if (!d.isComplete) {
+            toast(if (d.isRunning) "Still downloading\u2026" else "File not available")
+            return
+        }
+        val uri = resolveDownloadUri(d)
+        if (uri == null) {
+            toast("That file is no longer on this phone")
+            return
+        }
+        val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = mimeForDownload(d)
+            putExtra(android.content.Intent.EXTRA_STREAM, uri)
+            // Without this the chooser lists apps that then cannot open what
+            // they were handed, which reads as the other app being broken.
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        try {
+            startActivity(android.content.Intent.createChooser(send, "Share file"))
+        } catch (e: Exception) {
+            toast("Nothing on this phone can share that")
+        }
     }
 
     /**

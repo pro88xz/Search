@@ -1,27 +1,30 @@
 package com.search.browser
 
-import android.app.DownloadManager
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.PopupMenu
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 
 class DownloadsAdapter(
     private var items: List<Downloads.Item>,
     private val onOpen: (Downloads.Item) -> Unit,
-    private val onDelete: (Downloads.Item) -> Unit
+    /** The overflow button. Deleting and sharing both live behind it. */
+    private val onMore: (Downloads.Item) -> Unit
 ) : RecyclerView.Adapter<DownloadsAdapter.VH>() {
 
     class VH(v: View) : RecyclerView.ViewHolder(v) {
         val title: TextView = v.findViewById(R.id.hTitle)
         val sub: TextView = v.findViewById(R.id.hUrl)
+        val more: View = v.findViewById(R.id.hMore)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
+        // Its own layout now rather than the history row's: a download has an
+        // action attached to it and history does not, and a button that only
+        // some rows use has no business in a shared layout.
         val v = LayoutInflater.from(parent.context)
-            .inflate(R.layout.item_history, parent, false)
+            .inflate(R.layout.item_download, parent, false)
         return VH(v)
     }
 
@@ -39,15 +42,11 @@ class DownloadsAdapter(
             else -> "Pending"
         }
         holder.itemView.setOnClickListener { onOpen(d) }
-        holder.itemView.setOnLongClickListener { anchor ->
-            val menu = PopupMenu(anchor.context, anchor)
-            // DownloadManager.remove() deletes the file from disk, not just
-            // the row, so the label has to say what actually happens.
-            menu.menu.add("Delete file")
-            menu.setOnMenuItemClickListener { onDelete(d); true }
-            menu.show()
-            true
-        }
+        holder.more.setOnClickListener { onMore(d) }
+        // The long-press menu is gone. It was undiscoverable - nothing on the
+        // row suggested it existed - and its single entry deleted the file on
+        // one tap with nothing in between.
+        holder.itemView.setOnLongClickListener { holder.more.performClick() }
     }
 
     /**

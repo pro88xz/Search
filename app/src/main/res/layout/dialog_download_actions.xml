@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Summoned for one file. Same shape as the other owl dialogs - art on top,
+     a line of voice, then the choice - so this reads as the app speaking
+     rather than as a system sheet.
+
+     Delete is the outlined button and Share the filled one, deliberately:
+     the filled button is where a thumb goes by default, and the destructive
+     action should not be the one that is easiest to hit by accident. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="20dp"
+    android:background="@drawable/dialog_bg">
+
+    <ImageView
+        android:layout_width="52dp"
+        android:layout_height="52dp"
+        android:layout_gravity="center_horizontal"
+        android:src="@drawable/ic_owl"
+        android:layout_marginBottom="10dp"
+        android:contentDescription="Search" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="At your service"
+        android:textSize="17sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:textColor="?android:attr/textColorPrimary"
+        android:layout_marginBottom="8dp" />
+
+    <TextView
+        android:id="@+id/dlaName"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:maxLines="2"
+        android:ellipsize="middle"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:textColor="?android:attr/textColorPrimary"
+        android:layout_marginBottom="4dp"
+        android:text="file" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Send it on, or make it disappear?"
+        android:textSize="14sp"
+        android:gravity="center"
+        android:textColor="#8A8A8A"
+        android:layout_marginBottom="18dp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:baselineAligned="false">
+
+        <TextView
+            android:id="@+id/dlaDelete"
+            android:layout_width="0dp"
+            android:layout_height="46dp"
+            android:layout_weight="1"
+            android:layout_marginEnd="6dp"
+            android:text="Delete it"
+            android:textAllCaps="false"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:textColor="@color/dangerFg"
+            android:background="@drawable/dialog_btn_outline" />
+
+        <TextView
+            android:id="@+id/dlaShare"
+            android:layout_width="0dp"
+            android:layout_height="46dp"
+            android:layout_weight="1"
+            android:layout_marginStart="6dp"
+            android:text="Share it"
+            android:textAllCaps="false"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:textColor="#FFFFFF"
+            android:background="@drawable/dialog_btn_filled" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/dlaCancel"
+        android:layout_width="match_parent"
+        android:layout_height="44dp"
+        android:layout_marginTop="4dp"
+        android:text="Never mind"
+        android:textAllCaps="false"
+        android:textSize="14sp"
+        android:gravity="center"
+        android:textColor="#8A8A8A"
+        android:background="?attr/selectableItemBackground" />
+</LinearLayout>

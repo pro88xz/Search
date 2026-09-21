@@ -30,4 +30,5 @@
     <color name="ic_launcher_background">#2A1E48</color>
     <color name="sugSheet">#FFFFFF</color>
     <color name="sugTitle">#7D7D7D</color>
+    <color name="dangerFg">#B3261E</color>
 </resources>
