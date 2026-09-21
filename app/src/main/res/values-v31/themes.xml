@@ -18,15 +18,22 @@
           variant that has to be remembered next time either colour changes.
         -->
         <!--
-          The same owl as the launcher icon, so the two do not disagree.
-          splash_owl.webp was a 21-frame animation of the OLD owl; keeping it
-          meant the splash showed one owl and the home screen another.
-          Sized for the splash rather than the launcher: with no icon
-          background the art gets a 240dp circle of a 288dp canvas, where the
-          launcher mask only allows 66%, so this one is larger than the icon
-          foreground and must stay a separate file.
+          No windowSplashScreenAnimatedIcon, deliberately.
+
+          Left unset, the platform puts the app's LAUNCHER icon on the splash -
+          which is the point. One UI opens an app by growing the launcher icon
+          into the window, and that icon is the adaptive one: gradient,
+          squircle mask, owl. Supplying a separate splash drawable meant the
+          launcher grew a squircle and then the splash replaced it with a bare
+          owl on flat purple, so a single launch showed two different marks.
+
+          Now the thing that expands and the thing that lands are the same
+          object, and the handover is invisible.
+
+          It also removes a whole file that had to be kept in sync by hand: the
+          splash owl was sized at 83% of its canvas while the icon foreground
+          is at 66%, and nothing but memory connected those numbers.
         -->
-        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_owl_static</item>
         <item name="android:windowNoTitle">true</item>
     </style>
 </resources>
