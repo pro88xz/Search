@@ -256,14 +256,19 @@ class SettingsActivity : AppCompatActivity() {
         findViewById<android.widget.TextView>(R.id.rowCustomize)
             .setOnClickListener { openSection(SectionActivity.SEC_CUSTOMIZE) }
         findViewById<android.widget.TextView>(R.id.rowPrivacy)
-            .setOnClickListener { openPage("file:///android_asset/privacy.html") }
+            .setOnClickListener {
+                // The hosted policy is the real document; the bundled page is
+                // kept as the offline copy behind it rather than deleted.
+                openPage("https://mebs.app/privacy/search", "file:///android_asset/privacy.html")
+            }
         findViewById<android.widget.TextView>(R.id.rowTerms)
             .setOnClickListener { openPage("file:///android_asset/terms.html") }
     }
 
-    private fun openPage(url: String) {
+    private fun openPage(url: String, fallback: String? = null) {
         val i = android.content.Intent(this, LegalActivity::class.java)
         i.putExtra("url", url)
+        fallback?.let { i.putExtra("fallback", it) }
         startActivity(i)
     }
 }
