@@ -1,9 +1,9 @@
 # Search — Web Browser
 
-A fast, clean, privacy-minded Android web browser. Built by Dev_Bangs.
+A fast, clean, privacy-minded Android web browser. Built by MEBS (Mohameds Engineering and Build Studio).
 
 - **Package:** `com.devbangs.search`
-- **Current version:** 1.0.0 (versionCode 10)
+- **Current version:** see `versionCode` / `versionName` in `app/build.gradle.kts`
 - **Min SDK:** 24 (Android 7.0) · **Target/Compile SDK:** 36
 
 ---
@@ -67,4 +67,4 @@ Release builds are signed via a git-ignored `keystore.properties` + `search-rele
 
 ## License
 
-Proprietary — © Dev_Bangs. All rights reserved.
+Proprietary — © 2026 MEBS. All rights reserved.
