@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Replaces @android:drawable/ic_menu_rotate.
+
+     That one is a platform bitmap, so its resolution was never ours to fix -
+     and it is a ROTATE icon, with a dot at the centre, drawn in Holo grey
+     while the rest of this row is purple. It never belonged here.
+
+     A 280-degree arc with an 80-degree gap at the top, r 7.6, and the head at
+     the END of the sweep so the arrow reads clockwise, which is what every
+     refresh control on the phone does. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:strokeColor="#5E44A0"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:pathData="M16.885,6.178 A7.6,7.6 0 1 1 7.115,6.178" />
+    <path
+        android:fillColor="#5E44A0"
+        android:pathData="M9.987,3.768 L5.283,3.995 L8.947,8.361 Z" />
+</vector>

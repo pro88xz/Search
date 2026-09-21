@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Traced from the 96x96 PNG this replaces, at its own measurements: bars
+     6 units thick with round caps on rows at y 29.5 / 47.5 / 65.5, knobs of
+     radius 6 centred at x 61.5 / 33.5 / 57.5. The viewport is kept at 96 so
+     those numbers appear here unconverted.
+
+     The gap around each knob was a near-white halo baked into the PNG, which
+     would have shown as a pale ring on a dark top bar. It is a gap now, so it
+     is whatever colour the bar behind it is. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="96"
+    android:viewportHeight="96">
+    <path android:fillColor="#5E44A0"
+        android:pathData="M20,26.5 L48,26.5 A3,3 0 0 1 48,32.5 L20,32.5 A3,3 0 0 1 20,26.5 Z" />
+    <path android:fillColor="#5E44A0"
+        android:pathData="M75,26.5 L75,26.5 A3,3 0 0 1 75,32.5 L75,32.5 A3,3 0 0 1 75,26.5 Z" />
+    <path android:fillColor="#5E44A0"
+        android:pathData="M20,44.5 L20,44.5 A3,3 0 0 1 20,50.5 L20,50.5 A3,3 0 0 1 20,44.5 Z" />
+    <path android:fillColor="#5E44A0"
+        android:pathData="M47,44.5 L75,44.5 A3,3 0 0 1 75,50.5 L47,50.5 A3,3 0 0 1 47,44.5 Z" />
+    <path android:fillColor="#5E44A0"
+        android:pathData="M20,62.5 L44,62.5 A3,3 0 0 1 44,68.5 L20,68.5 A3,3 0 0 1 20,62.5 Z" />
+    <path android:fillColor="#5E44A0"
+        android:pathData="M71,62.5 L75,62.5 A3,3 0 0 1 75,68.5 L71,68.5 A3,3 0 0 1 71,62.5 Z" />
+    <path android:fillColor="#8B6BD8"
+        android:pathData="M55.5,29.5 a6,6 0 1 0 12,0 a6,6 0 1 0 -12,0 Z" />
+    <path android:fillColor="#8B6BD8"
+        android:pathData="M27.5,47.5 a6,6 0 1 0 12,0 a6,6 0 1 0 -12,0 Z" />
+    <path android:fillColor="#8B6BD8"
+        android:pathData="M51.5,65.5 a6,6 0 1 0 12,0 a6,6 0 1 0 -12,0 Z" />
+</vector>

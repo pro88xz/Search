@@ -4355,6 +4355,12 @@ class MainActivity : AppCompatActivity() {
         owlArt?.let { binding.homeBtn.setImageBitmap(it) }
         recolouredToAccent(R.drawable.ic_settings, accent)
             ?.let { binding.settingsBtn.setImageBitmap(it) }
+        // Reload is a single-tone vector, so a tint is exactly right - the
+        // same reasoning applyMenuAccent sets out for the menu glyphs. It was
+        // never accented before because the platform icon it used could not
+        // be: grey, in a row of purple.
+        binding.reloadBtn.imageTintList =
+            android.content.res.ColorStateList.valueOf(accent)
         applyMenuAccent(accent)
     }
 
@@ -4392,9 +4398,34 @@ class MainActivity : AppCompatActivity() {
         walk(root)
     }
 
+    /**
+     * Draws a drawable that has no bitmap of its own into one.
+     *
+     * Four times its intrinsic size deliberately. This runs so the accent
+     * pass has PIXELS to hue-shift, and whatever is rendered here is the
+     * resolution the icon ends up being displayed at - a 24dp vector has a
+     * 96px intrinsic size at xxxhdpi while the button it goes in draws 36dp,
+     * which is 144px. Rendering at intrinsic size would put the icon straight
+     * back to being upscaled, which is the whole thing this replaced.
+     */
+    private fun rasterise(d: android.graphics.drawable.Drawable): android.graphics.Bitmap? {
+        val w = d.intrinsicWidth
+        val h = d.intrinsicHeight
+        if (w <= 0 || h <= 0) return null
+        val bmp = android.graphics.Bitmap.createBitmap(
+            w * 4, h * 4, android.graphics.Bitmap.Config.ARGB_8888)
+        d.setBounds(0, 0, w * 4, h * 4)
+        d.draw(android.graphics.Canvas(bmp))
+        return bmp
+    }
+
     private fun recolouredToAccent(resId: Int, accent: Int): android.graphics.Bitmap? {
         val art = androidx.core.content.ContextCompat.getDrawable(this, resId)
-        val src = (art as? android.graphics.drawable.BitmapDrawable)?.bitmap ?: return null
+            ?: return null
+        // A vector has no bitmap to read. Before this it fell straight through
+        // the null branch below and the icon quietly stopped taking the accent.
+        val src = (art as? android.graphics.drawable.BitmapDrawable)?.bitmap
+            ?: rasterise(art) ?: return null
 
         val target = FloatArray(3)
         android.graphics.Color.colorToHSV(accent, target)

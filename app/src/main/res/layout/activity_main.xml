@@ -135,9 +135,9 @@
                 android:id="@+id/reloadBtn"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
-                android:padding="3dp"
+                android:padding="5dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
-                android:src="@android:drawable/ic_menu_rotate"
+                android:src="@drawable/ic_reload"
                 android:contentDescription="Reload" />
 
             <TextView
@@ -159,7 +159,7 @@
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:src="@drawable/ic_settings"
                 android:scaleType="fitCenter"
-                android:padding="6dp"
+                android:padding="0dp"
                 android:contentDescription="Settings" />
         </LinearLayout>
 
