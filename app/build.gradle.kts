@@ -62,6 +62,9 @@ android {
 
     buildFeatures {
         viewBinding = true
+        // For BuildConfig.DEBUG. Used to keep diagnostics - currently the ad
+        // failure code - out of release builds rather than out of the source.
+        buildConfig = true
     }
 }
 

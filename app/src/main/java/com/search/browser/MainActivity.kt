@@ -2901,6 +2901,13 @@ class MainActivity : AppCompatActivity() {
                     // id or app id mismatch), 2 network.
                     adLoading = false
                     binding.adSlot.visibility = View.GONE
+                    // Debug only. Without this a missing ad and a broken one
+                    // look identical from the phone, which is no way to tell
+                    // routine no-fill from a wiring fault. Never in release:
+                    // no-fill is normal and a user can do nothing about it.
+                    if (BuildConfig.DEBUG) {
+                        toast("Ad failed \u00b7 code " + e.code + " \u00b7 " + e.message)
+                    }
                 }            })
             // Muted is the SDK default, but stated outright: a video ad that
             // opens with sound in a browser home feed is unforgivable.
