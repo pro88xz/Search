@@ -3600,9 +3600,7 @@ class MainActivity : AppCompatActivity() {
             performDownload(url, userAgent, contentDisposition, mimeType)
             return
         }
-        val fileName = try {
-            android.webkit.URLUtil.guessFileName(url, contentDisposition, mimeType)
-        } catch (e: Exception) { "file" }
+        val fileName = downloadName(url, contentDisposition, mimeType)
 
         val view = layoutInflater.inflate(R.layout.dialog_download, null)
         applyOwlArtIn(view)
@@ -3672,9 +3670,13 @@ class MainActivity : AppCompatActivity() {
             return
         }
         try {
-            val fileName = android.webkit.URLUtil.guessFileName(url, contentDisposition, mimeType)
+            val fileName = downloadName(url, contentDisposition, mimeType)
             val request = android.app.DownloadManager.Request(android.net.Uri.parse(url))
-            request.setMimeType(mimeType)
+            // Not the declared type: a host that says application/octet-stream
+            // for an mp3 has the file registered as binary, and no player
+            // claims it. downloadMime keeps a real type and replaces a generic
+            // one with whatever the extension says.
+            request.setMimeType(downloadMime(fileName, mimeType))
             userAgent?.let { request.addRequestHeader("User-Agent", it) }
             // DownloadManager fetches in its own process, with none of the
             // WebView's state. Without the session cookie, anything behind a
@@ -3711,18 +3713,163 @@ class MainActivity : AppCompatActivity() {
         runOnUiThread { toast("Couldn't save the file") }
     }
 
-    /** A filename carrying an extension that matches the type, whatever the
-     *  address happens to say - a blob: address carries no name at all. */
-    private fun downloadName(url: String, cd: String?, mime: String?): String {
-        val guessed = try {
-            android.webkit.URLUtil.guessFileName(url, cd, mime)
-        } catch (e: Exception) { "" }
-        val base = guessed.ifBlank { "download_" + System.currentTimeMillis() }
-        if (base.substringAfterLast('.', "").isNotBlank()) return base
-        val ext = mime?.let {
-            android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(it)
+    /**
+     * Types that mean "a file" and nothing more.
+     *
+     * Most download hosts send one of these for everything they serve, so a
+     * declared type from this list carries no information and must never be
+     * allowed to overrule an extension the name already has. Treating
+     * application/octet-stream as authoritative is exactly what renamed an
+     * mp3 to .bin.
+     */
+    private fun isGenericMime(m: String?): Boolean {
+        val t = m?.substringBefore(';')?.trim()?.lowercase() ?: return true
+        return t.isEmpty() || t == "*/*" ||
+            t == "application/octet-stream" || t == "binary/octet-stream" ||
+            t == "application/unknown" || t == "application/force-download" ||
+            t == "application/download" || t == "application/x-download"
+    }
+
+    /**
+     * The filename a server stated in Content-Disposition.
+     *
+     * Parsed here rather than through the platform, whose own regex anchors
+     * filename= to the end of the header: a server sending filename= followed
+     * by anything at all - a second parameter, a trailing semicolon - yields
+     * no name from it and falls through to the address instead.
+     *
+     * filename* is preferred where both are present. It is the only form that
+     * can carry non-ASCII, so it is the accurate one whenever a title has an
+     * accent, an apostrophe or a non-Latin script in it.
+     */
+    private fun dispositionName(cd: String?): String {
+        val h = cd ?: return ""
+        Regex("filename\\*\\s*=\\s*([^']*)'[^']*'([^;]+)", RegexOption.IGNORE_CASE)
+            .find(h)?.let { m ->
+                val charset = m.groupValues[1].trim().ifBlank { "UTF-8" }
+                val raw = m.groupValues[2].trim().trim('"')
+                val decoded = try {
+                    java.net.URLDecoder.decode(raw, charset)
+                } catch (e: Exception) {
+                    try { java.net.URLDecoder.decode(raw, "UTF-8") }
+                    catch (e2: Exception) { raw }
+                }
+                if (decoded.isNotBlank()) return decoded
+            }
+        Regex("filename\\s*=\\s*\"([^\"]*)\"", RegexOption.IGNORE_CASE)
+            .find(h)?.let {
+                if (it.groupValues[1].isNotBlank()) return it.groupValues[1]
+            }
+        Regex("filename\\s*=\\s*([^;]+)", RegexOption.IGNORE_CASE)
+            .find(h)?.let {
+                val v = it.groupValues[1].trim().trim('"')
+                if (v.isNotBlank()) return v
+            }
+        return ""
+    }
+
+    /**
+     * Safe to hand to setDestinationInExternalPublicDir, which throws on a
+     * name containing a path separator. Parentheses and spaces are left alone
+     * - they are legal, and stripping them mangles titles for no reason.
+     */
+    private fun sanitizeName(n: String): String {
+        var s = n.substringAfterLast('/').substringAfterLast('\\').trim()
+        s = s.replace(Regex("[\\x00-\\x1f<>:\"|?*]"), "_")
+        s = s.trim('.', ' ')
+        if (s.length > 120) {
+            val ext = s.substringAfterLast('.', "")
+            val stem = s.substringBeforeLast('.', s).take(110)
+            s = if (ext.isBlank()) stem else stem + "." + ext
         }
-        return if (ext.isNullOrBlank()) base else base + "." + ext
+        return s
+    }
+
+    /**
+     * Whether the tail after the final dot is an extension or just part of
+     * the name. "mp3" is; "com)" - from Shallipopi-Laho-(TrendySongz.com).mp3
+     * with its real extension already lost - is not.
+     */
+    private fun looksLikeExt(name: String): Boolean {
+        val e = name.substringAfterLast('.', "")
+        return e.length in 1..5 && e.isNotEmpty() && e.all { it.isLetterOrDigit() }
+    }
+
+    /**
+     * A filename that keeps what the server called the file and carries an
+     * extension the phone can act on.
+     *
+     * In order of trust: the name the server stated, the last piece of the
+     * address, then the platform's guess - which is last because of what it
+     * does to a generic content type, and which is still needed for data:
+     * URLs, where there is no name anywhere else.
+     */
+    private fun downloadName(url: String, cd: String?, mime: String?): String {
+        val fromUrl = sanitizeName(try {
+            android.net.Uri.parse(url).lastPathSegment.orEmpty()
+        } catch (e: Exception) { "" })
+
+        var name = sanitizeName(dispositionName(cd))
+        if (name.isBlank()) name = fromUrl
+        if (name.isBlank()) {
+            name = sanitizeName(try {
+                android.webkit.URLUtil.guessFileName(url, cd, mime)
+            } catch (e: Exception) { "" })
+            // .bin is guessFileName's way of saying it does not know. Dropped
+            // so the recovery below gets a chance rather than being handed a
+            // name that already looks finished.
+            if (name.endsWith(".bin", true)) name = name.dropLast(4)
+        }
+        if (name.isBlank()) name = "download_" + System.currentTimeMillis()
+
+        val map = android.webkit.MimeTypeMap.getSingleton()
+        val declared = mime?.substringBefore(';')?.trim()?.lowercase()
+
+        // A REAL declared type that disagrees with the extension on the name
+        // wins, and the extension is swapped for the one that type maps to.
+        // This is the part guessFileName gets right - a .php that serves audio
+        // should land as .mp3 - and it is kept. What is not kept is doing it
+        // for a generic type, and cutting the base name at the first dot
+        // instead of the last.
+        if (looksLikeExt(name) && declared != null && !isGenericMime(declared)) {
+            val fromName = map.getMimeTypeFromExtension(
+                name.substringAfterLast('.').lowercase())
+            if (fromName != null && !fromName.equals(declared, true)) {
+                val want = map.getExtensionFromMimeType(declared)
+                if (!want.isNullOrBlank()) {
+                    name = name.substringBeforeLast('.') + "." + want
+                }
+            }
+        }
+
+        if (!looksLikeExt(name)) {
+            val urlExt =
+                if (looksLikeExt(fromUrl)) fromUrl.substringAfterLast('.') else ""
+            val mimeExt = declared
+                ?.takeIf { !isGenericMime(it) }
+                ?.let { map.getExtensionFromMimeType(it) }
+                .orEmpty()
+            val ext = urlExt.ifBlank { mimeExt }
+            if (ext.isNotBlank()) name = name + "." + ext
+        }
+        return name
+    }
+
+    /**
+     * The type to register the file under.
+     *
+     * A real declared type is kept. A generic one is replaced by whatever the
+     * extension maps to, so an mp3 served as application/octet-stream is
+     * stored as audio/mpeg - which is what decides whether a music player
+     * will open it and whether the media scanner indexes it at all.
+     */
+    private fun downloadMime(name: String, declared: String?): String? {
+        val clean = declared?.substringBefore(';')?.trim()
+        if (!isGenericMime(clean)) return clean
+        val ext = name.substringAfterLast('.', "").lowercase()
+        if (ext.isBlank()) return clean
+        return android.webkit.MimeTypeMap.getSingleton()
+            .getMimeTypeFromExtension(ext) ?: clean
     }
 
     /**
