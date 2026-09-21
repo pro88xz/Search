@@ -2,8 +2,8 @@
 <resources>
     <color name="searchPageBg">#0E0E10</color>
     <color name="appBackground">#0E0E10</color>
-    <color name="sugMuted">#8A8A8F</color>
-    <color name="sugCard">#1A1A1E</color>
+    <color name="sugMuted">#8A8A8A</color>
+    <color name="sugCard">#00FFFFFF</color>
     <color name="sugIcon">#9A9AA0</color>
     <color name="fieldSurface">#26262B</color>
     <color name="cardLine">#26262A</color>
@@ -13,4 +13,8 @@
     <color name="settingsPageBg">#0E0E10</color>
     <color name="settingsCard">#1C1C20</color>
     <color name="settingsIconTint">#B39DF0</color>
+    <color name="sugSheet">#17171A</color>
+    <color name="sugFg">#FAFAFA</color>
+    <color name="sugChipBg">#2A2A2E</color>
+    <color name="sugTitle">#9A9A9A</color>
 </resources>

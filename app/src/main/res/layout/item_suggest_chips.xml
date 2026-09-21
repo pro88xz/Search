@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  One row of the list that holds every query suggestion at once.
+
+  Chips have to wrap, and a LinearLayoutManager cannot wrap - so rather than
+  fight the RecyclerView with a custom layout manager, all the queries live in
+  a single ChipGroup occupying one list position. ChipGroup already knows how
+  to flow and wrap; the list keeps its simple vertical stack; site rows follow
+  underneath as ordinary items.
+-->
+<com.google.android.material.chip.ChipGroup
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/sugChips"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:paddingStart="@dimen/space_sm"
+    android:paddingEnd="@dimen/space_sm"
+    android:paddingTop="@dimen/space_xs"
+    android:paddingBottom="@dimen/space_xxs"
+    app:chipSpacingHorizontal="@dimen/space_xs"
+    app:chipSpacingVertical="@dimen/space_xxs"
+    app:singleLine="false" />

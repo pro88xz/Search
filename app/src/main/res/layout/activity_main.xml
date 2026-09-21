@@ -306,16 +306,66 @@
     </LinearLayout>
 
 
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/suggestOverlay"
+    <!-- The search results, as two surfaces rather than one.
+
+         The backdrop is the page; the RecyclerView is a card on it. Before
+         this the list WAS the page - one flat expanse the same colour as the
+         box above it, which is why it read as unfinished beside a browser
+         that does this properly.
+
+         clickable on the backdrop is not decoration: it is match_parent over
+         the WebView, and without it a tap on the empty area goes straight
+         through to whatever page is behind. -->
+    <FrameLayout
+        android:id="@+id/suggestBackdrop"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_marginTop="58dp"
-        android:paddingTop="8dp"
-        android:paddingBottom="8dp"
-        android:clipToPadding="false"
         android:background="@color/searchPageBg"
-        android:visibility="gone" />
+        android:clickable="true"
+        android:focusable="false"
+        android:visibility="gone">
+
+        <!-- wrap_content, so the card is the height of its results. Three
+             suggestions give a short card with page showing under it; a full
+             list grows until it runs out of backdrop and then scrolls inside
+             itself. A match_parent card would just be a white screen with a
+             few rows at the top of it. -->
+        <!-- The card is this column now, not the list. The heading has to
+             sit above the rows and stay there while they scroll, which a
+             list item cannot do - and a heading built into the chips row
+             would vanish the moment a query returns sites instead of
+             searches. -->
+        <LinearLayout
+            android:id="@+id/suggestCard"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_margin="@dimen/space_sm"
+            android:orientation="vertical"
+            android:background="@drawable/sug_sheet_bg">
+
+            <TextView
+                android:id="@+id/suggestTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingStart="@dimen/space_md"
+                android:paddingEnd="@dimen/space_md"
+                android:paddingTop="@dimen/space_sm"
+                android:paddingBottom="@dimen/space_xxs"
+                android:text="@string/suggest_title"
+                android:textSize="13sp"
+                android:fontFamily="sans-serif-medium"
+                android:textColor="@color/sugTitle" />
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/suggestOverlay"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingBottom="@dimen/space_xs"
+                android:clipToPadding="false"
+                android:overScrollMode="never" />
+        </LinearLayout>
+    </FrameLayout>
 
     <!-- ===== Slide-in menu panel (hidden by default) ===== -->
     <FrameLayout

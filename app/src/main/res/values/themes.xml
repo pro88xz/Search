@@ -5,6 +5,30 @@
         <item name="android:windowBackground">@color/appBackground</item>
         <item name="android:colorBackground">@color/appBackground</item>
     </style>
+    <!--
+      Dialogs.
+
+      The text dialogs were built with android.app.AlertDialog - the FRAMEWORK
+      one, styled by the platform and deaf to anything the app's theme says.
+      That is why they came up square-cornered against an app that rounds
+      everything else: nothing was wrong with the styling, the dialog simply
+      was not listening to it.
+
+      MaterialAlertDialogBuilder does listen, and this overlay hands it the
+      same radius_xl every other sheet in the app uses, so a dialog is
+      recognisably the same object as the menu it came from.
+
+      The four dialogs built from custom layouts are untouched - they already
+      draw their own dialog_bg and set the window transparent.
+    -->
+    <style name="ShapeAppearance.Search.Dialog" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">@dimen/radius_xl</item>
+    </style>
+    <style name="Theme.Search.Dialog" parent="ThemeOverlay.MaterialComponents.MaterialAlertDialog">
+        <item name="shapeAppearanceOverlay">@style/ShapeAppearance.Search.Dialog</item>
+    </style>
+
     <style name="Theme.Search.Splash" parent="Theme.MaterialComponents.NoActionBar">
         <item name="android:windowBackground">@color/splashBg</item>
         <item name="android:windowFullscreen">true</item>

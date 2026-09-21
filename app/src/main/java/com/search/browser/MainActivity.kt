@@ -196,7 +196,8 @@ class MainActivity : AppCompatActivity() {
             SitePermissions.DENY -> { onDeny(); return }
         }
         if (isFinishing || isDestroyed) { onDeny(); return }
-        android.app.AlertDialog.Builder(this)
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(
+            this, R.style.Theme_Search_Dialog)
             .setTitle(origin.ifBlank { "This site" })
             .setMessage(message)
             .setCancelable(false)
@@ -310,7 +311,7 @@ class MainActivity : AppCompatActivity() {
     private var suggestBasePad = -1
 
     private fun setupSuggestOverlay() {
-        if (suggestBasePad < 0) suggestBasePad = binding.suggestOverlay.paddingBottom
+        if (suggestBasePad < 0) suggestBasePad = binding.suggestBackdrop.paddingBottom
         suggestAdapter = SuggestAdapter(emptyList(), { item ->
             if (suggestListMoving()) return@SuggestAdapter
             val kind = item.optString("kind")
@@ -329,6 +330,38 @@ class MainActivity : AppCompatActivity() {
             binding.urlBar.setText(fill)
             binding.urlBar.setSelection(fill.length)
         })
+        // Rows are clipped to the card's rounded corners. Set here rather
+        // than in XML: android:clipToOutline is API 31+, and this app runs
+        // from 24, where it would be ignored and the corner would square off
+        // under a ripple.
+        binding.suggestCard.clipToOutline = true
+        // The card starts hidden and stays hidden whenever it is empty.
+        //
+        // It is wrap_content with 8dp of padding above and below, so with no
+        // rows it still measures 16dp and paints every one of them white: a
+        // thin strip under the search box that looks like a rendering fault.
+        // This did not show before the card, because the list was the page
+        // and an empty page is just a page.
+        //
+        // An adapter observer rather than a check after each fetch, so it
+        // holds for every route to empty - the clear at the end of
+        // animateSearchOut, a query with no results, and the gap between
+        // search opening and the first suggestion arriving.
+        binding.suggestCard.visibility = View.GONE
+        suggestAdapter?.registerAdapterDataObserver(
+            object : androidx.recyclerview.widget.RecyclerView.AdapterDataObserver() {
+                private fun sync() {
+                    // The whole card, heading included. Hiding only the list
+                    // would leave a white box with a heading and nothing
+                    // under it, which is worse than the strip this replaced.
+                    binding.suggestCard.visibility =
+                        if ((suggestAdapter?.itemCount ?: 0) > 0) View.VISIBLE
+                        else View.GONE
+                }
+                override fun onChanged() = sync()
+                override fun onItemRangeInserted(start: Int, count: Int) = sync()
+                override fun onItemRangeRemoved(start: Int, count: Int) = sync()
+            })
         binding.suggestOverlay.layoutManager =
             androidx.recyclerview.widget.LinearLayoutManager(this)
         binding.suggestOverlay.adapter = suggestAdapter
@@ -474,7 +507,7 @@ class MainActivity : AppCompatActivity() {
     private fun animateSearchIn(fieldWasShowing: Boolean) {
         val d = resources.displayMetrics.density
         val bar = binding.urlBarContainer
-        val sheet = binding.suggestOverlay
+        val sheet = binding.suggestBackdrop
 
         bar.animate().cancel()
         sheet.animate().cancel()
@@ -483,7 +516,13 @@ class MainActivity : AppCompatActivity() {
             bar.alpha = 0f
             bar.translationY = 18 * d
             bar.animate().alpha(1f).translationY(0f)
-                .setDuration(300L).setInterpolator(searchEase).start()
+                .setDuration(300L).setInterpolator(searchEase)
+                // The field must be visible when this lands, whatever else ran
+                // during it. A missing address bar in search mode is a dead end
+                // for the user, so it is worth stating outright rather than
+                // trusting every other writer to behave.
+                .withEndAction { bar.alpha = 1f; bar.translationY = 0f }
+                .start()
         } else {
             bar.alpha = 1f
             bar.translationY = 0f
@@ -505,7 +544,7 @@ class MainActivity : AppCompatActivity() {
      */
     private fun animateSearchOut() {
         val d = resources.displayMetrics.density
-        val sheet = binding.suggestOverlay
+        val sheet = binding.suggestBackdrop
         sheet.animate().cancel()
         sheet.animate().alpha(0f).translationY(28 * d)
             .setDuration(210L).setInterpolator(searchEase)
@@ -534,6 +573,19 @@ class MainActivity : AppCompatActivity() {
         binding.tabCountBtn.visibility = View.GONE
         binding.settingsBtn.visibility = View.GONE
         binding.starBtn.visibility = View.GONE
+        // The home bar's collapse animation writes urlBarContainer.alpha
+        // directly, from setHomeBarProgress, and it is a ValueAnimator - so the
+        // animate().cancel() in animateSearchIn does not reach it. Left running
+        // it keeps overwriting the entrance, and if it settles on the expanded
+        // state that value is 0: search opens with no field at all, and the
+        // only way out is Back. Rare, because the tap has to land inside the
+        // animation's 300ms.
+        //
+        // Cancelled here rather than in animateSearchIn so that searchMode is
+        // already true, which also stops applyHomeCompact starting a new one.
+        homeBarAnim?.cancel()
+        homeBarAnim = null
+
         // Captured before it is shown: on home the field is not on screen at
         // rest, on a page it already is, and the two want different entrances.
         val fieldWasShowing = binding.urlBarContainer.visibility == View.VISIBLE
@@ -547,7 +599,7 @@ class MainActivity : AppCompatActivity() {
         binding.urlBar.requestFocus()
         val imm = getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
         imm.showSoftInput(binding.urlBar, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
-        binding.suggestOverlay.visibility = View.VISIBLE
+        binding.suggestBackdrop.visibility = View.VISIBLE
         animateSearchIn(fieldWasShowing)
         fetchSuggests(binding.urlBar.text.toString())
     }
@@ -842,12 +894,17 @@ class MainActivity : AppCompatActivity() {
             // down to its children.
             val ime = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.ime()).bottom
             val extra = (ime - bars.bottom).coerceAtLeast(0)
+            // On the backdrop, not the card. The card is wrap_content: bottom
+            // padding there would simply make it taller by the keyboard's
+            // height, leaving a band of empty white under the last row.
+            // Shortening the backdrop instead makes the card stop where the
+            // keyboard starts.
             val base = if (suggestBasePad >= 0) suggestBasePad
-                else binding.suggestOverlay.paddingBottom
-            binding.suggestOverlay.setPadding(
-                binding.suggestOverlay.paddingLeft,
-                binding.suggestOverlay.paddingTop,
-                binding.suggestOverlay.paddingRight,
+                else binding.suggestBackdrop.paddingBottom
+            binding.suggestBackdrop.setPadding(
+                binding.suggestBackdrop.paddingLeft,
+                binding.suggestBackdrop.paddingTop,
+                binding.suggestBackdrop.paddingRight,
                 base + extra
             )
             insets
@@ -1928,7 +1985,8 @@ class MainActivity : AppCompatActivity() {
         val title = if (head.startsWith("data:") || head.startsWith("blob:"))
             "Image" else head.take(60)
 
-        android.app.AlertDialog.Builder(this)
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(
+            this, R.style.Theme_Search_Dialog)
             .setTitle(title)
             .setItems(labels.toTypedArray()) { d, i -> d.dismiss(); acts[i]() }
             .show()
@@ -2172,7 +2230,8 @@ class MainActivity : AppCompatActivity() {
             setPadding((24 * d).toInt(), (8 * d).toInt(), (24 * d).toInt(), 0)
             addView(input)
         }
-        android.app.AlertDialog.Builder(this)
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(
+            this, R.style.Theme_Search_Dialog)
             .setTitle("Add shortcut")
             .setView(box)
             .setPositiveButton("Add") { _, _ ->
@@ -2194,7 +2253,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showRemoveShortcutDialog(label: String, url: String) {
-        android.app.AlertDialog.Builder(this)
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(
+            this, R.style.Theme_Search_Dialog)
             .setTitle("Remove " + label.ifBlank { "this shortcut" } + "?")
             .setMessage("It comes off the home page. Your history and bookmarks are not touched.")
             .setPositiveButton("Remove") { _, _ ->

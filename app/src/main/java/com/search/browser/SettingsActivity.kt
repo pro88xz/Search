@@ -1,6 +1,5 @@
 package com.search.browser
 
-import android.app.AlertDialog
 import android.os.Bundle
 import android.widget.RadioButton
 import android.widget.RadioGroup
@@ -126,7 +125,8 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun setupClearData() {
         findViewById<TextView>(R.id.clearData).setOnClickListener {
-            AlertDialog.Builder(this)
+            com.google.android.material.dialog.MaterialAlertDialogBuilder(
+                this, R.style.Theme_Search_Dialog)
                 .setTitle("Clear browsing data")
                 // The row said "Clear browsing data" and the code cleared the
                 // history list and nothing else - cookies, cached files and

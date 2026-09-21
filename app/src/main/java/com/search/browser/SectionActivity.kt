@@ -90,7 +90,8 @@ class SectionActivity : AppCompatActivity() {
                     this, "No site permissions saved yet",
                     android.widget.Toast.LENGTH_SHORT).show()
             } else {
-                android.app.AlertDialog.Builder(this)
+                com.google.android.material.dialog.MaterialAlertDialogBuilder(
+                    this, R.style.Theme_Search_Dialog)
                     .setTitle("Reset site permissions")
                     .setMessage("Forget all remembered answers? Sites will ask again.")
                     .setPositiveButton("Reset") { _, _ ->

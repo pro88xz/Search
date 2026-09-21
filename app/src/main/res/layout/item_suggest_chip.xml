@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A single query suggestion. Action chip: tapping runs it, there is nothing
+     to select or dismiss. -->
+<com.google.android.material.chip.Chip
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    style="@style/Widget.MaterialComponents.Chip.Action"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:textSize="15sp"
+    android:textColor="@color/sugFg"
+    app:chipBackgroundColor="@color/sugChipBg"
+    app:chipStrokeWidth="1dp"
+    app:chipStrokeColor="@color/cardLine"
+    app:chipMinHeight="40dp"
+    app:ensureMinTouchTargetSize="false"
+    app:chipStartPadding="@dimen/space_sm"
+    app:chipEndPadding="@dimen/space_sm" />

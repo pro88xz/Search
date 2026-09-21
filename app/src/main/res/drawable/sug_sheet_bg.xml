@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The suggestion sheet itself: a card sitting on the page tint.
+
+     radius_lg rather than the radius_md the rows inside use - a container
+     wants a larger radius than the things it holds, or the two curves
+     fight each other at the corner. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/sugSheet" />
+    <corners android:radius="@dimen/radius_lg" />
+</shape>
