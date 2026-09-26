@@ -2308,8 +2308,41 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun displayUrl(url: String?): String =
-        if (url == null || url.startsWith("file:///android_asset/")) "" else url
+    /**
+     * What the address bar shows at rest: the site, not the address.
+     *
+     * "google.com" rather than "https://www.google.com/search?q=moviebox&oq=",
+     * which is what every other browser does and what makes the bar readable
+     * at a glance. Nothing is lost - enterSearchMode fills the bar with the
+     * full url and selects it as soon as it is focused, so copying and editing
+     * the real address are unchanged.
+     *
+     * http:// is kept on purpose. Hiding the scheme would make an insecure
+     * page look exactly like a secure one, and there is no lock in this bar to
+     * carry that distinction. HTTPS-only is on by default and plain http
+     * already shows an interstitial first, so arriving on one is deliberate -
+     * but the bar should not then imply otherwise. A non-standard port is kept
+     * for the same reason: it is part of what you are looking at.
+     *
+     * Anything that is not a web page is returned untouched. about:, intent:
+     * and custom schemes have no host to extract, and rewriting them would
+     * hide what the page really is.
+     */
+    private fun displayUrl(url: String?): String {
+        if (url == null || url.startsWith("file:///android_asset/")) return ""
+        val uri = try {
+            android.net.Uri.parse(url)
+        } catch (e: Exception) {
+            return url
+        }
+        val scheme = uri.scheme?.lowercase()
+        if (scheme != "http" && scheme != "https") return url
+        val host = uri.host ?: return url
+        if (host.isEmpty()) return url
+        val shown = host.removePrefix("www.") +
+            (if (uri.port > 0) ":" + uri.port else "")
+        return if (scheme == "http") "http://" + shown else shown
+    }
 
     private fun captureThumbnail(tab: Tab, onDone: (() -> Unit)? = null) {
         val web = tab.webView
