@@ -20,8 +20,8 @@ android {
         applicationId = "com.devbangs.search"
         minSdk = 24
         targetSdk = 36
-        versionCode = 16
-        versionName = "1.2.0"
+        versionCode = 18
+        versionName = "1.3.0"
     }
 
     signingConfigs {
