@@ -15,7 +15,7 @@ Search is a lightweight WebView-based browser focused on a clean home page, buil
 ## Features
 
 - **Clean home page** — omnibox search, quick-access tiles (YouTube, Facebook, ChatGPT, Wikipedia), voice search, and QR scanning.
-- **Discover-style news feed** — global-interest stories (world, technology, science, business) from top-tier sources via NewsData.io, with source favicons, share buttons, and offline resilience (persisted to disk; auto-refreshes when connectivity returns).
+- **Discover-style news feed** — global-interest stories from eight regions (UK, Europe, India, Asia, Africa, Oceania, Canada, Latin America), ranked by how many newsrooms and how many parts of the world are running the same story, with source favicons, share buttons, and offline resilience (persisted to disk; auto-refreshes when connectivity returns).
 - **Tabs** — card-based tab deck with thumbnails.
 - **History & Bookmarks** — with friendly empty states.
 - **In-app Downloads** — view, open, and remove downloads without leaving the app.

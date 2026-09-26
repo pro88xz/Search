@@ -27,7 +27,7 @@ Internal working notes. Not user-facing. Keep updated as state changes.
 4. **Traffic/distribution.** The built features (games revenue engine, browser) need users. Highest-leverage next work is distribution, not more features.
 
 ### Tech debt / minor
-5. NewsData.io API key is committed in `NewsFeed.kt` (low risk; regenerate someday).
+5. Feed depends on publisher RSS terms and on CDN URL shapes. The BBC's RSS terms say personal/non-commercial and Search carries ads, which is grey rather than clear - the exposure is a takedown request, not a Play strike. Separately, `resize()` in `NewsFeed.kt` rewrites the size segment of ichef.bbci.co.uk and 365dm.com image URLs; if either CDN changes its path shape the thumbnails quietly fall back to the branded placeholder.
 6. Design-token migration is only partial (toolbar + new components use tokens; older screens still have hard-coded values). Approach: use tokens for new work; retrofit opportunistically, not as a big migration.
 7. Bing engine icon is a generic magnifying glass (no clean logo from favicon services). Only a bundled local asset would fix it (trademark-grey); left as-is.
 
@@ -39,12 +39,12 @@ Internal working notes. Not user-facing. Keep updated as state changes.
 - **Codespaces default JDK crashes the Kotlin compiler.** The devcontainer pins JDK 17 — use a fresh full Codespace, not github.dev.
 - **XML comments can't contain `--`.** (Broke dimens.xml once — no `----` dividers in comments.)
 - **Push auth (pro88xz):** if plain `git push` prompts, use a fresh terminal + a token credential helper with `$GITHUB_TOKEN`.
-- **Feed cache/delay:** NewsData.io free tier has a ~12hr delay + our 15-min in-memory TTL; new feed filters may show stale results briefly.
+- **Feed cache:** RSS is near-real-time, but the 15-min TTL is now honoured across cold starts (the cache file's mtime is the timestamp), so a change to `SOURCES` can take up to 15 minutes to show on a device that already has a cached feed. Clear app data to see it at once.
 
 ## Config / references
 
 - **Package:** com.devbangs.search · **namespace:** com.search.browser
-- **NewsData.io:** endpoint `https://newsdata.io/api/1/latest`, categories world/technology/science/business, `prioritydomain=top`, `image=1`. Key in NewsFeed.kt.
+- **News feed:** publisher RSS front pages, no API key and no quota. Sources are the `SOURCES` list at the top of `NewsFeed.kt` - 9 editor-curated front pages across 8 regions (UK, Europe, India, Asia, Africa, Oceania, Canada, Latin America), ~200KB per refresh. Items are gated (image, 48h max age, junk link/title patterns, min headline length) then clustered by headline overlap; cluster size is the trend score and distinct regions score again on top, so a story running on three continents outranks one on two British front pages. Output is woven by region, so the twelve visible cards span the world rather than one country's desks. Replaced NewsData.io in Sept 2026, which capped at 200 credits/day across the entire install base. No Middle East source: Al Arabiya, Arab News and Times of Israel all 403; Al Jazeera and Middle East Eye carry no per-item image. Never trust a feed without checking its age span - CNN's international feed answers 200 with items 2.5-3.5 years old.
 - **Engine favicons:** `https://icons.duckduckgo.com/ip3/<domain>.ico`
 - **GamePix:** property/sid `7R771`, feed `https://feeds.gamepix.com/v2/json?sid=7R771`, games open at `https://toolsepulse.co/games`.
 - **Release signing:** `keystore.properties` + `search-release.keystore` (alias `search`), git-ignored.
