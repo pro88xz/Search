@@ -12,23 +12,52 @@
 
         <!-- ===== TOP navigation bar ===== -->
         <LinearLayout
+            android:id="@+id/topBar"
             android:layout_width="match_parent"
             android:layout_height="58dp"
             android:orientation="horizontal"
             android:gravity="center_vertical"
+            android:clipChildren="false"
             android:paddingStart="@dimen/space_xxs"
             android:paddingEnd="@dimen/space_xxs"
             android:background="?android:attr/colorBackground">
 
-            <ImageButton
-                android:id="@+id/homeBtn"
-                android:layout_width="52dp"
-                android:layout_height="52dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:src="@drawable/ic_owl"
-                android:scaleType="fitCenter"
-                android:padding="1dp"
-                android:contentDescription="Home" />
+            <FrameLayout
+                android:id="@+id/owlWrap"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:clipChildren="false">
+
+                <ImageButton
+                    android:id="@+id/homeBtn"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:src="@drawable/ic_owl"
+                    android:scaleType="fitCenter"
+                    android:padding="1dp"
+                    android:contentDescription="Home" />
+
+                <!-- Bottom right of the owl's body, not out on an ear. The ink
+                     fills the button vertically and to within ~4dp of its
+                     sides, so this inset lands on the body itself. -->
+                <TextView
+                    android:id="@+id/tabBadge"
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
+                    android:layout_gravity="bottom|end"
+                    android:layout_marginEnd="0dp"
+                    android:layout_marginBottom="-2dp"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:text="2"
+                    android:textSize="10sp"
+                    android:textStyle="bold"
+                    android:textColor="#FFFFFF"
+                    android:background="@drawable/tab_badge_bg"
+                    android:visibility="gone"
+                    android:contentDescription="Open tabs" />
+            </FrameLayout>
 
             <TextView
                 android:id="@+id/nightOwlBadge"
@@ -131,37 +160,6 @@
                 </LinearLayout>
             </FrameLayout>
 
-            <ImageButton
-                android:id="@+id/reloadBtn"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:padding="9dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:src="@drawable/ic_reload"
-                android:scaleType="fitCenter"
-                android:contentDescription="Reload" />
-
-            <TextView
-                android:id="@+id/tabCountBtn"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:gravity="center"
-                android:text="1"
-                android:textSize="20sp"
-                android:textStyle="bold"
-                android:textColor="#8B6BD8"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Tabs" />
-
-            <ImageButton
-                android:id="@+id/settingsBtn"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:src="@drawable/ic_settings"
-                android:scaleType="fitCenter"
-                android:padding="0dp"
-                android:contentDescription="Settings" />
         </LinearLayout>
 
         <ProgressBar
@@ -221,7 +219,6 @@
                 android:paddingEnd="16dp"
                 android:textSize="15sp"
                 android:background="@drawable/urlbar_bg" />
-
 
 
             <TextView
@@ -305,7 +302,6 @@
                 android:lineSpacingExtra="3dp" />
         </LinearLayout>
     </LinearLayout>
-
 
     <!-- The search results, as two surfaces rather than one.
 
@@ -402,11 +398,33 @@
                 android:paddingStart="20dp"
                 android:paddingBottom="6dp" />
 
+            <LinearLayout android:id="@+id/menuHome" style="@style/MenuRow">
+                <ImageView android:layout_width="22dp" android:layout_height="22dp"
+                    android:src="@drawable/menu_home" android:layout_marginEnd="18dp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="Take me home" android:textSize="16sp"
+                    android:textColor="?android:attr/textColorPrimary" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/menuTabs" style="@style/MenuRow">
+                <ImageView android:layout_width="22dp" android:layout_height="22dp"
+                    android:src="@drawable/menu_tabs" android:layout_marginEnd="18dp" />
+                <TextView android:id="@+id/menuTabsLabel"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="Tabs" android:textSize="16sp"
+                    android:textColor="?android:attr/textColorPrimary" />
+            </LinearLayout>
             <LinearLayout android:id="@+id/menuNewTab" style="@style/MenuRow">
                 <ImageView android:layout_width="22dp" android:layout_height="22dp"
                     android:src="@drawable/menu_newtab" android:layout_marginEnd="18dp" />
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
                     android:text="New tab" android:textSize="16sp"
+                    android:textColor="?android:attr/textColorPrimary" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/menuReload" style="@style/MenuRow">
+                <ImageView android:layout_width="22dp" android:layout_height="22dp"
+                    android:src="@drawable/menu_reload" android:layout_marginEnd="18dp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="Reload" android:textSize="16sp"
                     android:textColor="?android:attr/textColorPrimary" />
             </LinearLayout>
             <LinearLayout android:id="@+id/menuNightOwl" style="@style/MenuRow">

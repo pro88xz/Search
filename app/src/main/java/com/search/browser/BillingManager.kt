@@ -6,9 +6,20 @@ import com.android.billingclient.api.*
 
 /**
  * Wraps Google Play Billing for the "Buy me a coffee" supporter tiers.
- * Products are consumable (so a supporter can give again), and consuming
- * implicitly acknowledges the purchase. A persistent "supporter" flag is
- * kept in Settings so the badge/thank-you survive the consume.
+ *
+ * The products are ONE-TIME rather than consumable, and that is deliberate.
+ * Supporting removes the feed ad, and something a person paid for has to
+ * survive a reinstall or a new phone. Consuming a purchase deletes Google's
+ * record of it, leaving a SharedPreferences flag as the only proof anyone ever
+ * paid - which goes with the app, and which no "restore" could recover because
+ * there would be nothing left to restore from. Left owned, [queryOwned]
+ * restores the entitlement anywhere the user signs in.
+ *
+ * The trade: each tier can be bought once rather than repeatedly.
+ *
+ * A one-time purchase MUST be acknowledged within three days or Google refunds
+ * it automatically. consumeAsync used to do that implicitly; acknowledgePurchase
+ * now does it outright.
  */
 class BillingManager(
     private val activity: Activity,
@@ -125,15 +136,31 @@ class BillingManager(
 
     private fun handlePurchase(purchase: Purchase) {
         if (purchase.purchaseState != Purchase.PurchaseState.PURCHASED) return
-        // Mark supporter (persist), then consume so they can give again later.
+        // The entitlement, persisted so MainActivity can read it without
+        // opening a billing connection of its own on every launch.
         Settings.setBool(activity, Settings.IS_SUPPORTER, true)
         activity.runOnUiThread { onSupporterChanged(true) }
-        val consumeParams = ConsumeParams.newBuilder()
+        // Once. Google auto-refunds a one-time purchase that goes three days
+        // unacknowledged, and queryOwned runs this again for purchases that are
+        // already owned - so the guard is not decoration.
+        if (purchase.isAcknowledged) return
+        val params = AcknowledgePurchaseParams.newBuilder()
             .setPurchaseToken(purchase.purchaseToken)
             .build()
-        client.consumeAsync(consumeParams) { _, _ -> /* consumed (implicitly acknowledged) */ }
+        client.acknowledgePurchase(params) { _ -> /* nothing to undo on failure */ }
     }
 
+    /**
+     * Restores the entitlement, which is the entire reason purchases are no
+     * longer consumed: on a new phone or after a reinstall, opening the
+     * supporter page runs this, finds the purchase Google still holds, and
+     * turns the ads back off without the user doing anything.
+     *
+     * It deliberately does NOT revoke when the list comes back empty. Refunds
+     * are rare; a query answering OK before Play's local cache has warmed is
+     * not, and putting ads back in front of someone who paid is much the worse
+     * of the two mistakes.
+     */
     private fun queryOwned() {
         val params = QueryPurchasesParams.newBuilder()
             .setProductType(BillingClient.ProductType.INAPP)

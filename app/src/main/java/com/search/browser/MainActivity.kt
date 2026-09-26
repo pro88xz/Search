@@ -4,7 +4,6 @@ import androidx.activity.viewModels
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 
 
-
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
@@ -411,6 +410,12 @@ class MainActivity : AppCompatActivity() {
     // of them instead of jumping.
     private val FIELD_H_NORMAL = 48f
     private val FIELD_H_COMPACT = 52f
+
+    /**
+     * How far the search pill travels as it slides up into the bar, in dp.
+     * Small on purpose: this is a dock, not an entrance.
+     */
+    private val SLIDE_DP = 12f
     private val FIELD_H_SEARCH = 56f
 
     private fun styleUrlBar(mode: Int) {
@@ -571,10 +576,8 @@ class MainActivity : AppCompatActivity() {
         // enabled, so system/incidental focus can never trigger search mode.
         binding.urlBar.isFocusable = true
         binding.urlBar.isFocusableInTouchMode = true
-        binding.homeBtn.visibility = View.GONE
-        binding.reloadBtn.visibility = View.GONE
-        binding.tabCountBtn.visibility = View.GONE
-        binding.settingsBtn.visibility = View.GONE
+        // The owl stays on the search page, so the field runs from the owl
+        // to the right edge rather than replacing it.
         binding.starBtn.visibility = View.GONE
         // The home bar's collapse animation writes urlBarContainer.alpha
         // directly, from setHomeBarProgress, and it is a ValueAnimator - so the
@@ -619,9 +622,6 @@ class MainActivity : AppCompatActivity() {
         binding.urlBarContainer.alpha = 1f
         binding.urlBarContainer.translationY = 0f
         binding.homeBtn.visibility = View.VISIBLE
-        binding.reloadBtn.visibility = View.VISIBLE
-        binding.tabCountBtn.visibility = View.VISIBLE
-        binding.settingsBtn.visibility = View.VISIBLE
         binding.starBtn.visibility = View.VISIBLE
         binding.urlBar.clearFocus()
         // Return the bar to non-focusable at rest so nothing but an explicit
@@ -642,7 +642,6 @@ class MainActivity : AppCompatActivity() {
         // The page may still be scrolled past its pill; re-apply the compact bar.
         if (onHome && homeCompact) applyHomeCompact(true)
     }
-
 
     // ---- HTTPS-only ----
     //
@@ -693,6 +692,15 @@ class MainActivity : AppCompatActivity() {
             }
         }
         applyAccentTints()
+        // Back from the supporter page, possibly having just bought the ads
+        // away. Above the early return below, which fires whenever the site
+        // settings are unchanged - which is nearly every resume.
+        if (Settings.getBool(this, Settings.IS_SUPPORTER, false) && nativeAd != null) {
+            binding.adSlot.removeAllViews()
+            nativeAd?.destroy()
+            nativeAd = null
+            refreshAdSlot()
+        }
         val sig = siteSettingsSignature()
         if (sig == lastSiteSig) return  // nothing changed -> don't touch anything
         lastSiteSig = sig
@@ -927,7 +935,21 @@ class MainActivity : AppCompatActivity() {
                     binding.menuScrim.visibility == View.VISIBLE -> closeMenu()
                     binding.tabDeck.visibility == View.VISIBLE -> closeDeck()
                     web?.canGoBack() == true -> web.goBack()
-                    else -> finish()
+                    // A tab a PAGE opened - an ad, a sign-in pop-up, any
+                    // target="_blank" link. It has no history of its own, so
+                    // this used to fall through to finish() and take the whole
+                    // browser down with it. closeTabFromDeck resolves openerId
+                    // and re-attaches the tab that opened this one, which is
+                    // the same path window.close() already used.
+                    tabs.activeTab?.openerId != null ->
+                        tabs.activeTab?.let { closeTabFromDeck(it) }
+                    // Nothing left to go back to. Leave, but do not die:
+                    // finish() destroys the activity and every live WebView
+                    // with it, so returning means rebuilding every tab from
+                    // saved state. Backgrounding keeps them warm, which is
+                    // what a browser is expected to do. finish() stays as the
+                    // fallback for the rare case the task cannot be backgrounded.
+                    else -> if (!moveTaskToBack(true)) finish()
                 }
             }
         })
@@ -973,7 +995,6 @@ class MainActivity : AppCompatActivity() {
         updateTabCount()
 
     }
-
 
     // Handles links tapped/shared while the app is already open (singleTop
     // delivers them here instead of a fresh onCreate). Opens the link in a
@@ -2421,8 +2442,19 @@ class MainActivity : AppCompatActivity() {
     private var homeBarProgress = 1f
     private var homeRowWidths: List<Int>? = null
 
-    private fun homeBarRow(): List<View> = listOf(
-        binding.homeBtn, binding.reloadBtn, binding.tabCountBtn, binding.settingsBtn)
+    /**
+     * The views that give up their width and fade as the bar collapses.
+     *
+     * Empty on purpose. The owl used to be in here, which is why it vanished on
+     * scroll; now it stays exactly where it is through the whole transition and
+     * the pill slides up to meet it. That is the difference between the bar
+     * swapping states and the search box arriving.
+     *
+     * Empty is safe rather than merely tolerated: homeRowWidths caches an empty
+     * list, and every forEachIndexed over the row becomes a no-op, so nothing
+     * in the collapse machinery can reach the owl at all.
+     */
+    private fun homeBarRow(): List<View> = emptyList()
 
     // Natural widths live in the layout params, which keep their fixed dp even
     // while the view is collapsed to zero, so they survive the transition.
@@ -2451,6 +2483,14 @@ class MainActivity : AppCompatActivity() {
             v.alpha = t
         }
         binding.urlBarContainer.alpha = 1f - t
+        // And it arrives rather than appearing. t is 1 for the icon row and 0
+        // for the pill, so the pill starts SLIDE_DP below its resting place and
+        // reaches it exactly as it reaches full opacity. The bar sets
+        // clipChildren="false" for this: the compact pill is 52dp inside a 58dp
+        // bar, leaving 3dp of room, so the travel would otherwise be sheared
+        // off at the bar's edge.
+        binding.urlBarContainer.translationY =
+            SLIDE_DP * t * resources.displayMetrics.density
         // The pill's height rides the same curve as its opacity and the icons'
         // width. It used to be set once, instantly, at the start of a collapse
         // and at the end of an expand - so the size changed in a single frame
@@ -2492,7 +2532,12 @@ class MainActivity : AppCompatActivity() {
         homeBarAnim = null
         val seq = ++homeBarSeq
 
-        val settled = binding.homeBtn.visibility == (if (compact) View.GONE else View.VISIBLE)
+        // This read the owl's visibility, which told the truth only while the
+        // owl collapsed with the row. It does not any more. The pill's own
+        // visibility does: snapHomeBar sets it VISIBLE when compact and
+        // INVISIBLE when the icon row holds the bar.
+        val settled = binding.urlBarContainer.visibility ==
+            (if (compact) View.VISIBLE else View.INVISIBLE)
         if (!animate || settled) { snapHomeBar(compact); return }
 
         // Collapsing: the pill takes its final styling now - background, text
@@ -2558,9 +2603,6 @@ class MainActivity : AppCompatActivity() {
             homeCompact = false
             if (!searchMode) {
                 binding.homeBtn.visibility = View.VISIBLE
-                binding.reloadBtn.visibility = View.VISIBLE
-                binding.tabCountBtn.visibility = View.VISIBLE
-                binding.settingsBtn.visibility = View.VISIBLE
                 binding.starBtn.visibility = View.VISIBLE
             }
         } else {
@@ -2730,7 +2772,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun applyNightOwlChrome(on: Boolean) {
-        val topBar = binding.homeBtn.parent as? View
+        // By id, not by binding.homeBtn.parent. The owl now sits inside a
+        // FrameLayout so its tab badge can be positioned against it, and the
+        // old expression would quietly resolve to that 48dp wrapper - putting
+        // Night Owl's wash on a box behind the owl instead of on the bar.
+        val topBar: View = binding.topBar
         val controller = androidx.core.view.WindowInsetsControllerCompat(window, window.decorView)
 
         // Detect dark mode.
@@ -2741,12 +2787,12 @@ class MainActivity : AppCompatActivity() {
         if (on) {
             // Subtle purple wash matched to the theme.
             val tint = if (isDark) "#231A3A" else "#ECE7F5"
-            topBar?.setBackgroundColor(android.graphics.Color.parseColor(tint))
+            topBar.setBackgroundColor(android.graphics.Color.parseColor(tint))
             binding.rootView.setBackgroundColor(android.graphics.Color.parseColor(tint))
             // Icons: light icons on dark tint, dark icons on light tint.
             controller.isAppearanceLightStatusBars = !isDark
         } else {
-            topBar?.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            topBar.setBackgroundColor(android.graphics.Color.TRANSPARENT)
             val tv = android.util.TypedValue()
             theme.resolveAttribute(android.R.attr.colorBackground, tv, true)
             binding.rootView.setBackgroundColor(tv.data)
@@ -2760,6 +2806,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openMenu() {
+        // The first row carries both of the jobs the owl's long press used to,
+        // and says which one it is about to do. On the home page there is
+        // nothing to go home to, so it offers the way out instead.
+        val menuUrl = tabs.activeTab?.url
+        val menuOnHome = (menuUrl == null || menuUrl == homePage)
+        (binding.menuHome.getChildAt(0) as? android.widget.ImageView)
+            ?.setImageResource(
+                if (menuOnHome) R.drawable.menu_close else R.drawable.menu_home)
+        (binding.menuHome.getChildAt(1) as? android.widget.TextView)?.text =
+            if (menuOnHome) "Close Search" else "Take me home"
         // Reflect current Night Owl state in the menu label.
         (binding.menuNightOwl.getChildAt(1) as? android.widget.TextView)?.text =
             if (nightOwl) "Exit Night Owl" else "Night Owl"
@@ -2867,6 +2923,10 @@ class MainActivity : AppCompatActivity() {
         // Initialization does disk work and can take a moment, so it runs off the
         // main thread per the SDK guide - otherwise it lands squarely in cold
         // start. Loading is bounced back to the main thread, where it must run.
+        // Supporters paid for the ads to be gone, so the SDK is never started
+        // rather than started and never asked. Initialisation makes network
+        // calls of its own; "gone" should mean gone.
+        if (Settings.getBool(this, Settings.IS_SUPPORTER, false)) return
         Thread {
             com.google.android.gms.ads.MobileAds.initialize(this) {
                 runOnUiThread {
@@ -2892,6 +2952,10 @@ class MainActivity : AppCompatActivity() {
         // - an ad request carries device signals for targeting, and a private
         // session is exactly when those should not be sent.
         if (nightOwl) return
+        // Supporters bought the feed back. Tested before the request rather
+        // than at bind time: an ad request carries device signals for targeting
+        // whether or not the card is ever shown.
+        if (Settings.getBool(this, Settings.IS_SUPPORTER, false)) return
         if (!adsReady || adLoading) return
         // One ad per session. Without this, leaving Night Owl a second time
         // would ask again for a card that is already on screen.
@@ -2921,7 +2985,10 @@ class MainActivity : AppCompatActivity() {
                     // routine no-fill from a wiring fault. Never in release:
                     // no-fill is normal and a user can do nothing about it.
                     if (BuildConfig.DEBUG) {
-                        toast("Ad failed \u00b7 code " + e.code + " \u00b7 " + e.message)
+                        // Logged, not toasted. Code 3 is no-fill and happens
+                        // constantly on a fresh unit; a toast over the feed
+                        // every time is a nuisance of its own.
+                        android.util.Log.d("Ads", "failed \u00b7 code " + e.code + " \u00b7 " + e.message)
                     }
                 }            })
             // Muted is the SDK default, but stated outright: a video ad that
@@ -3027,7 +3094,27 @@ class MainActivity : AppCompatActivity() {
     // buys a quieter build log and risks the revenue, so the warning is
     // acknowledged here instead of silenced by accident.
     @Suppress("DEPRECATION")
+    /**
+     * Is this WebView still one the app owns, or has it been destroyed?
+     *
+     * Both destroy paths drop every reference on the way out - freezeTab nulls
+     * tab.webView, closeTabFromDeck removes the tab entirely - so identity
+     * against the live tabs is an exact test for "not destroyed". No flag to
+     * maintain, and a third destroy site added later is covered for free.
+     *
+     * This matters because calling into a destroyed WebView is not a
+     * recoverable error. Chromium fails a CHECK() and aborts the process:
+     * SIGTRAP in libwebviewchromium.so, with nothing in the Java stack to
+     * point at.
+     */
+    private fun isLiveWeb(web: android.webkit.WebView): Boolean =
+        !isFinishing && !isDestroyed && tabs.tabs.any { it.webView === web }
+
     private fun positionAdSlot(web: android.webkit.WebView, scrollY: Int) {
+        // Belt as well as braces: the two posted callers check this before
+        // calling, and this covers the scroll listener and anything added
+        // later without either having to remember.
+        if (!isLiveWeb(web)) return
         if (binding.adSlot.visibility != View.VISIBLE) return
         val content = (web.contentHeight * web.scale).toInt()
         // contentHeight reads 0 while the page lays out. Taken at face value it
@@ -3058,12 +3145,23 @@ class MainActivity : AppCompatActivity() {
         val css = if (visible && h > 0) (h / scale).toInt() else 0
         web.evaluateJavascript("window.__setAdSlot && window.__setAdSlot($css)", null)
         if (visible) {
-            binding.adSlot.post { positionAdSlot(web, web.scrollY) }
+            // isLiveWeb before each, and outside positionAdSlot, so that even
+            // the argument expression web.scrollY is not evaluated against a
+            // WebView that has been destroyed in the meantime.
+            binding.adSlot.post {
+                if (isLiveWeb(web)) positionAdSlot(web, web.scrollY)
+            }
             // The reserve above lengthens the document, and contentHeight only
             // catches up after the page re-lays out - which has not happened by
             // the time the post above runs. One late pass settles the card. It
             // stays parked until then, so the wait costs nothing on screen.
-            binding.adSlot.postDelayed({ positionAdSlot(web, web.scrollY) }, 250L)
+            //
+            // This 250ms is the SIGTRAP window: freezeTab can destroy `web`
+            // inside it, and the reads in positionAdSlot would then abort the
+            // process rather than fail.
+            binding.adSlot.postDelayed({
+                if (isLiveWeb(web)) positionAdSlot(web, web.scrollY)
+            }, 250L)
         }
     }
 
@@ -3124,14 +3222,18 @@ class MainActivity : AppCompatActivity() {
         tabAdapter = TabAdapter(
             tabs = tabs.tabs,
             onSelect = { tab -> closeDeck(); openTab(tab) },
-            onClose = { tab -> closeTabFromDeck(tab) }
+            onClose = { tab -> closeTabFromDeck(tab) },
+            // Lambdas, not values: the deck rebinds on every open, so these
+            // stay current through tab switches and accent changes without the
+            // adapter being rebuilt.
+            isActive = { tab -> tabs.activeTab?.id == tab.id },
+            accent = { currentAccent() }
         )
         binding.tabList.layoutManager = GridLayoutManager(this, 2)
         binding.tabList.adapter = tabAdapter
 
         binding.deckClose.setOnClickListener { closeDeck() }
         binding.deckNewTab.setOnClickListener { closeDeck(); addNewTab(homePage) }
-
 
         binding.deckSearch.setOnEditorActionListener { _, actionId, event ->
             val enter = actionId == EditorInfo.IME_ACTION_GO ||
@@ -3522,34 +3624,6 @@ class MainActivity : AppCompatActivity() {
             Settings.setBool(this, Settings.GAMES_INTRO_SEEN, true)
             dialog.dismiss()
             openGames()
-        }
-        dialog.show()
-        dialog.window?.let { w ->
-            val width = (resources.displayMetrics.widthPixels * 0.86f).toInt()
-            w.setLayout(width, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
-        }
-    }
-
-    private fun onOwlTapped() {
-        val current = activeWeb()?.url
-        val onHome = (current == null || current == homePage)
-        if (onHome) showOwlCloseDialog() else showOwlHomeDialog()
-    }
-
-    private fun showOwlHomeDialog() {
-        val view = layoutInflater.inflate(R.layout.dialog_owl_home, null)
-        applyOwlArtIn(view)
-        val dialog = android.app.AlertDialog.Builder(this).setView(view).create()
-        dialog.window?.setBackgroundDrawable(
-            android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT)
-        )
-        dialog.window?.attributes?.windowAnimations = R.style.OwlDialogAnim
-        view.findViewById<android.widget.TextView>(R.id.owlStay).setOnClickListener {
-            dialog.dismiss()
-        }
-        view.findViewById<android.widget.TextView>(R.id.owlGoHome).setOnClickListener {
-            dialog.dismiss()
-            loadInto(activeWeb(), homePage)
         }
         dialog.show()
         dialog.window?.let { w ->
@@ -4111,11 +4185,27 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupToolbar() {
-        binding.reloadBtn.setOnClickListener { activeWeb()?.reload() }
-        binding.homeBtn.setOnClickListener { onOwlTapped() }
-        binding.tabCountBtn.setOnClickListener { openDeck() }
+
+        // The owl is the menu now. Its old job - go home, or offer to close
+        // the tab when already there - moves to a long press.
+        binding.homeBtn.setOnClickListener { openMenu() }
+        // Re-read rather than trusting what openMenu painted: a page can
+        // finish loading, or a tab be restored, between the menu opening and
+        // this row being pressed, and a row that says one thing while doing
+        // another is worse than either.
+        binding.menuHome.setOnClickListener {
+            val url = tabs.activeTab?.url
+            val onHome = (url == null || url == homePage)
+            closeMenuNow()
+            // Quitting is destructive and keeps its confirmation. Going home is
+            // not, so it just happens - and through loadInto, which is what
+            // grants the home page's JS bridge its privilege; a bare loadUrl
+            // would leave it unprivileged and the news feed blank.
+            if (onHome) showOwlCloseDialog() else loadInto(activeWeb(), homePage)
+        }
+        binding.menuTabs.setOnClickListener { closeMenuNow(); openDeck() }
+        binding.menuReload.setOnClickListener { closeMenuNow(); activeWeb()?.reload() }
         applyAccentTints()
-        binding.settingsBtn.setOnClickListener { openMenu() }
 
         // Menu scrim tap closes the menu
         binding.menuScrim.setOnClickListener { closeMenu() }
@@ -4437,21 +4527,39 @@ class MainActivity : AppCompatActivity() {
 
     private fun activeWeb(): WebView? = tabs.activeTab?.webView
 
-
-    private fun updateTabCount() { binding.tabCountBtn.text = tabs.count().toString() }
+    /** The count now lives in the menu row that opens the deck. */
+    private fun updateTabCount() {
+        val n = tabs.count()
+        binding.menuTabsLabel.text = if (n > 1) "Tabs (" + n + ")" else "Tabs"
+        // And on the owl. Hidden at one tab: a badge reading "1" is decoration,
+        // and the owl is the wordmark as much as it is a button.
+        binding.tabBadge.text = if (n > 99) "99+" else n.toString()
+        binding.tabBadge.visibility = if (n > 1) View.VISIBLE else View.GONE
+    }
 
     // Everything that carries the accent on the home page carries it here too:
     // the tab count, and the mic and scan glyphs, which home draws in var(--accent).
+    /**
+     * The accent chosen for the owl, or the default when the stored value is
+     * unparseable. Extracted so the tab deck and the chrome cannot disagree
+     * about what the accent is.
+     */
+    private fun currentAccent(): Int = try {
+        android.graphics.Color.parseColor(Settings.getHomeAccent(this))
+    } catch (e: Exception) {
+        android.graphics.Color.parseColor("#8B6BD8")
+    }
+
     private fun applyAccentTints() {
-        val accent = try {
-            android.graphics.Color.parseColor(Settings.getHomeAccent(this))
-        } catch (e: Exception) {
-            android.graphics.Color.parseColor("#8B6BD8")
-        }
-        binding.tabCountBtn.setTextColor(accent)
+        val accent = currentAccent()
+
         val tint = android.content.res.ColorStateList.valueOf(accent)
         binding.micBtn.imageTintList = tint
         binding.scanBtn.imageTintList = tint
+        // The badge is a background rather than an image, so it takes the
+        // accent through backgroundTintList. The ring drawn under it stays the
+        // window colour, which is what keeps it legible on the owl.
+        binding.tabBadge.backgroundTintList = tint
         applyArtAccent(accent)
         pushAccentToPage(activeWeb())
     }
@@ -4477,11 +4585,7 @@ class MainActivity : AppCompatActivity() {
      * define the hook.
      */
     private fun pushAccentToPage(web: android.webkit.WebView?) {
-        val accent = try {
-            android.graphics.Color.parseColor(Settings.getHomeAccent(this))
-        } catch (e: Exception) {
-            android.graphics.Color.parseColor("#8B6BD8")
-        }
+        val accent = currentAccent()
         val target = FloatArray(3)
         android.graphics.Color.colorToHSV(accent, target)
         val base = FloatArray(3)
@@ -4499,14 +4603,10 @@ class MainActivity : AppCompatActivity() {
         owlAccent = accent
         owlArt = recolouredToAccent(R.drawable.ic_owl, accent)
         owlArt?.let { binding.homeBtn.setImageBitmap(it) }
-        recolouredToAccent(R.drawable.ic_settings, accent)
-            ?.let { binding.settingsBtn.setImageBitmap(it) }
-        // Reload is a single-tone vector, so a tint is exactly right - the
-        // same reasoning applyMenuAccent sets out for the menu glyphs. It was
-        // never accented before because the platform icon it used could not
-        // be: grey, in a row of purple.
-        binding.reloadBtn.imageTintList =
-            android.content.res.ColorStateList.valueOf(accent)
+        // The settings glyph and the reload ring were recoloured here while
+        // they lived in the bar.
+        // The menu's own glyphs are handled by applyMenuAccent, which tints
+        // rather than hue-shifts because they are single tone.
         applyMenuAccent(accent)
     }
 
@@ -4605,6 +4705,5 @@ class MainActivity : AppCompatActivity() {
         val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
         imm.hideSoftInputFromWindow(binding.urlBar.windowToken, 0)
     }
-
 
 }
