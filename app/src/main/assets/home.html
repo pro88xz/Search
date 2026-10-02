@@ -3,317 +3,669 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="color-scheme" content="light dark">
 <title>Search</title>
 <style>
+  /* ---------- Tokens ----------
+     Neutrals live here. Everything that carries the user's accent is derived
+     from it in applyAccent() below and written onto :root as --accent-*, so a
+     colour picked in Settings reaches every tinted surface, not just the
+     wordmark. Script-written values are scheme-independent on purpose: an
+     inline style on :root beats the dark-mode block, so the light/dark choice
+     between two derived values (--accent-l / --accent-d, --ink-l) is made
+     here, in CSS, never by script.
+     --bg stays exactly the colour the native bars were drawn against, so there
+     is no seam where the page meets the top bar. */
   :root {
-    --bg:#F5F5F5; --fg:#0E0E10; --muted:#8A8A8F; --line:#E4E4E7;
-    --field:#FFFFFF; --accent:#2B6CF0;
-    --shadow:0 1px 3px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.04);
+    --bg:#F5F5F5; --surface:#FFFFFF; --fg:#16151B; --fg-2:#45434F; --muted:#7A7884;
+    --line:#E8E7ED; --hair:rgba(22,20,40,0.08);
+
+    --accent:#8B6BD8; --accent-rgb:139,107,216; --accent-2:#BCA9EA; --accent-deep:#6C53A8;
+    --accent-l:#8B6BD8; --accent-d:#8B6BD8; --on-accent:#FFFFFF;
+    --ink-l:#1D192B; --hero-ink:#1D1828; --hero-ink-rgb:29,24,40;
+
+    --accent-text:var(--accent-l); --heading:var(--ink-l);
+    --skel:#ECEBF0; --sweep:rgba(255,255,255,0.75);
+    --press:rgba(22,20,40,0.05);
+    --shadow-card:0 1px 2px rgba(22,20,40,0.04), 0 8px 24px -10px rgba(22,20,40,0.14);
+    --shadow-tile:0 1px 2px rgba(22,20,40,0.05), 0 6px 14px -6px rgba(22,20,40,0.16);
+    --shadow-hero:0 2px 4px rgba(22,20,40,0.06), 0 18px 36px -14px rgba(22,20,40,0.42);
+    --ease-out:cubic-bezier(.2,.8,.2,1);
+    --ease-spring:cubic-bezier(.34,1.5,.64,1);
+    --gutter:16px;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg:#0E0E10; --fg:#FAFAFA; --muted:#8A8A8F; --line:#26262A;
-      --field:#17171A; --accent:#4C8DFF;
-      --shadow:0 1px 3px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.3);
+      --bg:#0E0E10; --surface:#18181C; --fg:#F4F3F7; --fg-2:#C9C7D1; --muted:#8E8C98;
+      --line:#27272C; --hair:rgba(255,255,255,0.07);
+      --accent-text:var(--accent-d); --heading:var(--fg);
+      --skel:#1D1D22; --sweep:rgba(255,255,255,0.05);
+      --press:rgba(255,255,255,0.05);
+      --shadow-card:0 1px 2px rgba(0,0,0,0.5);
+      --shadow-tile:0 1px 2px rgba(0,0,0,0.5);
+      --shadow-hero:0 18px 36px -16px rgba(0,0,0,0.7);
     }
   }
+
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-  html, body { margin:0; padding:0; height:100%; background:var(--bg); color:var(--fg);
-    font-family:-apple-system,"Roboto","Segoe UI",system-ui,sans-serif; -webkit-font-smoothing:antialiased; }
+  html, body { margin:0; padding:0; min-height:100%; background:var(--bg); color:var(--fg);
+    font-family:-apple-system,"Roboto","Segoe UI",system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility; }
   /* A headline or address with no space in it is wider than the phone, and one
      of those is enough to make the whole page slide sideways under the thumb.
-     Nothing here is meant to scroll horizontally, so nothing may. */
+     Nothing here is meant to scroll horizontally except the category chips,
+     which scroll inside their own box, so the page itself may not. */
   html, body { max-width:100%; overflow-x:hidden; }
+  button { font:inherit; color:inherit; background:none; border:0; padding:0; margin:0; cursor:pointer; }
+  svg { display:block; }
+
+  /* The bottom reserve is the ad slot's height plus room for the native "+"
+     button, whose top half rises about 28px over the bottom of this page: the
+     last card must clear it, with air to spare. */
   .wrap { min-height:100%; display:flex; flex-direction:column; align-items:center;
-    padding:2.5vh 14px calc(40px + var(--adslot, 0px));
-    transition:padding-top .15s ease; }
+    padding:12px var(--gutter) calc(80px + var(--adslot, 0px)); }
 
+  /* ---------- Wordmark ----------
+     It used to be a 66px billboard taking a fifth of the first screen. Now it
+     is a signature: still the brand, in the accent, but the search field and
+     the stories below it are what the page is for. */
   .wordmark {
-    font-size:clamp(50px, 13.5vw, 66px);
-    font-weight:800;
-    letter-spacing:-0.01em;
-    margin:0 0 18px;
-    color:var(--accent);
-    text-shadow:0 4px 18px rgba(0,0,0,0.08);
+    font-size:34px; line-height:1; font-weight:800; letter-spacing:-0.03em;
+    margin:8px 0 18px; padding:0 0.04em 2px;
+    color:var(--accent-text);
+    background:linear-gradient(100deg, var(--accent-deep) 0%, var(--accent) 52%, var(--accent-2) 120%);
+    -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;
+  }
+  @media (prefers-color-scheme: dark) {
+    .wordmark { background:linear-gradient(100deg, var(--accent-d) 0%, var(--accent-2) 100%);
+      -webkit-background-clip:text; background-clip:text; }
   }
 
-  /* The search pill — no icon, just the input. This is the working
-     omnibox for the home page: SearchApp.submit() feeds straight into
-     the same go() the native address bar uses everywhere else. */
+  /* ---------- Search field ----------
+     Still a dumb button: the native omnibox does the typing. The motion is
+     what makes it feel alive - it presses in under the thumb with an accent
+     ring, and its hint quietly walks through what it can do, lighting the mic
+     or the scanner when the hint is about them. */
   .field {
-    width:100%; max-width:680px;
-    display:flex; align-items:center; gap:10px;
-    background:var(--field); border:1px solid var(--line);
-    border-radius:999px; padding:19px 20px 19px 26px;
-    box-shadow:0 2px 6px rgba(0,0,0,0.05), 0 12px 30px rgba(0,0,0,0.07);
-    transition:border-color .15s ease, box-shadow .15s ease;
+    position:relative; width:100%; max-width:640px; height:56px;
+    display:flex; align-items:center;
+    padding:0 6px 0 18px;
+    background:var(--surface); border-radius:28px; cursor:text;
+    box-shadow:0 0 0 1px var(--hair), 0 2px 6px rgba(22,20,40,0.04),
+               0 14px 30px -12px rgba(var(--accent-rgb),0.34);
+    transition:transform .55s var(--ease-spring);
+    -webkit-user-select:none; user-select:none;
   }
-  .field:focus-within { box-shadow:0 2px 8px rgba(0,0,0,0.06), 0 16px 36px rgba(0,0,0,0.10); }
-  .field:focus-within { border-color:var(--accent); }
+  @media (prefers-color-scheme: dark) {
+    .field { box-shadow:0 0 0 1px var(--hair), 0 14px 30px -14px rgba(var(--accent-rgb),0.45); }
+  }
+  /* The ring is its own layer so pressing animates opacity and scale only. */
+  .field::before {
+    content:""; position:absolute; left:-4px; top:-4px; right:-4px; bottom:-4px;
+    border-radius:32px; border:2px solid rgba(var(--accent-rgb),0.55);
+    opacity:0; transform:scale(0.97); pointer-events:none;
+    transition:opacity .35s ease, transform .45s var(--ease-out);
+  }
+  .field.is-pressed { transform:scale(0.985); transition:transform .18s var(--ease-out) 30ms; }
+  .field.is-pressed::before { opacity:1; transform:none; transition-duration:.18s; }
+  .field .fglyph { flex:none; width:22px; height:22px; margin-right:12px; color:var(--accent-text);
+    transition:transform .45s var(--ease-spring); }
+  .field.is-pressed .fglyph { transform:scale(1.12) rotate(-8deg); }
+  .field .fglyph svg { width:22px; height:22px; }
+  .field .fin { position:relative; flex:1; min-width:0; height:100%; }
   .field input {
-    flex:1; min-width:0; border:none; outline:none; background:transparent;
-    color:var(--fg); font-size:18px; font-family:inherit;
+    position:absolute; left:0; top:0; width:100%; height:100%;
+    border:none; outline:none; background:transparent; padding:0; margin:0;
+    color:var(--fg); font-size:16.5px; font-family:inherit; cursor:text;
   }
-  .field input::placeholder { color:var(--muted); }
+  .field input::placeholder { color:transparent; }
+  .field .fhint {
+    position:absolute; left:0; right:0; top:50%; margin-top:-11px; height:22px; line-height:22px;
+    font-size:16.5px; color:var(--muted); letter-spacing:-0.005em;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; pointer-events:none;
+  }
   .field .ficon {
-    width:26px; height:26px; flex:none; cursor:pointer;
-    display:flex; align-items:center; justify-content:center;
-    color:var(--accent);
+    position:relative; width:42px; height:42px; flex:none; border-radius:50%; cursor:pointer;
+    display:flex; align-items:center; justify-content:center; color:var(--accent-text);
   }
-  .field .ficon svg { width:22px; height:22px; display:block; }
-  .field .fdiv { width:1px; height:22px; background:var(--line); flex:none; }
+  .field .ficon::before {
+    content:""; position:absolute; left:0; top:0; right:0; bottom:0; border-radius:50%;
+    background:rgba(var(--accent-rgb),0.14); opacity:0; transform:scale(0.6);
+    transition:opacity .3s ease, transform .4s var(--ease-out);
+  }
+  .field .ficon.is-pressed::before, .field .ficon.is-hinted::before { opacity:1; transform:none; }
+  .field .ficon.is-pressed svg { transform:scale(0.9); }
+  .field .ficon svg { position:relative; width:21px; height:21px; transition:transform .3s var(--ease-spring); }
+  .field .fdiv { width:1px; height:22px; background:var(--line); flex:none; margin:0 2px; }
 
-
-  /* Shortcut row: bare circular icons on the page, no card shell.
-     One plane only. The previous version sat a --field well with a --line
-     border inside a --field card with a --line border, so the nesting had
-     no contrast to justify it and read as clutter rather than hierarchy. */
-  /* margin-top replaces what the "Quick access" heading used to carry: it had
-     34 above and 16 below, and taking the heading out without putting anything
-     back would have dropped the tiles straight onto the search pill. 22 is the
-     old 50 minus the lift. */
+  /* ---------- Shortcut tiles ----------
+     One frame for every tile: same size, same shape, always. Favicons arrive
+     as circles, squares and silhouettes, so the frame is imposed here and the
+     icon fills it - one that is already a full square takes the frame over and
+     reads as its own app icon, one that is a circle sits in it with its
+     corners showing. 48px: five across a 360dp phone leaves 65 to a cell,
+     which is room for the icon, its shadow and a 17px gutter. */
   .shortcuts {
-    width:100%; max-width:420px;
+    width:100%; max-width:400px;
     display:grid; grid-template-columns:repeat(5,1fr);
-    gap:10px 0;
-    margin-top:18px; margin-bottom:4px;
+    row-gap:16px; margin-top:24px;
   }
   .shortcuts.hidden { display:none; }
   .tile {
-    display:flex; flex-direction:column; align-items:center; gap:8px;
-    padding:4px 0;
-    text-decoration:none; color:var(--fg);
-    /* A long press is ours now, so the system must not also offer to select
-       the label or open its own link menu over the top of it. */
+    display:flex; flex-direction:column; align-items:center;
+    padding:2px 0; min-width:0;
+    text-decoration:none; color:var(--fg-2);
+    /* A long press is ours, so the system must not also offer to select the
+       label or open its own link menu over the top of it. */
     -webkit-touch-callout:none; -webkit-user-select:none; user-select:none;
   }
-  /* The add tile is deliberately not an icon: no border, no shadow, just a
-     soft well with a plus in it, so it reads as an empty slot rather than as
-     another site sitting among the real ones. */
-  .tile.add .fav {
-    background:rgba(128,128,128,0.13); border:none; box-shadow:none;
-    color:var(--muted); font-size:24px; font-weight:400;
-  }
-  /* One frame for every tile: same size, same shape, always.
-     That uniformity is the whole of what Samsung has. Their icons look
-     consistent because each one is a real app icon already drawn as a rounded
-     square - X is a black one, Facebook a blue one - so the row lines up by
-     construction. Favicons do not: they arrive as circles, squares and
-     silhouettes, and letting each keep its own outline is what made this row
-     read as mixed.
-     So the frame is imposed here instead, and the icon fills it. An icon that
-     is already a full square (X, ChatGPT, Wikipedia) takes the frame over
-     completely and reads as its own app icon. One that is a circle sits in the
-     frame with its corners showing - the same way Google, Wikipedia and Amazon
-     sit on a white tile on Samsung's own home.
-     44px rather than 48: five across a 360dp phone leaves 64 to a cell, and
-     the smaller mark is what stops two full rows reading as clutter. */
   .tile .fav {
-    width:44px; height:44px; border-radius:12px;
-    background:var(--field); border:1px solid var(--line);
-    box-shadow:0 1px 2px rgba(0,0,0,0.05);
+    position:relative; width:48px; height:48px; border-radius:15px;
+    background:var(--surface);
+    box-shadow:0 0 0 1px var(--hair), var(--shadow-tile);
     display:flex; align-items:center; justify-content:center;
-    font-size:17px; font-weight:600; color:var(--accent);
+    font-size:18px; font-weight:700; color:var(--accent-text);
     overflow:hidden;
-    transition:transform .12s ease;
+    transition:transform .5s var(--ease-spring);
   }
-  /* Press shrinks the icon. The old :active painted a rounded-rect wash
-     behind the tile, which without a shell to sit in reads as a stray box. */
-  .tile:active .fav { transform:scale(0.92); }
-  /* contain, not cover: cover fills by cropping, and the first thing it would
-     crop off a non-square icon is exactly the protruding part that makes it
-     recognisable - Reddit's ears. Nothing is cut. */
+  /* No icon yet: an accent-tinted letter rather than a bare white square. */
+  .tile .fav:not(.has-icon) { background:rgba(var(--accent-rgb),0.10); box-shadow:0 0 0 1px rgba(var(--accent-rgb),0.12); }
+  /* contain, not cover: cover would crop off exactly the protruding part that
+     makes a non-square icon recognisable - Reddit's ears. */
   .tile .fav img { width:100%; height:100%; object-fit:contain; display:block; }
-  .tile span {
-    font-size:11px; font-weight:500; color:var(--fg); max-width:100%;
-    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  .tile .fav::after {
+    content:""; position:absolute; left:0; top:0; right:0; bottom:0;
+    background:#000; opacity:0; transition:opacity .25s ease; pointer-events:none;
   }
+  .tile .lbl {
+    margin-top:8px; font-size:11.5px; line-height:14px; font-weight:500; letter-spacing:0.005em;
+    max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  /* Press dips the icon; holding keeps sinking it, so a long press visibly
+     builds toward removing the shortcut; the release springs back. */
+  .tile.is-pressed .fav { transform:scale(0.9); transition:transform .16s var(--ease-out) 30ms; }
+  .tile.is-pressed .fav::after { opacity:0.06; }
+  .tile.is-holding .fav { transform:scale(0.82); transition:transform .38s var(--ease-out); }
+  .tile.is-holding .fav::after { opacity:0.1; }
+  /* The add tile reads as an empty slot rather than as another site. */
+  .tile.add .fav {
+    background:rgba(var(--accent-rgb),0.06); box-shadow:none;
+    border:1.5px dashed rgba(var(--accent-rgb),0.42); color:var(--accent-text);
+  }
+  .tile.add .fav svg { width:20px; height:20px; }
+  .tile.add .lbl { color:var(--muted); }
 
-  /* News feed */
-  .feed { width:100%; max-width:600px; margin-top:12px; }
+  /* Entrance: the top of the page settles in once, on load. */
+  @keyframes rise { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:none; } }
+  @keyframes pop  { from { opacity:0; transform:translateY(8px) scale(0.86); } to { opacity:1; transform:none; } }
+  .boot .wordmark { animation:rise .5s var(--ease-out) backwards; }
+  .boot .field    { animation:rise .55s var(--ease-out) 60ms backwards; }
+  .shortcuts.enter .tile { animation:pop .5s var(--ease-out) backwards; }
+
+  /* ---------- Top Stories ---------- */
+  .feed { width:100%; max-width:560px; margin-top:32px; }
   .feed.hidden { display:none; }
-  .feed-head, .qa-head {
-    font-size:14px; font-weight:600; color:var(--muted);
-    /* No side margin. The wrap already insets everything by 14px, so 4px
-       here put the label 18px in while every card beside it sat at 14 - a
-       3.6dp step that reads as a section that was not quite placed. */
-    letter-spacing:-0.005em; margin:0 0 10px;
+  .sec-head { display:flex; align-items:center; justify-content:space-between; min-height:36px; margin-bottom:12px; }
+  .sec-title { display:flex; align-items:center; min-width:0; }
+  .sec-title .flame { width:26px; height:26px; flex:none; margin:-2px 7px 0 -2px; }
+  .sec-title h2 { margin:0; font-size:22px; line-height:1.1; font-weight:800; letter-spacing:-0.018em; color:var(--heading); }
+  .see-all {
+    display:flex; align-items:center; height:36px; padding:0 4px 0 12px; margin-right:-6px;
+    border-radius:18px; font-size:14.5px; font-weight:600; color:var(--accent-text);
+    position:relative; white-space:nowrap;
+    transition:opacity .25s ease;
   }
-  .qa-head { width:100%; max-width:420px; margin-top:22px; margin-bottom:16px; }
-  .qa-head.hidden { display:none; }
-  .feed-card {
-    display:flex; flex-direction:column; align-items:stretch;
-    background:var(--field); border:1px solid var(--line);
-    border-radius:24px; overflow:hidden; margin-bottom:16px;
-    text-decoration:none; color:var(--fg);
-    box-shadow:0 1px 2px rgba(0,0,0,0.07), 0 4px 12px rgba(0,0,0,0.07);
+  .see-all.off { opacity:0; pointer-events:none; }
+  .see-all::before {
+    content:""; position:absolute; left:0; top:0; right:0; bottom:0; border-radius:18px;
+    background:rgba(var(--accent-rgb),0.12); opacity:0; transform:scale(0.8);
+    transition:opacity .25s ease, transform .35s var(--ease-out);
   }
-  .feed-card:active { background:rgba(128,128,128,0.10); }
-  .feed-card .thumb {
-    width:100%; height:180px; background:var(--line);
-    background-size:cover; background-position:center;
+  .see-all.is-pressed::before { opacity:1; transform:none; }
+  .see-all span, .see-all svg { position:relative; }
+  .see-all svg { width:20px; height:20px; margin-left:1px; transition:transform .45s var(--ease-spring); }
+  .feed.expanded .see-all svg { transform:rotate(-90deg); }
+
+  /* Category filter chips: one scrolling row, bled to the screen edges so a
+     chip slides out from under the bezel rather than vanishing at a margin. */
+  .chips {
+    display:flex; overflow-x:auto; overflow-y:hidden;
+    margin:0 calc(-1 * var(--gutter)) 6px; padding:2px var(--gutter) 12px;
+    scrollbar-width:none; -webkit-overflow-scrolling:touch;
   }
-  .feed-card .body { padding:14px 16px 16px; min-width:0; }
-  .feed-card .title {
-    font-size:16px; font-weight:700; line-height:1.4; letter-spacing:-0.01em;
-    display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical;
-    overflow:hidden;
-    /* Clipping hides the overflow but the box still measures full width, so a
-       long unbroken headline pushes the card out. Wrapping it removes the
-       cause rather than hiding it. */
-    overflow-wrap:anywhere;
+  .chips::-webkit-scrollbar { display:none; }
+  .chips.hidden { display:none; }
+  .chip {
+    position:relative; flex:none; height:34px; padding:0 15px; margin-right:8px; border-radius:17px;
+    background:var(--surface); box-shadow:inset 0 0 0 1px var(--hair);
+    font-size:13.5px; font-weight:600; color:var(--fg-2); letter-spacing:-0.005em;
+    transition:transform .45s var(--ease-spring);
   }
-  .feed-card .src { font-size:11px; color:var(--muted); text-transform:capitalize; }
-  .feed-card .cardfoot {
-    display:flex; align-items:center; justify-content:space-between;
-    margin-top:10px; gap:10px;
+  .chip:last-child { margin-right:0; }
+  .chip::before {
+    content:""; position:absolute; left:0; top:0; right:0; bottom:0; border-radius:17px;
+    background:var(--accent); opacity:0; transform:scale(0.85);
+    box-shadow:0 6px 14px -6px rgba(var(--accent-rgb),0.75);
+    transition:opacity .25s ease, transform .4s var(--ease-spring);
   }
-  .feed-card .cardfoot .srcwrap {
-    flex:1; min-width:0; display:flex; align-items:center; gap:7px;
+  .chip span { position:relative; }
+  .chip[aria-pressed="true"] { color:var(--on-accent); }
+  .chip[aria-pressed="true"]::before { opacity:1; transform:none; }
+  .chip.is-pressed { transform:scale(0.94); transition-duration:.15s; }
+
+  /* Featured story. The image keeps a fixed 16:9 box and fades into an ink
+     drawn from the accent, so the headline sits on something dark whatever
+     the photograph does at its bottom edge, and the card belongs to the app
+     rather than to the photo. */
+  .hero {
+    position:relative; display:block; overflow:hidden; border-radius:24px;
+    background:var(--hero-ink);
+    color:#fff; text-decoration:none;
+    box-shadow:var(--shadow-hero);
+    transition:transform .55s var(--ease-spring);
+    -webkit-touch-callout:default;
   }
-  .feed-card .cardfoot .src { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .feed-card .favicon {
-    width:16px; height:16px; flex:none; border-radius:6px; display:block;
-    object-fit:contain; background:rgba(128,128,128,0.08);
+  /* The accent glow and the edge hairline sit over the photo, not under it:
+     painted on the card's own background they stopped where the image began,
+     and the edge showed a step there. */
+  .hero::after {
+    content:""; position:absolute; left:0; top:0; right:0; bottom:0; border-radius:inherit;
+    pointer-events:none;
+    background:radial-gradient(120% 60% at 100% 100%, rgba(var(--accent-rgb),0.34), rgba(var(--accent-rgb),0) 62%);
   }
-  .feed-card .sharebtn {
-    flex:none; width:34px; height:34px; margin:-6px -6px -6px 0;
-    display:flex; align-items:center; justify-content:center;
-    border-radius:50%; color:var(--muted);
+  @media (prefers-color-scheme: dark) {
+    .hero::after { box-shadow:inset 0 0 0 1px rgba(255,255,255,0.07); }
   }
-  .feed-card .sharebtn:active { background:rgba(128,128,128,0.15); }
-  .feed-card .sharebtn svg { width:17px; height:17px; display:block; }
-  .feed-card.no-thumb .thumb { display:none; }
-  /* Placeholder shown while an image loads or when it fails (offline): a clean
-     branded tint with a subtle glyph, so cards never look broken or blank. */
-  .feed-card .thumb.thumb-ph {
-    background-color:var(--line);
-    background-image:
-      linear-gradient(135deg, rgba(43,108,240,0.10), rgba(43,108,240,0.02));
-    display:flex; align-items:center; justify-content:center;
+  .hero.is-pressed { transform:scale(0.98); transition:transform .18s var(--ease-out) 30ms; }
+  .hero-media { position:relative; display:block; height:0; padding-top:56.25%; overflow:hidden; }
+  .hero-media img, .thumb img {
+    position:absolute; left:0; top:0; width:100%; height:100%; object-fit:cover; display:block;
+    opacity:0; transition:opacity .45s ease;
   }
-  .feed-card .thumb.thumb-ph::after {
-    content:"";
-    width:34px; height:34px; opacity:0.28;
-    background-color:var(--muted);
+  .hero-media img.ok, .thumb img.ok { opacity:1; }
+  .hero-scrim {
+    position:absolute; left:0; right:0; bottom:-1px; height:72%; pointer-events:none;
+    background:linear-gradient(180deg,
+      rgba(var(--hero-ink-rgb),0) 0%,
+      rgba(var(--hero-ink-rgb),0.45) 38%,
+      rgba(var(--hero-ink-rgb),0.86) 72%,
+      rgb(var(--hero-ink-rgb)) 100%);
+  }
+  .cat {
+    position:absolute; left:14px; top:14px; z-index:2;
+    height:26px; line-height:26px; padding:0 10px; border-radius:9px;
+    background:var(--accent); color:var(--on-accent);
+    font-size:12.5px; font-weight:700; letter-spacing:0.01em;
+    box-shadow:0 4px 12px -4px rgba(0,0,0,0.45), inset 0 0 0 1px rgba(255,255,255,0.14);
+  }
+  .hero-body { position:relative; z-index:1; display:block; margin-top:-46px; padding:0 18px 16px; }
+  .hero.noimg .hero-body { margin-top:0; padding-top:56px; }
+  .hero-title {
+    display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;
+    font-size:22px; line-height:1.2; font-weight:800; letter-spacing:-0.012em;
+    overflow-wrap:anywhere; word-break:break-word; text-wrap:pretty;
+    text-shadow:0 1px 14px rgba(0,0,0,0.3);
+  }
+  .hero-sum {
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+    margin-top:8px; font-size:14px; line-height:1.45; color:rgba(255,255,255,0.78);
+    overflow-wrap:anywhere; word-break:break-word;
+  }
+  .hero-meta { display:flex; align-items:center; margin-top:14px; min-height:46px; }
+  .hero-meta .favwrap {
+    flex:none; width:24px; height:24px; border-radius:50%; background:#fff;
+    display:flex; align-items:center; justify-content:center; overflow:hidden; margin-right:8px;
+    box-shadow:0 1px 3px rgba(0,0,0,0.3);
+  }
+  .hero-meta .favwrap img { width:16px; height:16px; display:block; border-radius:3px; }
+  .hero-meta .favwrap .mono { color:var(--hero-ink); font-size:11px; }
+  .hero-meta .src { font-size:13.5px; font-weight:600; color:rgba(255,255,255,0.94);
+    min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .hero-meta .sep { flex:none; width:1px; height:13px; margin:0 9px; background:rgba(255,255,255,0.32); }
+  .hero-meta .time { flex:none; font-size:13px; color:rgba(255,255,255,0.68); white-space:nowrap; }
+  .hero-meta .grow { flex:1; min-width:8px; }
+  .hbtn {
+    position:relative; flex:none; display:flex; align-items:center; justify-content:center;
+    border-radius:50%; transition:transform .45s var(--ease-spring);
+  }
+  .hbtn.share { width:40px; height:40px; margin-right:8px; color:rgba(255,255,255,0.9);
+    background:rgba(255,255,255,0.12); box-shadow:inset 0 0 0 1px rgba(255,255,255,0.08); }
+  .hbtn.share svg { width:18px; height:18px; }
+  .hbtn.go { width:46px; height:46px; background:var(--accent); color:var(--on-accent);
+    box-shadow:0 8px 20px -6px rgba(var(--accent-rgb),0.85), inset 0 0 0 1px rgba(255,255,255,0.16); }
+  .hbtn.go svg { width:22px; height:22px; transition:transform .45s var(--ease-spring); }
+  .hbtn.is-pressed { transform:scale(0.9); transition-duration:.15s; }
+  .hero.is-pressed .hbtn.go svg { transform:translateX(3px); }
+
+  /* Supporting stories: one card, hairlines between rows. */
+  .list {
+    position:relative; overflow:hidden; margin-top:12px;
+    background:var(--surface); border-radius:22px; box-shadow:var(--shadow-card);
+  }
+  @media (prefers-color-scheme: dark) { .list { box-shadow:inset 0 0 0 1px var(--hair); } }
+  .row {
+    position:relative; display:flex; align-items:center;
+    padding:12px 8px 12px 12px; min-height:84px;
+    text-decoration:none; color:inherit;
+  }
+  .row + .row::before, .list-foot::before {
+    content:""; position:absolute; left:14px; right:14px; top:0; height:1px;
+    background:var(--line); transform:scaleY(0.6); transform-origin:0 0;
+  }
+  .row::after, .list-foot::after {
+    content:""; position:absolute; left:0; top:0; right:0; bottom:0;
+    background:var(--press); opacity:0; transition:opacity .3s ease; pointer-events:none;
+  }
+  .row.is-pressed::after, .list-foot.is-pressed::after { opacity:1; transition-duration:.12s; }
+  .thumb {
+    position:relative; flex:none; width:88px; height:60px; border-radius:12px; overflow:hidden;
+    margin-right:12px; transition:transform .5s var(--ease-spring);
+  }
+  .row.is-pressed .thumb { transform:scale(0.95); transition:transform .16s var(--ease-out) 30ms; }
+  .rbody { flex:1; min-width:0; display:block; }
+  .rtitle {
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+    font-size:14.5px; line-height:1.33; font-weight:600; letter-spacing:-0.01em; color:var(--fg);
+    overflow-wrap:anywhere; word-break:break-word;
+  }
+  .meta { display:flex; align-items:center; margin-top:7px; min-width:0;
+    font-size:12px; line-height:16px; color:var(--muted); }
+  .meta .fav16 { flex:none; width:16px; height:16px; border-radius:5px; overflow:hidden; margin-right:6px;
+    display:flex; align-items:center; justify-content:center; background:rgba(128,128,128,0.10); }
+  .meta .fav16 img { width:16px; height:16px; display:block; }
+  .meta .src { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:500; }
+  .meta .dot { flex:none; width:3px; height:3px; border-radius:50%; background:currentColor; opacity:0.55; margin:0 7px; }
+  .meta .time { flex:none; white-space:nowrap; }
+  .mono {
+    width:100%; height:100%; display:flex; align-items:center; justify-content:center;
+    font-size:9.5px; font-weight:800; color:var(--accent-text); background:rgba(var(--accent-rgb),0.14);
+  }
+  .chev { flex:none; width:18px; height:18px; margin-left:4px; color:var(--accent-text); opacity:0.6;
+    transition:transform .4s var(--ease-spring); }
+  .row.is-pressed .chev { transform:translateX(2px); }
+  .list-foot {
+    position:relative; z-index:2; display:flex; align-items:center; justify-content:center;
+    width:100%; height:52px; background:var(--surface);
+    font-size:14px; font-weight:600; color:var(--accent-text);
+  }
+  .list-foot span, .list-foot svg { position:relative; z-index:1; }
+  .list-foot svg { width:18px; height:18px; margin-left:4px; transform:rotate(90deg);
+    transition:transform .45s var(--ease-spring); }
+  .feed.expanded .list-foot svg { transform:rotate(-90deg); }
+
+  /* Branded placeholder, kept from the previous card: shown while an image
+     loads, and for good when it cannot (offline, dead CDN), so a story never
+     shows a broken or blank box. */
+  .ph { background-color:var(--skel);
+    background-image:linear-gradient(135deg, rgba(var(--accent-rgb),0.16), rgba(var(--accent-rgb),0.03)); }
+  .hero .ph { background-color:rgba(255,255,255,0.04); }
+  .ph::after {
+    content:""; position:absolute; left:50%; top:50%; width:30px; height:30px; margin:-15px 0 0 -15px;
+    opacity:0.3; background-color:var(--muted);
     -webkit-mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256'><path d='M216 40H40a16 16 0 00-16 16v144a16 16 0 0016 16h176a16 16 0 0016-16V56a16 16 0 00-16-16zm0 16v102l-30-30a16 16 0 00-22 0l-52 52-26-26a16 16 0 00-22 0l-2 2V56zM40 174l40-40 58 58H40zm176 26h-70l-28-28 44-44 54 54v18z'/><circle cx='84' cy='100' r='16'/></svg>") center/contain no-repeat;
     mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256'><path d='M216 40H40a16 16 0 00-16 16v144a16 16 0 0016 16h176a16 16 0 0016-16V56a16 16 0 00-16-16zm0 16v102l-30-30a16 16 0 00-22 0l-52 52-26-26a16 16 0 00-22 0l-2 2V56zM40 174l40-40 58 58H40zm176 26h-70l-28-28 44-44 54 54v18z'/><circle cx='84' cy='100' r='16'/></svg>") center/contain no-repeat;
   }
-  /* Gentle entrance for feed cards */
-  @keyframes cardIn {
-    from { opacity:0; transform:translateY(14px); }
-    to   { opacity:1; transform:translateY(0); }
+  .hero .ph::after { background-color:#fff; opacity:0.22; width:40px; height:40px; margin:-34px 0 0 -20px; }
+  .ph.loaded::after { opacity:0; }
+
+  /* Entrances for stories: staggered, transform and opacity only. */
+  @keyframes storyIn { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:none; } }
+  @keyframes heroIn  { from { opacity:0; transform:translateY(16px) scale(0.975); } to { opacity:1; transform:none; } }
+  @keyframes softIn  { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+  @keyframes unfold  { from { opacity:0; transform:translateY(-10px); } to { opacity:1; transform:none; } }
+  .enter.hero { animation:heroIn .6s var(--ease-out) backwards; }
+  .enter      { animation:storyIn .5s var(--ease-out) backwards; }
+  .soft       { animation:softIn .38s var(--ease-out) backwards; }
+  .unfold     { animation:unfold .42s var(--ease-out) backwards; }
+
+  /* ---------- Skeletons ----------
+     Same shapes as the real thing. The shimmer is a gradient that slides
+     across on transform, so it never repaints. */
+  .sk { position:relative; overflow:hidden; background:var(--skel); }
+  .sk::after {
+    content:""; position:absolute; left:0; top:0; right:0; bottom:0;
+    background:linear-gradient(90deg, rgba(255,255,255,0) 0%, var(--sweep) 50%, rgba(255,255,255,0) 100%);
+    transform:translateX(-100%); animation:sweep 1.5s cubic-bezier(.4,0,.2,1) infinite;
   }
-  .feed-card { animation:cardIn .45s cubic-bezier(.22,.61,.36,1) both; }
-  /* Ripple on tappable surfaces */
-  .tile .fav, .feed-card, .ficon { position:relative; overflow:hidden; }
-  /* Follows the user's accent. It was pinned to one purple, so every other
-     accent left taps flashing a colour from a theme nobody had chosen. */
-  .ripple {
-    position:absolute; border-radius:50%; transform:scale(0);
-    background:var(--accent); opacity:0.26; pointer-events:none;
-    animation:rippleOut .55s ease-out;
-  }
-  @keyframes rippleOut { to { transform:scale(2.4); opacity:0; } }
-  /* Skeleton loading cards — mirror the real card shape, then shimmer */
-  .skel-card {
-    display:flex; flex-direction:column; align-items:stretch;
-    background:var(--field); border:1px solid var(--line);
-    border-radius:24px; overflow:hidden; margin-bottom:16px;
-    box-shadow:0 1px 2px rgba(0,0,0,0.07), 0 4px 12px rgba(0,0,0,0.07);
-  }
-  .skel-thumb { width:100%; height:180px; }
-  .skel-body { padding:14px 16px 16px; display:flex; flex-direction:column; gap:10px; }
-  .skel-line { height:13px; border-radius:6px; }
-  .skel-line.w80 { width:80%; }
-  .skel-line.w60 { width:60%; }
-  .skel-line.src { height:10px; width:34%; margin-top:6px; }
-  .shimmer {
-    background:linear-gradient(100deg,
-      rgba(139,107,216,0.08) 30%,
-      rgba(139,107,216,0.20) 50%,
-      rgba(139,107,216,0.08) 70%);
-    background-size:220% 100%;
-    animation:shimmer 1.3s ease-in-out infinite;
-  }
-  @keyframes shimmer { from { background-position:180% 0; } to { background-position:-40% 0; } }
-  .feed-fade-out { animation:feedFade .22s ease forwards; }
-  @keyframes feedFade { to { opacity:0; transform:translateY(-6px); } }
-  /* Night Owl private empty-state */
-  .nightowl-empty { display:none; width:100%; max-width:520px; margin-top:46px;
-    text-align:center; animation:cardIn .5s ease both; }
+  @keyframes sweep { to { transform:translateX(100%); } }
+  .sk-hero { border-radius:24px; overflow:hidden; background:var(--surface); box-shadow:var(--shadow-card); }
+  .sk-hero .sk-media { height:0; padding-top:56.25%;
+    background-image:linear-gradient(135deg, rgba(var(--accent-rgb),0.10), rgba(var(--accent-rgb),0.02)); }
+  .sk-hero .sk-body { padding:16px 18px 18px; }
+  .sk-line { height:12px; border-radius:6px; }
+  .sk-line + .sk-line { margin-top:10px; }
+  .sk-line.h { height:18px; }
+  .w95 { width:95%; } .w80 { width:80%; } .w60 { width:60%; } .w45 { width:45%; } .w30 { width:30%; }
+  .sk-row { position:relative; display:flex; align-items:center; padding:12px; min-height:88px; }
+  .sk-row + .sk-row::before { content:""; position:absolute; left:14px; right:14px; top:0; height:1px; background:var(--line); transform:scaleY(0.6); }
+  .sk-thumb { flex:none; width:88px; height:60px; border-radius:12px; margin-right:12px; }
+  .sk-lines { flex:1; }
+  .sk-row .sk-line:last-child { margin-top:12px; height:9px; }
+
+  /* ---------- Night Owl ---------- */
+  .nightowl-empty { display:none; width:100%; max-width:520px; margin-top:56px; text-align:center;
+    animation:rise .6s var(--ease-out) backwards; }
   .nightowl-empty.show { display:block; }
-  .night-line { font-size:17px; font-weight:700; color:var(--fg); letter-spacing:-0.01em; }
-  .night-sub { font-size:14px; color:var(--muted); margin-top:8px; line-height:1.5;
-    font-style:italic; }
+  .night-moon { width:52px; height:52px; margin:0 auto 18px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    background:rgba(var(--accent-rgb),0.12); color:var(--accent-text); }
+  .night-moon svg { width:24px; height:24px; }
+  .night-line { font-size:18px; font-weight:700; color:var(--heading); letter-spacing:-0.015em; }
+  .night-sub { font-size:14px; color:var(--muted); margin-top:8px; line-height:1.5; font-style:italic; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration:1ms !important; animation-delay:0s !important; animation-iteration-count:1 !important;
+      transition-duration:1ms !important; transition-delay:0s !important;
+    }
+    .sk::after { display:none; }
+  }
 </style>
 </head>
 <body>
-  <div class="wrap" id="wrap">
-    <div class="wordmark">Search</div>
-    <label class="field" id="field">
-      <input id="q" type="text" inputmode="search" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Search the web" />
-      <span class="ficon" id="micBtn" role="button" aria-label="Voice search">
-        <svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"><rect x="88" y="24" width="80" height="128" rx="40"/><path d="M200 128a72 72 0 0 1-144 0M128 200v32"/></svg>
+  <div class="wrap boot" id="wrap">
+    <div class="wordmark" aria-label="Search">Search</div>
+    <label class="field" id="field" data-press>
+      <span class="fglyph" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><circle cx="10.8" cy="10.8" r="6.6"/><path d="M15.8 15.8l4.6 4.6"/></svg>
+      </span>
+      <span class="fin">
+        <span class="fhint" id="hint" aria-hidden="true">Search the web</span>
+        <input id="q" type="text" inputmode="search" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Search the web" aria-label="Search the web" />
+      </span>
+      <span class="ficon" id="micBtn" role="button" aria-label="Voice search" data-press>
+        <svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="17" stroke-linecap="round" stroke-linejoin="round"><rect x="88" y="24" width="80" height="128" rx="40"/><path d="M200 128a72 72 0 0 1-144 0M128 200v32"/></svg>
       </span>
       <span class="fdiv"></span>
-      <span class="ficon" id="scanBtn" role="button" aria-label="Scan code">
-        <svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"><path d="M40 88V56a16 16 0 0 1 16-16h32M168 40h32a16 16 0 0 1 16 16v32M216 168v32a16 16 0 0 1-16 16h-32M88 216H56a16 16 0 0 1-16-16v-32M40 128h176"/></svg>
+      <span class="ficon" id="scanBtn" role="button" aria-label="Scan code" data-press>
+        <svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="17" stroke-linecap="round" stroke-linejoin="round"><path d="M40 88V56a16 16 0 0 1 16-16h32M168 40h32a16 16 0 0 1 16 16v32M216 168v32a16 16 0 0 1-16 16h-32M88 216H56a16 16 0 0 1-16-16v-32M40 128h176"/></svg>
       </span>
     </label>
     <div class="shortcuts" id="tiles"></div>
-    <div class="feed hidden" id="feed"></div>
+    <section class="feed hidden" id="feed" aria-label="Top Stories"></section>
     <div class="nightowl-empty" id="nightMsg">
+      <div class="night-moon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.6 14.4A8.6 8.6 0 0 1 9.6 3.4a.6.6 0 0 0-.8-.7A9.6 9.6 0 1 0 21.3 15.2a.6.6 0 0 0-.7-.8z"/></svg>
+      </div>
       <div class="night-line">You're browsing in the dark.</div>
       <div class="night-sub">The owl sees everything, remembers nothing.</div>
     </div>
   </div>
 <script>
+(function(){
+  'use strict';
+  var root = document.documentElement;
+  var reduceMotion = false;
+  try {
+    var rmq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    reduceMotion = rmq.matches;
+    var onRm = function(e){ reduceMotion = e.matches; };
+    if (rmq.addEventListener) rmq.addEventListener('change', onRm);
+    else if (rmq.addListener) rmq.addListener(onRm);
+  } catch (e) {}
+
+  function bridge(){ return window.SearchApp || null; }
+
+  // ---------- Accent ----------
+  // One colour in, a family out. Every tinted surface on the page reads one of
+  // these, so the chip, the arrow, the flame, the tiles' empty slot and the
+  // shimmer all follow a change made in Settings without a reload.
+  function parseHex(h){
+    var m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(h || '').trim());
+    if (!m) return null;
+    var s = m[1];
+    if (s.length === 3) s = s.charAt(0)+s.charAt(0)+s.charAt(1)+s.charAt(1)+s.charAt(2)+s.charAt(2);
+    var n = parseInt(s, 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  function mix(a, b, t){ return [0,1,2].map(function(i){ return Math.round(a[i] + (b[i] - a[i]) * t); }); }
+  function toHex(c){ return '#' + c.map(function(v){ return ('0' + v.toString(16)).slice(-2); }).join('').toUpperCase(); }
+  function luminance(c){
+    var f = c.map(function(v){ v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
+    return 0.2126 * f[0] + 0.7152 * f[1] + 0.0722 * f[2];
+  }
+  function applyAccent(hex){
+    if (!hex) return;
+    var st = root.style, c = parseHex(hex);
+    // Not a hex colour: pass it through as before, so at least the accent
+    // itself is honoured; the derived tints keep their defaults.
+    if (!c) { st.setProperty('--accent', String(hex)); return; }
+    var WHITE = [255,255,255], BLACK = [0,0,0], L = luminance(c);
+    st.setProperty('--accent', toHex(c));
+    st.setProperty('--accent-rgb', c.join(','));
+    st.setProperty('--accent-2', toHex(mix(c, WHITE, 0.4)));
+    st.setProperty('--accent-deep', toHex(mix(c, BLACK, 0.22)));
+    // Text in the accent has to stay legible on both grounds: a pale accent
+    // is deepened on light, a dark one lifted on dark.
+    st.setProperty('--accent-l', toHex(L > 0.3 ? mix(c, BLACK, 0.38) : c));
+    st.setProperty('--accent-d', toHex(L < 0.18 ? mix(c, WHITE, 0.4) : c));
+    st.setProperty('--on-accent', L > 0.42 ? '#16151B' : '#FFFFFF');
+    st.setProperty('--ink-l', toHex(mix([17,16,24], c, 0.1)));
+    var ink = mix([10,10,15], c, 0.16);
+    st.setProperty('--hero-ink', toHex(ink));
+    st.setProperty('--hero-ink-rgb', ink.join(','));
+  }
+
   var showTiles = true;
   var nightOwl = false;
   try {
-    if (window.SearchApp && window.SearchApp.getConfig) {
-      var cfg = JSON.parse(window.SearchApp.getConfig());
-      if (cfg.accent) document.documentElement.style.setProperty('--accent', cfg.accent);
+    var A = bridge();
+    if (A && A.getConfig) {
+      var cfg = JSON.parse(A.getConfig());
+      if (cfg.accent) applyAccent(cfg.accent);
       showTiles = (cfg.tiles !== false);
       nightOwl = (cfg.nightOwl === true);
     }
   } catch (e) {}
-  // In Night Owl (private) mode, show a calm empty state instead of tiles/feed.
+
+  var tilesHost = document.getElementById('tiles');
+  var feedHost = document.getElementById('feed');
+  // In Night Owl (private) mode, a calm empty state instead of tiles and feed.
   if (nightOwl) {
     showTiles = false;
-    var _t = document.getElementById('tiles'); if (_t) _t.style.display = 'none';
-    var _q = document.getElementById('qaHead'); if (_q) _q.style.display = 'none';
-    var _f = document.getElementById('feed'); if (_f) _f.style.display = 'none';
-    var _n = document.getElementById('nightMsg'); if (_n) _n.classList.add('show');
+    tilesHost.style.display = 'none';
+    feedHost.style.display = 'none';
+    document.getElementById('nightMsg').classList.add('show');
   }
+  setTimeout(function(){ document.getElementById('wrap').classList.remove('boot'); }, 900);
+
+  // ---------- Press feedback ----------
+  // One delegated listener: whatever carries data-press gets is-pressed for
+  // as long as the finger is down. A press that turns into a scroll is
+  // cancelled by the browser (pointercancel), and the CSS waits 30ms before
+  // dipping, so flicking the page never makes cards flinch.
+  var pressedEl = null;
+  function clearPress(){
+    if (pressedEl) { pressedEl.classList.remove('is-pressed'); pressedEl = null; }
+  }
+  document.addEventListener('pointerdown', function(e){
+    var t = e.target;
+    var el = t && t.closest ? t.closest('[data-press]') : null;
+    clearPress();
+    if (!el) return;
+    pressedEl = el;
+    el.classList.add('is-pressed');
+  }, { passive:true });
+  ['pointerup', 'pointercancel', 'dragstart'].forEach(function(n){
+    document.addEventListener(n, function(){
+      // A tap is so short the dip would never show; holding it for one more
+      // frame lets the press read before it springs back.
+      var el = pressedEl; pressedEl = null;
+      if (el) setTimeout(function(){ el.classList.remove('is-pressed'); }, 70);
+    }, { passive:true });
+  });
+  window.addEventListener('scroll', clearPress, { passive:true });
+  window.addEventListener('blur', clearPress);
 
   // ---------- Search box: dumb button that opens the native search page ----------
+  var field = document.getElementById('field');
   var input = document.getElementById('q');
   input.readOnly = true;  // no typing here; the native omnibox handles input
   function openNativeSearch() {
-    if (window.SearchApp && window.SearchApp.focusSearch) window.SearchApp.focusSearch();
+    var A = bridge();
+    if (A && A.focusSearch) A.focusSearch();
   }
   input.addEventListener('focus', function () { input.blur(); openNativeSearch(); });
   input.addEventListener('click', openNativeSearch);
 
   var micBtn = document.getElementById('micBtn');
   var scanBtn = document.getElementById('scanBtn');
-  if (micBtn) micBtn.addEventListener('click', function(e){
+  micBtn.addEventListener('click', function(e){
     e.preventDefault(); e.stopPropagation();
-    if (window.SearchApp && window.SearchApp.startVoice) window.SearchApp.startVoice();
+    var A = bridge();
+    if (A && A.startVoice) A.startVoice();
   });
-  if (scanBtn) scanBtn.addEventListener('click', function(e){
+  scanBtn.addEventListener('click', function(e){
     e.preventDefault(); e.stopPropagation();
-    if (window.SearchApp && window.SearchApp.startScan) window.SearchApp.startScan();
+    var A = bridge();
+    if (A && A.startScan) A.startScan();
   });
+
+  // The hint walks through what the field can do - twice, then rests on the
+  // plain one. When it is about the mic or the scanner, that button lights
+  // up with it. Paused while the page is hidden or the field is off screen.
+  var hintEl = document.getElementById('hint');
+  var HINTS = [
+    { text:'Search the web' },
+    { text:'Enter a web address' },
+    { text:'Search with your voice', el:micBtn },
+    { text:'Scan a QR code', el:scanBtn }
+  ];
+  var hintIdx = 0, hintSteps = 0, hintTimer = null, fieldOnScreen = true;
+  function hintTick(){
+    hintTimer = null;
+    if (reduceMotion) return;
+    if (document.hidden || !fieldOnScreen) { hintTimer = setTimeout(hintTick, 1500); return; }
+    hintIdx = (hintIdx + 1) % HINTS.length;
+    hintSteps++;
+    showHint(HINTS[hintIdx]);
+    if (hintSteps < HINTS.length * 2) hintTimer = setTimeout(hintTick, hintIdx === 0 ? 4200 : 3000);
+  }
+  function showHint(h){
+    var swap = function(){
+      hintEl.textContent = h.text;
+      micBtn.classList.toggle('is-hinted', h.el === micBtn);
+      scanBtn.classList.toggle('is-hinted', h.el === scanBtn);
+      if (hintEl.animate) hintEl.animate(
+        [{ opacity:0, transform:'translateY(9px)' }, { opacity:1, transform:'none' }],
+        { duration:320, easing:'cubic-bezier(.2,.8,.2,1)' });
+    };
+    if (!hintEl.animate) { swap(); return; }
+    var out = hintEl.animate(
+      [{ opacity:1, transform:'none' }, { opacity:0, transform:'translateY(-9px)' }],
+      { duration:190, easing:'cubic-bezier(.4,0,1,1)', fill:'forwards' });
+    out.onfinish = function(){ swap(); try { out.cancel(); } catch (e) {} };
+  }
+  if (!reduceMotion) hintTimer = setTimeout(hintTick, 3200);
 
   // ---------- Shortcut tiles ----------
-  var host = document.getElementById('tiles');
-
   function labelFromDomain(d){
     var name = d.split('.')[0];
     return name.charAt(0).toUpperCase() + name.slice(1);
+  }
+  function domainOf(url){
+    return String(url).replace(/^https?:\/\//,'').split('/')[0]
+      .replace(/^www\./,'').replace(/^mobile\./,'').replace(/^m\./,'');
   }
 
   /**
@@ -330,104 +682,105 @@
    * where they have been browsing. A site that is merely in history says
    * exactly that, so it never asks - it shows the icon captured when it was
    * visited, or its accent letter.
-   */
-  /**
-   * scale trims or bleeds one icon inside the shared frame.
    *
-   * The frame is uniform, but the art inside it is not: some favicons are
+   * scale trims or bleeds one icon inside the shared frame. Some favicons are
    * drawn to the edge of their square, some float small in the middle, and a
    * circle inscribed in a square can never reach the corners of one. Rather
-   * than bend the frame per icon - which is what broke the row's consistency
-   * last time - the icon is nudged to fit the frame it is given.
-   * Above 1 it bleeds past the edges and clips; below 1 it sits in.
+   * than bend the frame per icon, the icon is nudged to fit the frame it is
+   * given. Above 1 it bleeds past the edges and clips; below 1 it sits in.
    */
-  function buildTile(label, url, canFetch, scale){
-    var a=document.createElement('a'); a.className='tile'; a.href='javascript:void(0)';
+  function buildTile(t, index){
+    var label = t.label, url = t.url;
+    var a = document.createElement('a'); a.className = 'tile'; a.href = 'javascript:void(0)';
+    a.setAttribute('data-press', '');
+    a.style.animationDelay = (90 + index * 28) + 'ms';
 
     // Long press removes. The flag is what stops the press that opened the
     // remove dialog ALSO counting as a tap and loading the site behind it.
-    var held=false, timer=null;
-    function cancelHold(){ if(timer){ clearTimeout(timer); timer=null; } }
+    var held = false, timer = null, holdVis = null;
+    function cancelHold(){
+      if (timer) { clearTimeout(timer); timer = null; }
+      if (holdVis) { clearTimeout(holdVis); holdVis = null; }
+      a.classList.remove('is-holding');
+    }
     a.addEventListener('touchstart', function(){
-      held=false;
+      held = false;
       cancelHold();
-      timer=setTimeout(function(){
-        timer=null; held=true;
+      // Past a tap's length the icon keeps sinking, so the hold reads as
+      // building toward something before the dialog appears.
+      holdVis = setTimeout(function(){ holdVis = null; a.classList.add('is-holding'); }, 160);
+      timer = setTimeout(function(){
+        timer = null; held = true;
+        a.classList.remove('is-holding');
         try { if (navigator.vibrate) navigator.vibrate(12); } catch(e){}
-        if(window.SearchApp&&window.SearchApp.removeShortcut){
-          window.SearchApp.removeShortcut(label, url);
-        }
+        var A = bridge();
+        if (A && A.removeShortcut) A.removeShortcut(label, url);
       }, 500);
-    }, {passive:true});
-    a.addEventListener('touchend', cancelHold, {passive:true});
-    a.addEventListener('touchmove', cancelHold, {passive:true});
-    a.addEventListener('touchcancel', function(){ cancelHold(); held=false; }, {passive:true});
+    }, { passive:true });
+    a.addEventListener('touchend', cancelHold, { passive:true });
+    a.addEventListener('touchmove', cancelHold, { passive:true });
+    a.addEventListener('touchcancel', function(){ cancelHold(); held = false; }, { passive:true });
+    // Belt to the CSS braces: the long press belongs to the remove dialog, not
+    // to the WebView's link menu for a javascript: address.
+    a.addEventListener('contextmenu', function(e){ e.preventDefault(); });
 
-    a.onclick=function(){
-      if (held) { held=false; return; }
-      if(window.SearchApp&&window.SearchApp.open) window.SearchApp.open(url);
+    a.onclick = function(){
+      if (held) { held = false; return; }
+      var A = bridge();
+      if (A && A.open) A.open(url);
     };
-    var fav=document.createElement('div'); fav.className='fav';
-    fav.textContent=label.charAt(0).toUpperCase();
-    var span=document.createElement('span'); span.textContent=label;
-    a.appendChild(fav); a.appendChild(span); host.appendChild(a);
-    var dom=url.replace(/^https?:\/\//,'').split('/')[0]
-      .replace(/^www\./,'').replace(/^mobile\./,'').replace(/^m\./,'');
+    var fav = document.createElement('div'); fav.className = 'fav';
+    fav.textContent = label.charAt(0).toUpperCase();
+    var span = document.createElement('span'); span.className = 'lbl'; span.textContent = label;
+    a.appendChild(fav); a.appendChild(span); tilesHost.appendChild(a);
+    var dom = domainOf(url);
 
-    var img=document.createElement('img');
+    var img = document.createElement('img');
+    img.alt = '';
     // The frame clips, so a scale above 1 fills the corners rather than
     // spilling onto the page.
-    if (scale && scale !== 1) img.style.transform = 'scale(' + scale + ')';
+    if (t.scale && t.scale !== 1) img.style.transform = 'scale(' + t.scale + ')';
     // Handlers before src: a cached icon can fire load before they attach,
     // which is why a tile sometimes kept its letter for no reason at all.
-    img.onload=function(){
-      fav.textContent='';
-      fav.classList.add('has-icon');   // drops the card behind a real icon
+    img.onload = function(){
+      fav.textContent = '';
+      fav.classList.add('has-icon');
       fav.appendChild(img);
     };
 
     // The captured icon wins whenever there is one: it came from the site
     // itself, it is already on the device, and it costs no request.
-    var local='';
-    try {
-      if (window.SearchApp && window.SearchApp.getCachedFavicon) {
-        local = window.SearchApp.getCachedFavicon(dom) || '';
-      }
-    } catch(e){}
-    if (local) { img.src = local; return; }
+    if (t.local) { img.src = t.local; return; }
 
     // Nothing captured yet. Only a tile the user chose on purpose may ask for
     // one - the built-ins, and anything they pinned themselves. A site that is
     // merely in history never does: fetching for those is what would announce
     // the browsing history to a third party, which is the whole reason the
     // capture-on-visit cache exists.
-    if (!canFetch) return;
+    if (!t.canFetch) return;
 
-    var fellBack=false;
-    img.onerror=function(){
-      if(fellBack) return;
-      fellBack=true;
-      img.src='https://icons.duckduckgo.com/ip3/'+dom+'.ico';
+    var fellBack = false;
+    img.onerror = function(){
+      if (fellBack) return;
+      fellBack = true;
+      img.src = 'https://icons.duckduckgo.com/ip3/' + dom + '.ico';
     };
-    img.src='https://www.google.com/s2/favicons?domain='+dom+'&sz=256';
+    img.src = 'https://www.google.com/s2/favicons?domain=' + dom + '&sz=256';
   }
 
   /* The global top sites, in rank order (Similarweb, Aug 2026), minus two
      that do not belong in a browser's shortcut row: Bing, because a second
      search engine is redundant when the whole top bar is search, and
      WhatsApp, because web.whatsapp.com is the QR-pairing desktop client and
-     is useless on a phone. Wikipedia is kept at the end on merit - it sits
-     just outside the top ten and is worth more here than the sites that
-     edged it out. */
-  var DEFAULTS=[
+     is useless on a phone. Wikipedia is kept at the end on merit. */
+  var DEFAULTS = [
     {label:'Google',    url:'https://www.google.com'},
     // Drawn hard to the edge of its square, so it read a size larger than
     // everything beside it.
     {label:'YouTube',   url:'https://m.youtube.com',    scale:0.82},
-    // A circle inside a squircle leaves four white corners. 1.2 is the ratio
-    // that pushes the blue past the frame's corner arc, so the clip takes a
-    // sliver off the circle's edge and the white goes. The white f sits well
-    // inside and is untouched.
+    // A circle inside a squircle leaves four white corners. 1.2 pushes the
+    // blue past the frame's corner arc, so the clip takes a sliver off the
+    // circle's edge and the white goes. The white f is untouched.
     {label:'Facebook',  url:'https://m.facebook.com',   scale:1.2},
     {label:'Instagram', url:'https://www.instagram.com'},
     {label:'ChatGPT',   url:'https://chatgpt.com'},
@@ -436,44 +789,36 @@
     {label:'Wikipedia', url:'https://m.wikipedia.org'}
   ];
 
+  var tilesSig = null, tilesAnimated = false;
   function renderTiles(){
-    host.innerHTML='';
-    // The heading follows the tiles: hidden together, or it labels nothing.
-    var qaHead = document.getElementById('qaHead');
     if (!showTiles){
-      host.classList.add('hidden');
-      if (qaHead) qaHead.classList.add('hidden');
+      tilesHost.innerHTML = '';
+      tilesHost.classList.add('hidden');
+      tilesSig = null;
       return;
     }
-    host.classList.remove('hidden');
-    if (qaHead) qaHead.classList.remove('hidden');
+    tilesHost.classList.remove('hidden');
+    var A = bridge();
 
-    var recent=[];
+    var recent = [];
     try {
-      if (window.SearchApp && window.SearchApp.getRecentSites) {
-        recent = JSON.parse(window.SearchApp.getRecentSites());
-      }
-    } catch(e){ recent=[]; }
+      if (A && A.getRecentSites) recent = JSON.parse(A.getRecentSites());
+    } catch(e){ recent = []; }
 
-    var custom=[], hidden=[];
+    var custom = [], hidden = [];
     try {
-      if (window.SearchApp && window.SearchApp.getShortcuts) {
-        var sc = JSON.parse(window.SearchApp.getShortcuts()) || {};
+      if (A && A.getShortcuts) {
+        var sc = JSON.parse(A.getShortcuts()) || {};
         custom = sc.custom || [];
         hidden = sc.hidden || [];
       }
-    } catch(e){ custom=[]; hidden=[]; }
+    } catch(e){ custom = []; hidden = []; }
 
-    // Recent sites (newest first) push in from the left; defaults fill the rest.
-    // Ten now rather than four - two full rows of five - with the built-ins
-    // falling off the right as real history takes their places.
-    // One comparison key for all three sources, so a site cannot appear twice
-    // under two spellings and a removal actually catches it.
-    function keyOf(u){
-      return u.replace(/^https?:\/\//,'').split('/')[0]
-              .replace(/^www\./,'').replace(/^mobile\./,'').replace(/^m\./,'')
-              .toLowerCase();
-    }
+    // Recent sites (newest first) push in from the left; defaults fill the
+    // rest, the built-ins falling off the right as real history takes their
+    // places. One comparison key for all three sources, so a site cannot
+    // appear twice under two spellings and a removal actually catches it.
+    function keyOf(u){ return domainOf(u).toLowerCase(); }
 
     var combined = [], seenKeys = [];
     function consider(t){
@@ -484,17 +829,11 @@
       seenKeys.push(k);
       combined.push(t);
     }
-
     // Order of authority: what the user put there, then where they have been,
-    // then what shipped with the app.
-    // canFetch, not builtIn: a shortcut the user pinned by hand is a
-    // deliberate choice they made about their own home screen, so it may go
-    // and get its icon like the built-ins do. Otherwise a site added through
-    // the plus shows an accent letter until it happens to be visited, which
-    // is not what adding a shortcut is supposed to feel like.
+    // then what shipped with the app. canFetch, not builtIn: a shortcut the
+    // user pinned by hand may go and get its icon like the built-ins do.
     custom.forEach(function(c){
-      consider({label:c.label || labelFromDomain(keyOf(c.url)), url:c.url,
-                canFetch:true});
+      consider({label:c.label || labelFromDomain(keyOf(c.url)), url:c.url, canFetch:true});
     });
     recent.forEach(function(r){
       consider({label:labelFromDomain(r.domain), url:r.url, canFetch:false});
@@ -503,120 +842,535 @@
       consider({label:d.label, url:d.url, canFetch:true, scale:d.scale});
     });
 
-    // Eight sites and the plus: nine in a five-wide grid, which is a full row
-    // and most of a second.
-    combined.slice(0,8).forEach(function(t){
-      buildTile(t.label, t.url, t.canFetch, t.scale);
+    // Eight sites and the plus: nine in a five-wide grid.
+    var list = combined.slice(0, 8);
+    list.forEach(function(t){
+      t.local = '';
+      try {
+        if (A && A.getCachedFavicon) t.local = A.getCachedFavicon(domainOf(t.url)) || '';
+      } catch(e){}
     });
-    buildAddTile();
+
+    // This runs on every focus and every return to the page. Rebuilding an
+    // unchanged row re-requested every icon and flashed each tile's letter for
+    // a frame, so an identical row is left exactly as it is.
+    var sig = JSON.stringify(list.map(function(t){ return [t.label, t.url, t.canFetch, t.scale || 1, t.local]; }));
+    if (sig === tilesSig) return;
+    tilesSig = sig;
+
+    tilesHost.innerHTML = '';
+    var animate = !tilesAnimated && !reduceMotion;
+    tilesHost.classList.toggle('enter', animate);
+    list.forEach(function(t, i){ buildTile(t, i); });
+    buildAddTile(list.length);
+    if (animate) {
+      tilesAnimated = true;
+      setTimeout(function(){ tilesHost.classList.remove('enter'); }, 1100);
+    }
   }
 
   /** The empty slot at the end. Opens the native add dialog. */
-  function buildAddTile(){
-    var a=document.createElement('a');
-    a.className='tile add'; a.href='javascript:void(0)';
-    a.setAttribute('aria-label','Add shortcut');
-    a.onclick=function(){
-      if(window.SearchApp&&window.SearchApp.addShortcut) window.SearchApp.addShortcut();
+  function buildAddTile(index){
+    var a = document.createElement('a');
+    a.className = 'tile add'; a.href = 'javascript:void(0)';
+    a.setAttribute('aria-label', 'Add shortcut');
+    a.setAttribute('data-press', '');
+    a.style.animationDelay = (90 + index * 28) + 'ms';
+    a.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+    a.onclick = function(){
+      var A = bridge();
+      if (A && A.addShortcut) A.addShortcut();
     };
-    var fav=document.createElement('div'); fav.className='fav';
-    fav.textContent='+';
-    var span=document.createElement('span'); span.textContent='Add';
-    a.appendChild(fav); a.appendChild(span); host.appendChild(a);
+    var fav = document.createElement('div'); fav.className = 'fav';
+    fav.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>';
+    var span = document.createElement('span'); span.className = 'lbl'; span.textContent = 'Add';
+    a.appendChild(fav); a.appendChild(span); tilesHost.appendChild(a);
   }
 
   // Lets the app redraw the tiles after an add or a remove, with no reload.
-  window.__renderTiles = renderTiles;
+  // Forgetting the signature makes it a real redraw, as it always was.
+  window.__renderTiles = function(){ tilesSig = null; renderTiles(); };
 
   renderTiles();
-  // Re-render tiles when the page becomes visible again (instant, no manual reload).
+  // Re-read the tiles when the page becomes visible again (instant, no manual reload).
   document.addEventListener('visibilitychange', function(){
     if (document.visibilityState === 'visible') renderTiles();
   });
   window.addEventListener('pageshow', renderTiles);
   window.addEventListener('focus', renderTiles);
 
-  // ---------- News feed ----------
-  var feedHost = document.getElementById('feed');
+  // ---------- Top Stories ----------
+  var COLLAPSED_ROWS = 5;
+  var ICONS = {
+    flame: '<svg class="flame" viewBox="0 0 24 24" aria-hidden="true"><defs><linearGradient id="flameG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--accent)"/><stop offset="1" style="stop-color:var(--accent-deep)"/></linearGradient></defs><path fill="url(#flameG)" d="M13.6 1.6C14 4.2 15.5 6 17 7.7 18.7 9.6 20.1 11.8 20.1 14.7 20.1 19.1 16.6 22.4 12 22.4 7.4 22.4 3.9 19.1 3.9 14.8 3.9 12.1 5.1 9.9 6.9 8.3 6.9 9.9 7.6 11.1 8.8 11.7 8.5 7.8 10.6 4.2 13.6 1.6Z"/><path fill="#fff" fill-opacity=".5" d="M12.5 11.1C13.3 13 15.7 14.4 15.7 17.2 15.7 19.3 14.1 20.8 12 20.8 9.9 20.8 8.3 19.3 8.3 17.4 8.3 15.8 9.2 14.6 10.4 13.8 10.5 14.9 11 15.6 11.8 16 11.5 14.4 11.8 12.6 12.5 11.1Z"/></svg>',
+    chev: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.5 6.5L15 12l-5.5 5.5"/></svg>',
+    arrow: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13.5M13 6.5l5.5 5.5-5.5 5.5"/></svg>',
+    share: '<svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M176,160a39.7,39.7,0,0,0-28.6,12.1L91.4,140.5a40.1,40.1,0,0,0,0-25L147.4,83.9a40,40,0,1,0-8-14L83.4,101.5a40,40,0,1,0,0,53l56,31.6a40,40,0,1,0,36.6-26.1Z"/></svg>'
+  };
+
+  var feed = { items:[], expanded:false, cat:'All', cats:[], canExpand:false, shown:false, token:0 };
+  var headEl, seeAllEl, chipsEl, storiesEl;
   var feedReqId = 0;
   var feedLoaded = false;
-  function showSkeletons(){
-    feedHost.innerHTML='';
-    feedHost.classList.remove('hidden');
-    var head=document.createElement('div'); head.className='feed-head';
-    head.textContent='Top stories';
-    feedHost.appendChild(head);
-    for (var i=0;i<3;i++){
-      var c=document.createElement('div'); c.className='skel-card';
-      var t=document.createElement('div'); t.className='skel-thumb shimmer';
-      var b=document.createElement('div'); b.className='skel-body';
-      var l1=document.createElement('div'); l1.className='skel-line w80 shimmer';
-      var l2=document.createElement('div'); l2.className='skel-line w60 shimmer';
-      var l3=document.createElement('div'); l3.className='skel-line src shimmer';
-      b.appendChild(l1); b.appendChild(l2); b.appendChild(l3);
-      c.appendChild(t); c.appendChild(b);
-      feedHost.appendChild(c);
-    }
+
+  function el(tag, cls, text){
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
   }
 
-  function renderFeed(items){
-    feedHost.innerHTML='';
-    if (!items || !items.length){ feedHost.classList.add('hidden'); return; }
-    var head=document.createElement('div'); head.className='feed-head';
-    head.textContent='Top stories';
-    feedHost.appendChild(head);
-    items.slice(0,12).forEach(function(it, idx){
-      var a=document.createElement('a'); a.className='feed-card'; a.href='javascript:void(0)';
-      a.style.animationDelay=(idx*55)+'ms';
-      a.onclick=function(){ if(window.SearchApp&&window.SearchApp.open) window.SearchApp.open(it.link); };
-      if (it.image){
-        var t=document.createElement('div'); t.className='thumb';
-        // Preload the image; only paint it once it actually loads. If it fails
-        // (e.g. offline), the card keeps a clean branded placeholder instead of
-        // a blank or broken box.
-        (function(thumb, src){
-          var probe = new Image();
-          probe.onload = function(){
-            thumb.style.backgroundImage = "url('" + src.replace(/'/g,"%27") + "')";
-            thumb.classList.remove('thumb-ph');
-          };
-          probe.onerror = function(){ thumb.classList.add('thumb-ph'); };
-          thumb.classList.add('thumb-ph'); // placeholder until/unless it loads
-          probe.src = src;
-        })(t, it.image);
-        a.appendChild(t);
-      } else {
-        a.classList.add('no-thumb');
-      }
-      var b=document.createElement('div'); b.className='body';
-      var ti=document.createElement('div'); ti.className='title'; ti.textContent=it.title;
-      b.appendChild(ti);
-      var foot=document.createElement('div'); foot.className='cardfoot';
-      var srcWrap=document.createElement('div'); srcWrap.className='srcwrap';
-      // Crisp source favicon (requested at 2x display size), from the article
-      // domain. Fails silently: onerror removes it so nothing looks broken.
-      try {
-        var dom = new URL(it.link).hostname.replace(/^www\./,'');
-        if (dom) {
-          var fav=document.createElement('img'); fav.className='favicon';
-          fav.width=16; fav.height=16; fav.loading='lazy'; fav.alt='';
-          fav.src='https://www.google.com/s2/favicons?sz=64&domain='+encodeURIComponent(dom);
-          fav.onerror=function(){ if(fav.parentNode) fav.parentNode.removeChild(fav); };
-          srcWrap.appendChild(fav);
-        }
-      } catch(e){}
-      var sc=document.createElement('div'); sc.className='src'; sc.textContent=it.source||''; srcWrap.appendChild(sc);
-      foot.appendChild(srcWrap);
-      var sh=document.createElement('div'); sh.className='sharebtn';
-      sh.setAttribute('role','button'); sh.setAttribute('aria-label','Share');
-      sh.innerHTML='<svg viewBox="0 0 256 256" fill="currentColor"><path d="M176,160a39.7,39.7,0,0,0-28.6,12.1L91.4,140.5a40.1,40.1,0,0,0,0-25L147.4,83.9a40,40,0,1,0-8-14L83.4,101.5a40,40,0,1,0,0,53l56,31.6a40,40,0,1,0,36.6-26.1Z"/></svg>';
-      sh.onclick=function(ev){ ev.stopPropagation(); ev.preventDefault(); if(window.SearchApp&&window.SearchApp.shareUrl) window.SearchApp.shareUrl(it.link, it.title||''); };
-      foot.appendChild(sh);
-      b.appendChild(foot);
-      a.appendChild(b);
-      feedHost.appendChild(a);
+  function ensureFrame(){
+    if (headEl) return;
+    headEl = el('div', 'sec-head');
+    var title = el('div', 'sec-title');
+    title.innerHTML = ICONS.flame;
+    title.appendChild(el('h2', null, 'Top Stories'));
+    seeAllEl = el('button', 'see-all off');
+    seeAllEl.type = 'button';
+    seeAllEl.setAttribute('data-press', '');
+    seeAllEl.appendChild(el('span', null, 'See all'));
+    seeAllEl.insertAdjacentHTML('beforeend', ICONS.chev);
+    seeAllEl.addEventListener('click', function(){ setExpanded(!feed.expanded); });
+    headEl.appendChild(title); headEl.appendChild(seeAllEl);
+    chipsEl = el('div', 'chips hidden');
+    chipsEl.setAttribute('role', 'toolbar');
+    chipsEl.setAttribute('aria-label', 'Categories');
+    storiesEl = el('div', 'stories');
+    feedHost.appendChild(headEl); feedHost.appendChild(chipsEl); feedHost.appendChild(storiesEl);
+  }
+
+  // ----- Data -----
+  function hostOf(link){
+    var m = /^https?:\/\/([^\/?#:]+)/i.exec(link);
+    return m ? m[1].toLowerCase().replace(/^www\./, '') : '';
+  }
+  function toMs(v){
+    var n = Number(v);
+    if (!isFinite(n) || n <= 0) return 0;
+    return n < 1e12 ? n * 1000 : n;   // seconds by mistake are still a time
+  }
+  // The v2 contract, and the old {title, link, image, source} cache that a
+  // phone keeps for up to the TTL after upgrading: every field past the four
+  // is optional, and its absence just leaves its decoration off.
+  function normalize(raw){
+    if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch (e) { raw = []; } }
+    if (!raw || !raw.length) return [];
+    var out = [];
+    for (var i = 0; i < raw.length; i++) {
+      var it = raw[i];
+      if (!it || typeof it !== 'object') continue;
+      var link = String(it.link || '').trim();
+      // Only real web addresses become links: a feed must never be able to
+      // hand this privileged page a javascript: URL.
+      if (!/^https?:\/\//i.test(link)) continue;
+      var title = String(it.title || '').replace(/\s+/g, ' ').trim();
+      if (!title) continue;
+      var domain = String(it.domain || '').trim().toLowerCase().replace(/^www\./, '') || hostOf(link);
+      out.push({
+        title: title, link: link,
+        image: String(it.image || '').trim(),
+        source: String(it.source || '').trim() || domain,
+        domain: domain,
+        category: String(it.category || '').trim(),
+        summary: String(it.summary || '').replace(/\s+/g, ' ').trim(),
+        published: toMs(it.published),
+        lead: it.lead === true
+      });
+    }
+    // The lead is item 0 by contract; if a feed ever disagrees, the flag wins.
+    for (var j = 1; j < out.length; j++) {
+      if (out[j].lead) { out.unshift(out.splice(j, 1)[0]); break; }
+    }
+    return out;
+  }
+  function categoriesOf(items){
+    var count = {}, order = [];
+    items.forEach(function(it){
+      if (!it.category) return;
+      if (!count[it.category]) { count[it.category] = 0; order.push(it.category); }
+      count[it.category]++;
     });
+    // Most stories first, so the busiest desks sit under the thumb; ties keep
+    // the feed's own order.
+    return order.slice().sort(function(a, b){ return (count[b] - count[a]) || (order.indexOf(a) - order.indexOf(b)); });
+  }
+  function ago(ms){
+    if (!ms) return '';
+    var s = Math.max(0, (Date.now() - ms) / 1000);
+    if (s < 60) return 'Just now';
+    var m = Math.floor(s / 60); if (m < 60) return m + 'm ago';
+    var h = Math.floor(m / 60); if (h < 24) return h + 'h ago';
+    var d = Math.floor(h / 24); if (d < 2) return 'Yesterday';
+    if (d < 7) return d + 'd ago';
+    try { return new Date(ms).toLocaleDateString(undefined, { day:'numeric', month:'short' }); }
+    catch (e) { return d + 'd ago'; }
+  }
+
+  // ----- Pieces -----
+  // Lazy and decoded off the main thread, inside a box whose size is fixed
+  // before the image arrives, so nothing on the page moves when it does.
+  function fillMedia(box, src){
+    box.classList.add('ph');
+    if (!src) return;
+    var img = document.createElement('img');
+    img.alt = '';
+    img.decoding = 'async';
+    img.setAttribute('loading', 'lazy');
+    img.setAttribute('referrerpolicy', 'no-referrer');
+    img.onload = function(){ img.classList.add('ok'); box.classList.add('loaded'); };
+    img.onerror = function(){ if (img.parentNode) img.parentNode.removeChild(img); };
+    img.src = src;
+    box.appendChild(img);
+  }
+  // Publisher favicon, from the publisher's own domain (never the reader's
+  // history). If it cannot be had, the source's initial stands in.
+  function favicon(holder, it){
+    var mono = el('span', 'mono', (it.source || it.domain || '?').charAt(0).toUpperCase());
+    if (!it.domain) { holder.appendChild(mono); return; }
+    var img = document.createElement('img');
+    img.alt = ''; img.decoding = 'async';
+    img.setAttribute('referrerpolicy', 'no-referrer');
+    img.onerror = function(){
+      if (img.parentNode) img.parentNode.replaceChild(mono, img);
+    };
+    img.src = 'https://www.google.com/s2/favicons?sz=64&domain=' + encodeURIComponent(it.domain);
+    holder.appendChild(img);
+  }
+  function timeEl(it){
+    var t = el('span', 'time', ago(it.published));
+    t.setAttribute('data-ts', String(it.published));
+    return t;
+  }
+  // Stories are real links, so a long press gets the WebView's own menu (open
+  // in new tab, copy, share) as on any page; a tap still goes through open().
+  function openStory(e, it){
+    e.preventDefault();
+    var A = bridge();
+    if (A && A.open) A.open(it.link);
+  }
+
+  function buildHero(it){
+    var a = el('a', 'hero');
+    a.href = it.link;
+    a.setAttribute('data-press', '');
+    a.addEventListener('click', function(e){ openStory(e, it); });
+
+    if (it.image) {
+      var media = el('span', 'hero-media');
+      fillMedia(media, it.image);
+      media.appendChild(el('span', 'hero-scrim'));
+      a.appendChild(media);
+    } else {
+      a.classList.add('noimg');
+    }
+    if (it.category) a.appendChild(el('span', 'cat', it.category));
+
+    var body = el('span', 'hero-body');
+    body.appendChild(el('span', 'hero-title', it.title));
+    if (it.summary) body.appendChild(el('span', 'hero-sum', it.summary));
+
+    var meta = el('span', 'hero-meta');
+    var fw = el('span', 'favwrap'); favicon(fw, it); meta.appendChild(fw);
+    meta.appendChild(el('span', 'src', it.source));
+    if (it.published) { meta.appendChild(el('span', 'sep')); meta.appendChild(timeEl(it)); }
+    meta.appendChild(el('span', 'grow'));
+
+    var share = el('span', 'hbtn share');
+    share.setAttribute('role', 'button');
+    share.setAttribute('aria-label', 'Share');
+    share.setAttribute('data-press', '');
+    share.innerHTML = ICONS.share;
+    share.addEventListener('click', function(ev){
+      ev.stopPropagation(); ev.preventDefault();
+      var A = bridge();
+      if (A && A.shareUrl) A.shareUrl(it.link, it.title || '');
+    });
+    meta.appendChild(share);
+    var go = el('span', 'hbtn go');
+    go.setAttribute('aria-hidden', 'true');
+    go.innerHTML = ICONS.arrow;
+    meta.appendChild(go);
+    body.appendChild(meta);
+    a.appendChild(body);
+    return a;
+  }
+
+  function buildRow(it){
+    var a = el('a', 'row');
+    a.href = it.link;
+    a.setAttribute('data-press', '');
+    a.addEventListener('click', function(e){ openStory(e, it); });
+    var th = el('span', 'thumb');
+    fillMedia(th, it.image);
+    a.appendChild(th);
+    var body = el('span', 'rbody');
+    body.appendChild(el('span', 'rtitle', it.title));
+    var meta = el('span', 'meta');
+    var f = el('span', 'fav16'); favicon(f, it); meta.appendChild(f);
+    meta.appendChild(el('span', 'src', it.source));
+    if (it.published) { meta.appendChild(el('span', 'dot')); meta.appendChild(timeEl(it)); }
+    body.appendChild(meta);
+    a.appendChild(body);
+    a.insertAdjacentHTML('beforeend', ICONS.chev.replace('<svg ', '<svg class="chev" '));
+    return a;
+  }
+
+  function buildFoot(){
+    var b = el('button', 'list-foot');
+    b.type = 'button';
+    b.setAttribute('data-press', '');
+    b.appendChild(el('span', 'lbl', ''));
+    b.insertAdjacentHTML('beforeend', ICONS.chev);
+    b.addEventListener('click', function(){ setExpanded(!feed.expanded); });
+    return b;
+  }
+  function syncLabels(){
+    feedHost.classList.toggle('expanded', feed.expanded);
+    seeAllEl.classList.toggle('off', !feed.canExpand);
+    seeAllEl.firstChild.textContent = feed.expanded ? 'Show less' : 'See all';
+    seeAllEl.setAttribute('aria-expanded', feed.expanded ? 'true' : 'false');
+    var foot = storiesEl.querySelector('.list-foot');
+    if (foot) foot.firstChild.textContent = feed.expanded
+      ? 'Show less' : 'See all ' + feed.items.length + ' stories';
+  }
+
+  function visibleItems(){
+    if (feed.cat === 'All') return feed.items;
+    return feed.items.filter(function(it){ return it.category === feed.cat; });
+  }
+
+  function renderChips(){
+    chipsEl.innerHTML = '';
+    if (feed.cats.length < 2) return;
+    ['All'].concat(feed.cats).forEach(function(c){
+      var b = el('button', 'chip');
+      b.type = 'button';
+      b.setAttribute('data-press', '');
+      b.setAttribute('data-cat', c);
+      b.setAttribute('aria-pressed', c === feed.cat ? 'true' : 'false');
+      b.appendChild(el('span', null, c));
+      b.addEventListener('click', function(){ selectCat(c, b); });
+      chipsEl.appendChild(b);
+    });
+  }
+  function chipsVisible(){ return feed.expanded && feed.cats.length > 1; }
+
+  // mode: 'enter' (first arrival, staggered), 'soft' (filter change), or
+  // nothing (a background refresh, which should not perform at the reader).
+  function renderStories(mode){
+    var list = visibleItems();
+    storiesEl.innerHTML = '';
+    if (!list.length) return;
+    var hero = buildHero(list[0]);
+    storiesEl.appendChild(hero);
+    var rest = list.slice(1);
+    var rows = feed.expanded ? rest : rest.slice(0, COLLAPSED_ROWS);
+    var needFoot = feed.canExpand;
+    var anim = reduceMotion ? null : mode;
+    if (anim) { hero.classList.add(anim); }
+    if (!rows.length && !needFoot) return;
+    var card = el('div', 'list');
+    rows.forEach(function(it, i){
+      var r = buildRow(it);
+      if (anim) {
+        r.classList.add(anim);
+        var step = anim === 'enter' ? 55 : 30;
+        r.style.animationDelay = (anim === 'enter' ? 140 : 40) + Math.min(i, 8) * step + 'ms';
+      }
+      card.appendChild(r);
+    });
+    if (needFoot) {
+      var f = buildFoot();
+      if (anim) { f.classList.add('soft'); f.style.animationDelay = (anim === 'enter' ? 420 : 120) + 'ms'; }
+      card.appendChild(f);
+    }
+    if (anim === 'enter') { card.classList.add('enter'); card.style.animationDelay = '90ms'; }
+    storiesEl.appendChild(card);
+  }
+
+  function showSkeletons(){
+    ensureFrame();
     feedHost.classList.remove('hidden');
+    chipsEl.classList.add('hidden');
+    seeAllEl.classList.add('off');
+    var html =
+      '<div class="sk-hero"><div class="sk sk-media"></div><div class="sk-body">' +
+      '<div class="sk sk-line h w95"></div><div class="sk sk-line h w60"></div>' +
+      '<div class="sk sk-line w30" style="margin-top:16px"></div></div></div>' +
+      '<div class="list">';
+    for (var i = 0; i < 3; i++) {
+      html += '<div class="sk-row"><div class="sk sk-thumb"></div><div class="sk-lines">' +
+        '<div class="sk sk-line ' + (i % 2 ? 'w80' : 'w95') + '"></div>' +
+        '<div class="sk sk-line ' + (i % 2 ? 'w45' : 'w60') + '"></div>' +
+        '<div class="sk sk-line w30"></div></div></div>';
+    }
+    storiesEl.innerHTML = html + '</div>';
+  }
+
+  function renderFeed(raw){
+    var items = normalize(raw);
+    if (!items.length) {
+      feedHost.classList.add('hidden');
+      if (storiesEl) storiesEl.innerHTML = '';
+      feed.items = []; feed.shown = false;
+      return;
+    }
+    ensureFrame();
+    var first = !feed.shown;
+    feed.items = items;
+    feed.cats = categoriesOf(items);
+    if (feed.cat !== 'All' && feed.cats.indexOf(feed.cat) < 0) feed.cat = 'All';
+    feed.canExpand = items.length > COLLAPSED_ROWS + 1 || feed.cats.length > 1;
+    if (!feed.canExpand) feed.expanded = false;
+    renderChips();
+    chipsEl.classList.toggle('hidden', !chipsVisible());
+    renderStories(first ? 'enter' : null);
+    syncLabels();
+    feedHost.classList.remove('hidden');
+    feed.shown = true;
+  }
+
+  // ----- Expand, collapse, filter -----
+  function topOf(e){ return e.getBoundingClientRect().top; }
+  // FLIP: measure, change the layout, then play each moved block back from
+  // where it was. The layout jumps once, invisibly; what the eye sees is a
+  // transform, which the compositor runs without touching layout or paint.
+  function glide(e, dy, ms){
+    if (!e || reduceMotion || !e.animate || Math.abs(dy) < 0.5) return;
+    e.animate([{ transform:'translateY(' + dy + 'px)' }, { transform:'translateY(0)' }],
+      { duration: ms || 460, easing:'cubic-bezier(.2,.8,.2,1)' });
+  }
+  // Fades nodes out, applies the change, then drops the fades: whatever
+  // survives the change (the chip bar, once hidden) gets its opacity back
+  // instead of staying invisible the next time it is shown.
+  function fadeOut(nodes, ms, done){
+    var live = nodes.filter(function(n){ return n && n.animate; });
+    if (reduceMotion || !live.length) { done(); return; }
+    var anims = [], called = false, left = live.length;
+    var finish = function(){
+      if (called) return;
+      called = true;
+      done();
+      anims.forEach(function(a){ try { a.cancel(); } catch (e) {} });
+    };
+    live.forEach(function(n){
+      var a = n.animate([{ opacity:1 }, { opacity:0 }], { duration:ms, easing:'ease-in', fill:'forwards' });
+      anims.push(a);
+      a.onfinish = function(){ if (--left <= 0) finish(); };
+    });
+    setTimeout(finish, ms + 120);
+  }
+  function smoothScrollTo(y, done){
+    y = Math.max(0, y);
+    if (reduceMotion || Math.abs(window.pageYOffset - y) < 2) { window.scrollTo(0, y); done(); return; }
+    try { window.scrollTo({ top:y, behavior:'smooth' }); } catch (e) { window.scrollTo(0, y); }
+    var start = Date.now();
+    (function wait(){
+      if (Math.abs(window.pageYOffset - y) < 2 || Date.now() - start > 900) { done(); return; }
+      requestAnimationFrame(wait);
+    })();
+  }
+
+  function setExpanded(on){
+    if (!feed.canExpand || on === feed.expanded) return;
+    var token = ++feed.token;
+    if (on) expand(); else collapse(token);
+  }
+
+  function expand(){
+    var hero = storiesEl.querySelector('.hero');
+    var card = storiesEl.querySelector('.list');
+    var foot = card && card.querySelector('.list-foot');
+    if (!card || !foot) { feed.expanded = true; renderChips(); chipsEl.classList.toggle('hidden', !chipsVisible()); renderStories(null); syncLabels(); return; }
+    var heroTop = hero ? topOf(hero) : 0, cardTop = card ? topOf(card) : 0;
+    var footOff = foot ? foot.offsetTop : 0;
+
+    feed.expanded = true;
+    renderChips();
+    var showChips = chipsVisible();
+    chipsEl.classList.toggle('hidden', !showChips);
+    var rest = visibleItems().slice(1 + COLLAPSED_ROWS);
+    rest.forEach(function(it, i){
+      var r = buildRow(it);
+      if (!reduceMotion) { r.classList.add('unfold'); r.style.animationDelay = (60 + Math.min(i, 10) * 32) + 'ms'; }
+      card.insertBefore(r, foot);
+    });
+    syncLabels();
+
+    if (showChips && !reduceMotion) {
+      Array.prototype.forEach.call(chipsEl.children, function(c, i){
+        c.classList.add('soft'); c.style.animationDelay = (i * 24) + 'ms';
+      });
+    }
+    if (hero) glide(hero, heroTop - topOf(hero));
+    if (card) glide(card, cardTop - topOf(card));
+    // The foot rides down over the rows it uncovers, like a drawer opening.
+    if (foot) glide(foot, footOff - foot.offsetTop, 520);
+  }
+
+  function collapse(token){
+    var go = function(){
+      if (token !== feed.token) return;
+      var card = storiesEl.querySelector('.list');
+      var rows = card ? Array.prototype.slice.call(card.querySelectorAll('.row')) : [];
+      var extra = feed.cat === 'All' ? rows.slice(COLLAPSED_ROWS) : rows;
+      var leaving = extra.slice(0, 12);
+      if (!chipsEl.classList.contains('hidden')) leaving.push(chipsEl);
+      if (feed.cat !== 'All') leaving.push(storiesEl.querySelector('.hero'));
+      fadeOut(leaving, 150, function(){
+        if (token !== feed.token) return;
+        var hero = storiesEl.querySelector('.hero');
+        var heroTop = hero ? topOf(hero) : 0;
+        var cardTop = card ? topOf(card) : 0;
+        var refilter = feed.cat !== 'All';
+        feed.expanded = false;
+        feed.cat = 'All';
+        chipsEl.classList.add('hidden');
+        if (refilter) {
+          renderChips();
+          renderStories('soft');
+        } else {
+          extra.forEach(function(r){ if (r.parentNode) r.parentNode.removeChild(r); });
+          if (hero) glide(hero, heroTop - topOf(hero), 420);
+          if (card) glide(card, cardTop - topOf(card), 420);
+        }
+        syncLabels();
+      });
+    };
+    // Bring the section's head back first, then fold: folding first would
+    // pull the page out from under the reader and let the browser clamp the
+    // scroll in one jump.
+    var headTop = topOf(headEl);
+    if (headTop < 0) smoothScrollTo(window.pageYOffset + headTop - 8, go);
+    else go();
+  }
+
+  function selectCat(cat, chip){
+    if (cat === feed.cat) return;
+    var token = ++feed.token;
+    feed.cat = cat;
+    Array.prototype.forEach.call(chipsEl.children, function(c){
+      c.setAttribute('aria-pressed', c.getAttribute('data-cat') === cat ? 'true' : 'false');
+    });
+    // Keep the chosen chip in the middle of its row.
+    try {
+      var left = chip.offsetLeft - (chipsEl.clientWidth - chip.offsetWidth) / 2;
+      if (chipsEl.scrollTo) chipsEl.scrollTo({ left:Math.max(0, left), behavior: reduceMotion ? 'auto' : 'smooth' });
+      else chipsEl.scrollLeft = Math.max(0, left);
+    } catch (e) {}
+    fadeOut(Array.prototype.slice.call(storiesEl.children), 120, function(){
+      if (token !== feed.token) return;
+      renderStories('soft');
+      syncLabels();
+    });
+  }
+
+  function refreshTimes(){
+    Array.prototype.forEach.call(feedHost.querySelectorAll('.time[data-ts]'), function(t){
+      var s = ago(Number(t.getAttribute('data-ts')));
+      if (s && t.textContent !== s) t.textContent = s;
+    });
   }
 
   window.__onFeed = function(reqId, items){
@@ -633,59 +1387,36 @@
     loadFeed();
   };
   function loadFeed(){
-    if (!window.SearchApp || !window.SearchApp.getFeed) return;
-    // Show skeletons only when the feed is empty (first load), so a
-    // background refresh doesn't replace real cards with placeholders.
-    if (!feedHost.querySelector('.feed-card')) showSkeletons();
+    var A = bridge();
+    if (!A || !A.getFeed) return;
+    // Skeletons only when there is nothing real on screen (first load), so a
+    // background refresh never swaps stories for placeholders.
+    if (!feed.shown) showSkeletons();
     feedReqId++;
-    try { window.SearchApp.getFeed(feedReqId); } catch(e){}
+    try { A.getFeed(feedReqId); } catch(e){}
   }
 
   if (!nightOwl) loadFeed();
   document.addEventListener('visibilitychange', function(){
-    if (!nightOwl && document.visibilityState === 'visible' && !feedLoaded) loadFeed();
+    if (document.visibilityState !== 'visible' || nightOwl) return;
+    if (!feedLoaded) loadFeed();
+    else refreshTimes();
   });
-  // Ripple effect on tappable surfaces.
-  function addRipple(e){
-    var el = e.currentTarget;
-    var rect = el.getBoundingClientRect();
-    var size = Math.max(rect.width, rect.height);
-    var r = document.createElement('span');
-    r.className = 'ripple';
-    r.style.width = r.style.height = size + 'px';
-    var x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left - size/2;
-    var y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top - size/2;
-    r.style.left = x + 'px';
-    r.style.top = y + 'px';
-    el.appendChild(r);
-    setTimeout(function(){ r.remove(); }, 560);
-  }
-  function bindRipples(){
-    document.querySelectorAll('.tile .fav, .feed-card, .ficon').forEach(function(el){
-      if (el.__rippleBound) return;
-      el.__rippleBound = true;
-      el.addEventListener('pointerdown', addRipple);
-    });
-  }
-  bindRipples();
-  // Re-bind after tiles/feed re-render.
-  var _origRenderFeed = renderFeed;
-  renderFeed = function(items){ _origRenderFeed(items); bindRipples(); };
-  var _origRenderTiles = renderTiles;
-  renderTiles = function(){ _origRenderTiles(); bindRipples(); };
 
   // ---------- Collapsing header ----------
   // Report to native when the in-page search pill leaves / re-enters the
   // viewport. Native swaps its top bar between the icon row and a full-width
-  // pill. This block only observes: no DOM, CSS or layout change is made here.
+  // pill. This block only observes.
   (function(){
-    var f = document.getElementById('field');
-    if (!f || !window.SearchApp || !window.SearchApp.homeFieldVisible) return;
+    var f = field;
+    var A = bridge();
     var last = null;
     function push(v){
+      fieldOnScreen = v;
+      if (!A || !A.homeFieldVisible) return;
       if (v === last) return;
       last = v;
-      try { window.SearchApp.homeFieldVisible(v); } catch(e){}
+      try { A.homeFieldVisible(v); } catch(e){}
     }
     // Native calls this after a tab switch, when this page may already be
     // scrolled but no intersection change will fire on its own.
@@ -708,15 +1439,15 @@
   // Native reserves the tail of the page for the feed ad and parks its own view
   // in the gap. Height arrives in CSS px, already including the inter-card gap.
   window.__setAdSlot = function(px){
-    document.documentElement.style.setProperty(
-      '--adslot', (px > 0 ? px : 0) + 'px');
+    root.style.setProperty('--adslot', (px > 0 ? px : 0) + 'px');
   };
 
   // The accent is read once at load, so a change made in Settings has to be
-  // pushed into the live page or the wordmark keeps the old colour until reload.
+  // pushed into the live page or the page keeps the old colour until reload.
   window.__setAccent = function(hex, hueShift){
-    if (hex) document.documentElement.style.setProperty('--accent', hex);
+    if (hex) applyAccent(hex);
   };
+})();
 </script>
 </body>
 </html>
