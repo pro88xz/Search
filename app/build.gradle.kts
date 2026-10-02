@@ -7,6 +7,19 @@ if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
+// local.properties is git-ignored and per machine. Besides sdk.dir it may hold
+// youtube.apiKey, the YouTube Data API key behind the home feed's trending
+// videos. Absent means the feed never calls YouTube.
+val localPropertiesFile = rootProject.file("local.properties")
+val localProperties = Properties()
+if (localPropertiesFile.exists()) {
+    FileInputStream(localPropertiesFile).use { localProperties.load(it) }
+}
+// Quotes and backslashes are dropped so a stray one cannot break the generated
+// Java; a real key has neither.
+val youtubeApiKey = (localProperties.getProperty("youtube.apiKey") ?: "")
+    .trim().replace("\"", "").replace("\\", "")
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -22,6 +35,8 @@ android {
         targetSdk = 36
         versionCode = 19
         versionName = "1.3.1"
+
+        buildConfigField("String", "YOUTUBE_API_KEY", "\"" + youtubeApiKey + "\"")
     }
 
     signingConfigs {
