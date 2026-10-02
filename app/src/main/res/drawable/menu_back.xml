@@ -1,26 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Tabler Icons, package @tabler/icons 3.48.0, MIT licence. Glyph "home", outline. Path data copied unchanged, stroke 2. Colour is applied by tint at runtime. -->
+<!-- Tabler Icons, package @tabler/icons 3.48.0, MIT licence. Glyph "arrow-left", outline. Path data copied unchanged, stroke 2. Colour is applied by tint at runtime. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
     android:viewportWidth="24"
-    android:viewportHeight="24">
+    android:viewportHeight="24"
+    android:autoMirrored="true">
     <path
         android:strokeColor="#FF000000"
         android:strokeWidth="2"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
-        android:pathData="M5 12l-2 0l9 -9l9 9l-2 0" />
+        android:pathData="M5 12l14 0" />
     <path
         android:strokeColor="#FF000000"
         android:strokeWidth="2"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
-        android:pathData="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7" />
+        android:pathData="M5 12l6 6" />
     <path
         android:strokeColor="#FF000000"
         android:strokeWidth="2"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
-        android:pathData="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6" />
+        android:pathData="M5 12l6 -6" />
 </vector>

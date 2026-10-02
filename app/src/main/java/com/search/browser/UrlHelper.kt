@@ -119,6 +119,35 @@ object UrlHelper {
 
     private fun search(query: String, prefix: String): String = prefix + Uri.encode(query)
 
+    /** Query parameters that only an authorisation request or its answer carries. */
+    private val SIGN_IN_PARAMS = setOf(
+        "client_id", "redirect_uri", "response_type", "code_challenge",
+        "oauth_token", "oauth_verifier", "openid.mode", "samlrequest",
+        "samlresponse", "id_token", "access_token"
+    )
+
+    /**
+     * Whether an address is part of a sign-in: an OAuth, OpenID or SAML
+     * request to a provider (client_id, redirect_uri and the like), the
+     * answer coming back (code with state, or tokens in the fragment), or
+     * Firebase's auth handler page. This is the evidence that a pop-up is a
+     * sign-in rather than an ordinary link that opened in a new tab.
+     */
+    fun looksLikeSignIn(url: String?): Boolean {
+        if (url == null) return false
+        val uri = try { Uri.parse(url) } catch (e: Exception) { return false }
+        if (uri.isOpaque) return false
+        val names = try {
+            uri.queryParameterNames.map { it.lowercase() }
+        } catch (e: Exception) { emptyList() }
+        if (names.any { it in SIGN_IN_PARAMS }) return true
+        if ("code" in names && "state" in names) return true
+        val fragment = uri.encodedFragment?.lowercase() ?: ""
+        if (fragment.contains("access_token=") || fragment.contains("id_token=")) return true
+        if (fragment.contains("code=") && fragment.contains("state=")) return true
+        return (uri.path ?: "").contains("/__/auth/handler")
+    }
+
     /**
      * Second-level labels that sit under a country code as a registry of their
      * own: the "co" in example.co.uk. A full public-suffix list is a large,

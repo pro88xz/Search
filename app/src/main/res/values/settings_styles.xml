@@ -91,6 +91,15 @@
         <item name="android:scaleType">center</item>
         <item name="android:padding">0dp</item>
     </style>
+    <!-- A bottom bar slot that holds more than one view (icon plus dot or badge). -->
+    <style name="NavSlot">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">match_parent</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:background">@drawable/nav_ripple</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+    </style>
     <style name="OwlDialogAnim">
         <item name="android:windowEnterAnimation">@anim/owl_pop_in</item>
         <item name="android:windowExitAnimation">@anim/owl_pop_out</item>

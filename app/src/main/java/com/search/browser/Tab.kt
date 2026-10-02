@@ -36,7 +36,12 @@ class Tab(
      */
     var openerSite: String? = null
     var leftOpenerSite = false
+    // -1 for a pop-up rebuilt after a recreation, whose opener has since
+    // counted a load of its own: then it is not known whether it moved on.
     var openerLoadsAtOpen = 0
+
+    /** Whether this pop-up has been through a sign-in (UrlHelper.looksLikeSignIn). */
+    var signIn = false
 
     /** Main-frame loads started in this tab. */
     var loadsStarted = 0

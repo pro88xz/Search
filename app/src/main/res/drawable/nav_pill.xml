@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- The soft pill behind the selected Home icon. White here; refreshNav tints
-     it with the accent at a low alpha, so it follows the accent the user picks. -->
-<shape xmlns:android="http://schemas.android.com/apk/res/android"
-    android:shape="rectangle">
-    <corners android:radius="16dp" />
-    <solid android:color="#FFFFFFFF" />
-</shape>

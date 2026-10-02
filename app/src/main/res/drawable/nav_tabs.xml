@@ -1,11 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Derived from Phosphor Icons "square", bold weight (@phosphor-icons/core 2.1.1, MIT licence, assets/bold/square-bold.svg). Same outer box, 24-unit wall and 152-unit hollow for the tab count, with the outer corner radius raised from 20 to 32 and the hollow given a concentric radius of 8, to match the app's rounded shapes. The hollow winds the opposite way to the outline, so it is cut out under the default nonzero fill. Colour is applied by tint at runtime. -->
+<!-- Tabler Icons, package @tabler/icons 3.48.0, MIT licence. Glyph "box-multiple", outline. Path data copied unchanged, stroke 2. Two stacked cards, turned half a turn in a group so the front card sits bottom left and the badge can sit on the back card, as in the design. Colour is applied by tint at runtime. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
-    android:viewportWidth="256"
-    android:viewportHeight="256">
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <group
+        android:pivotX="12"
+        android:pivotY="12"
+        android:rotation="180">
     <path
-        android:fillColor="#FF000000"
-        android:pathData="M60,28H196A32,32,0,0,1,228,60V196A32,32,0,0,1,196,228H60A32,32,0,0,1,28,196V60A32,32,0,0,1,60,28ZM60,52A8,8,0,0,0,52,60V196A8,8,0,0,0,60,204H196A8,8,0,0,0,204,196V60A8,8,0,0,0,196,52Z" />
+        android:strokeColor="#FF000000"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M7 5a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v10a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2l0 -10" />
+    <path
+        android:strokeColor="#FF000000"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M17 17v2a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-10a2 2 0 0 1 2 -2h2" />
+    </group>
 </vector>

@@ -19,5 +19,7 @@
     <color name="sugTitle">#9A9A9A</color>
     <color name="dangerFg">#F2B8B5</color>
     <!-- Bottom bar and top bar glyphs at rest. Selected Home takes the accent. -->
-    <color name="navIcon">#D6D2E0</color>
+    <color name="navIcon">#CFC9DB</color>
+    <!-- The bottom bar's sheet. -->
+    <color name="barSurface">#17171A</color>
 </resources>

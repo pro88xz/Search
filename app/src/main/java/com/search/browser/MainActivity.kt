@@ -65,6 +65,9 @@ class MainActivity : AppCompatActivity() {
          */
         private const val POPUP_STALL_MS = 3500L
 
+        /** The second look at a returned pop-up, before it is judged stalled. */
+        private const val POPUP_RECHECK_MS = 4000L
+
         /**
          * How long the page behind a returned sign-in gets to show something
          * before it is reloaded. Longer than the pop-up's allowance: a heavy
@@ -342,8 +345,12 @@ class MainActivity : AppCompatActivity() {
     }
     private var suggestAdapter: SuggestAdapter? = null
     private var suggestSeq = 0
+    // The suggestion backdrop's own bottom padding from the layout, kept so
+    // the keyboard inset can be added on top of it rather than replacing it.
+    private var suggestBasePad = -1
 
     private fun setupSuggestOverlay() {
+        if (suggestBasePad < 0) suggestBasePad = binding.suggestBackdrop.paddingBottom
         suggestAdapter = SuggestAdapter(emptyList(), { item ->
             if (suggestListMoving()) return@SuggestAdapter
             val kind = item.optString("kind")
@@ -637,6 +644,7 @@ class MainActivity : AppCompatActivity() {
         val imm = getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
         imm.showSoftInput(binding.urlBar, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
         binding.suggestBackdrop.visibility = View.VISIBLE
+        androidx.core.view.ViewCompat.requestApplyInsets(binding.root)
         animateSearchIn(fieldWasShowing)
         fetchSuggests(binding.urlBar.text.toString())
     }
@@ -673,6 +681,7 @@ class MainActivity : AppCompatActivity() {
         }
         // The page may still be scrolled past its pill; re-apply the compact bar.
         if (onHome && homeCompact) applyHomeCompact(true)
+        androidx.core.view.ViewCompat.requestApplyInsets(binding.root)
     }
 
     // ---- HTTPS-only ----
@@ -814,7 +823,11 @@ class MainActivity : AppCompatActivity() {
             // The opener's position in the list, not its id: ids are handed out
             // afresh by the new TabManager, so an id captured here would point
             // at the wrong tab or none at all.
-            val openerIndex: Int
+            val openerIndex: Int,
+            // What the sign-in recovery knows about a pop-up (Tab.kt).
+            val openerSite: String? = null,
+            val leftOpenerSite: Boolean = false,
+            val signIn: Boolean = false
         )
         var snapshot: List<Snap>? = null
         var activeIndex: Int = 0
@@ -832,7 +845,10 @@ class MainActivity : AppCompatActivity() {
                 url = t.url,
                 title = t.title,
                 state = state,
-                openerIndex = list.indexOfFirst { it.id == t.openerId }
+                openerIndex = list.indexOfFirst { it.id == t.openerId },
+                openerSite = t.openerSite,
+                leftOpenerSite = t.leftOpenerSite,
+                signIn = t.signIn
             )
         }
         tabStore.activeIndex = list.indexOf(tabs.activeTab).coerceAtLeast(0)
@@ -849,6 +865,12 @@ class MainActivity : AppCompatActivity() {
                 val t = tabs.createTab(s.url)
                 t.title = s.title
                 t.savedState = s.state
+                t.openerSite = s.openerSite
+                t.leftOpenerSite = s.leftOpenerSite
+                t.signIn = s.signIn
+                // The opener counts its own restore as a load, so whether it
+                // moves on afterwards can no longer be told by counting.
+                t.openerLoadsAtOpen = -1
             }
             // Re-link the pop-up relationships once every tab has its new id.
             snaps.forEachIndexed { i, s ->
@@ -946,17 +968,44 @@ class MainActivity : AppCompatActivity() {
             // keyboard starts for the same reason.
             val ime = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.ime()).bottom
             val typing = ime > bars.bottom
-            v.setPadding(bars.left, bars.top, bars.right, if (typing) ime else bars.bottom)
-            // And the bottom bar steps out of the way while typing, as it does
-            // in Chrome, so the keyboard does not cost the page its height twice.
-            val bar = if (typing) View.GONE else View.VISIBLE
-            if (binding.bottomBar.visibility != bar) {
-                binding.bottomBar.visibility = bar
-                binding.bottomBarLine.visibility = bar
-            }
+            // Only when the page itself is being typed into. In the address
+            // bar or the tab search the page is covered anyway, and resizing
+            // it would make a heavy site relayout - and fire resize at its
+            // own menus and players - for every tap on the address bar.
+            val pageTyping = typing && !searchMode && !deckVisible
+            v.setPadding(bars.left, bars.top, bars.right, if (pageTyping) ime else bars.bottom)
+            // And the bottom bar steps out of the way while typing into the
+            // page, as it does in Chrome, so the keyboard does not cost the
+            // page its height twice.
+            val bar = if (pageTyping) View.GONE else View.VISIBLE
+            if (binding.bottomBar.visibility != bar) binding.bottomBar.visibility = bar
+            // The suggestion list ends where the keyboard starts: padded by
+            // whatever the keyboard covers beyond what the root already gives
+            // back for the navigation bar. With clipToPadding=false that is
+            // scrollable room, not dead space. On the backdrop, not the card,
+            // so the card stops at the keyboard rather than growing a band.
+            val base = if (suggestBasePad >= 0) suggestBasePad
+                else binding.suggestBackdrop.paddingBottom
+            val extra = if (pageTyping) 0 else (ime - bars.bottom).coerceAtLeast(0)
+            binding.suggestBackdrop.setPadding(
+                binding.suggestBackdrop.paddingLeft,
+                binding.suggestBackdrop.paddingTop,
+                binding.suggestBackdrop.paddingRight,
+                base + extra
+            )
             insets
         }
         setupSuggestOverlay()
+        // The page changes height when the keyboard comes and goes, and with
+        // it the bottom bar. The feed ad card is placed against the page's
+        // bottom and only re-placed on scroll, so it is re-seated here too.
+        binding.webArea.addOnLayoutChangeListener { _, _, top, _, bottom, _, oldTop, _, oldBottom ->
+            if (bottom - top != oldBottom - oldTop) {
+                activeWeb()?.let { w ->
+                    binding.adSlot.post { if (isLiveWeb(w)) positionAdSlot(w, w.scrollY) }
+                }
+            }
+        }
         lastSiteSig = siteSettingsSignature()
 
         onBackPressedDispatcher.addCallback(this, object :
@@ -1502,6 +1551,10 @@ class MainActivity : AppCompatActivity() {
             ): Boolean {
                 val uri = request?.url ?: return false
                 val scheme = (uri.scheme ?: "").lowercase()
+                // Every main-frame request, server redirects included, which
+                // onPageStarted never sees: a provider that signs a returning
+                // user straight back with a 302 commits no page of its own.
+                if (request.isForMainFrame) notePopupNavigation(view, uri.toString())
                 // HTTPS-only: a tapped http link is upgraded here, which is
                 // the half that was missing. Sub-resources are left alone -
                 // this is about where the user is being taken.
@@ -1656,12 +1709,7 @@ class MainActivity : AppCompatActivity() {
                 tabOf(view)?.let { t ->
                     t.loadsStarted++
                     t.loadToken++
-                    if (t.openerId != null) {
-                        val site = UrlHelper.siteOf(url)
-                        if (site != null && t.openerSite != null && site != t.openerSite) {
-                            t.leftOpenerSite = true
-                        }
-                    }
+                    notePopupNavigation(view, url)
                     DebugLog.add("tab#" + t.id + " start " + DebugLog.url(url))
                 }
                 refreshNav()
@@ -1914,8 +1962,7 @@ class MainActivity : AppCompatActivity() {
                     // itself, as it should. The page behind it is then
                     // watched in case it never shows the result.
                     val opener = tabs.tabs.firstOrNull { it.id == tab.openerId && it !== tab }
-                    val returned = tab.leftOpenerSite && tab.openerSite != null &&
-                        UrlHelper.siteOf(tab.url) == tab.openerSite
+                    val returned = returnedFromSignIn(tab)
                     closeTabFromDeck(tab)
                     if (returned && opener != null) watchOpenerAfterSignIn(opener)
                 }
@@ -2692,26 +2739,68 @@ class MainActivity : AppCompatActivity() {
      * its own is left alone.
      */
     private fun watchReturnedPopup(popup: Tab, url: String?) {
-        if (!popup.leftOpenerSite) return
+        if (!popup.signIn || !popup.leftOpenerSite) return
         val site = UrlHelper.siteOf(url) ?: return
         if (site != popup.openerSite) return
-        val token = popup.loadToken
         val web = popup.webView ?: return
         DebugLog.add("pop-up tab#" + popup.id + " is back on " + site + "; watching for a stall")
+        checkStalledPopup(popup, web, popup.loadToken, emptyLooks = 0, attempt = 0)
+    }
+
+    /**
+     * One look at a returned pop-up. It is folded back only after two looks,
+     * [POPUP_STALL_MS] and then [POPUP_RECHECK_MS] apart, both finding a page
+     * that has finished loading and has nothing on it: a callback that is
+     * still exchanging its code over a slow connection gets the second look's
+     * worth of time, and one that is still loading is never judged at all.
+     * Any new load in the pop-up, or leaving it, ends the watch; coming back
+     * to it starts a new one (openTab).
+     */
+    private fun checkStalledPopup(popup: Tab, web: WebView, token: Int, emptyLooks: Int, attempt: Int) {
+        val delay = if (emptyLooks == 0 && attempt == 0) POPUP_STALL_MS else POPUP_RECHECK_MS
         uiHandler.postDelayed({
             if (isFinishing || isDestroyed) return@postDelayed
             if (popup.loadToken != token || popup.webView !== web) return@postDelayed
             if (popup !== tabs.activeTab || !tabs.tabs.contains(popup)) return@postDelayed
-            web.evaluateJavascript(PAGE_EMPTINESS_JS) { result ->
-                val empty = isEmptyPage(result)
-                DebugLog.add("pop-up tab#" + popup.id + " after " + POPUP_STALL_MS +
-                    "ms: " + result + (if (empty) " - stalled" else " - has content, left alone"))
-                if (empty && popup.loadToken == token && popup.webView === web &&
-                    tabs.tabs.contains(popup)
-                ) foldBackPopup(popup, "stalled on its callback page")
+            if (web.progress < 100) {
+                if (attempt < 6) checkStalledPopup(popup, web, token, emptyLooks, attempt + 1)
+                return@postDelayed
             }
-        }, POPUP_STALL_MS)
+            web.evaluateJavascript(PAGE_EMPTINESS_JS) { result ->
+                if (popup.loadToken != token || popup.webView !== web ||
+                    !tabs.tabs.contains(popup)
+                ) return@evaluateJavascript
+                val empty = isEmptyPage(result)
+                DebugLog.add("pop-up tab#" + popup.id + " look " + (emptyLooks + 1) + ": " +
+                    result + (if (empty) " - empty" else " - has content, left alone"))
+                if (!empty) return@evaluateJavascript
+                if (emptyLooks >= 1) foldBackPopup(popup, "stalled on its callback page")
+                else checkStalledPopup(popup, web, token, emptyLooks + 1, attempt + 1)
+            }
+        }, delay)
     }
+
+    /**
+     * Records where a pop-up has been: whether it has left its opener's site
+     * (for the identity provider) and whether anything it loaded was part of
+     * a sign-in. Fed from shouldOverrideUrlLoading, which sees redirects, and
+     * from onPageStarted, which sees what committed.
+     */
+    private fun notePopupNavigation(view: WebView?, url: String?) {
+        val t = tabOf(view) ?: return
+        if (t.openerId == null || url == null) return
+        val site = UrlHelper.siteOf(url)
+        if (site != null && t.openerSite != null && site != t.openerSite) t.leftOpenerSite = true
+        if (!t.signIn && UrlHelper.looksLikeSignIn(url)) {
+            t.signIn = true
+            DebugLog.add("pop-up tab#" + t.id + " is a sign-in (" + DebugLog.url(url) + ")")
+        }
+    }
+
+    /** A sign-in pop-up that went to its provider and is back on the opener's site. */
+    private fun returnedFromSignIn(popup: Tab): Boolean =
+        popup.signIn && popup.leftOpenerSite && popup.openerSite != null &&
+            UrlHelper.siteOf(popup.url) == popup.openerSite
 
     /**
      * How much of a page there is to use: visible text, and visible controls
@@ -2751,9 +2840,12 @@ class MainActivity : AppCompatActivity() {
     private fun foldBackPopup(popup: Tab, why: String) {
         if (!tabs.tabs.contains(popup)) return
         val opener = tabs.tabs.firstOrNull { it.id == popup.openerId && it !== popup }
-        val returned = popup.leftOpenerSite && popup.openerSite != null &&
-            UrlHelper.siteOf(popup.url) == popup.openerSite
-        val openerMovedOn = opener != null && opener.loadsStarted != popup.openerLoadsAtOpen
+        val returned = returnedFromSignIn(popup)
+        // Moved on: started a load of its own since the pop-up opened, or is
+        // part-way through one now - which a reload would cancel.
+        val openerBusy = (opener?.webView?.progress ?: 100) < 100
+        val openerMovedOn = opener != null && (openerBusy ||
+            (popup.openerLoadsAtOpen >= 0 && opener.loadsStarted != popup.openerLoadsAtOpen))
         DebugLog.add("folding pop-up tab#" + popup.id + " back into tab#" + opener?.id +
             " (" + why + "); returned=" + returned + " openerMovedOn=" + openerMovedOn)
         val openerWasLive = opener?.webView != null
@@ -2791,7 +2883,7 @@ class MainActivity : AppCompatActivity() {
                 DebugLog.add("tab#" + opener.id + " after sign-in: " + result +
                     (if (empty) " - blank, reloading" else " - fine"))
                 if (empty && opener.webView === web && tabs.tabs.contains(opener) &&
-                    (opener.loadToken == token || web.progress >= 100)
+                    opener.loadToken == token && web.progress >= 100
                 ) loadInto(web, web.url ?: opener.url)
             }
         }, OPENER_STALL_MS)
@@ -2933,6 +3025,9 @@ class MainActivity : AppCompatActivity() {
         updateTabCount()
         refreshStar()
         refreshOmniboxVisibility(tab.url)
+        // A sign-in pop-up that came back while another tab was showing is
+        // only judged while on screen, so the watch starts again here.
+        if (tab.openerId != null && returnedFromSignIn(tab)) watchReturnedPopup(tab, tab.url)
     }
 
     /**
@@ -3343,7 +3438,8 @@ class MainActivity : AppCompatActivity() {
             // Subtle purple wash matched to the theme.
             val tint = if (isDark) "#231A3A" else "#ECE7F5"
             topBar.setBackgroundColor(android.graphics.Color.parseColor(tint))
-            binding.bottomBar.setBackgroundColor(android.graphics.Color.parseColor(tint))
+            binding.bottomSheet.backgroundTintList = android.content.res.ColorStateList
+                .valueOf(android.graphics.Color.parseColor(tint))
             binding.rootView.setBackgroundColor(android.graphics.Color.parseColor(tint))
             // Icons: light icons on dark tint, dark icons on light tint.
             controller.isAppearanceLightStatusBars = !isDark
@@ -3352,7 +3448,7 @@ class MainActivity : AppCompatActivity() {
             val tv = android.util.TypedValue()
             theme.resolveAttribute(android.R.attr.colorBackground, tv, true)
             binding.rootView.setBackgroundColor(tv.data)
-            binding.bottomBar.setBackgroundColor(tv.data)
+            binding.bottomSheet.backgroundTintList = null
             controller.isAppearanceLightStatusBars = !isDark
         }
     }
@@ -3843,6 +3939,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showDeckNow() {
         deckVisible = true
+        androidx.core.view.ViewCompat.requestApplyInsets(binding.root)
         tabAdapter.notifyDataSetChanged()
         binding.tabDeck.visibility = View.VISIBLE
     }
@@ -3851,6 +3948,7 @@ class MainActivity : AppCompatActivity() {
         hideKeyboard()
         binding.tabDeck.visibility = View.GONE
         deckVisible = false
+        androidx.core.view.ViewCompat.requestApplyInsets(binding.root)
         // refreshAdSlot() refuses to show the card while the deck is up, and
         // closing the deck is the moment that condition clears. Without this,
         // any refresh that lands while the deck is open leaves the card hidden
@@ -4775,42 +4873,56 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * The bottom bar - Back, Forward, Home, Tabs, Menu - and the gear at the
-     * top. Icons only, so each says what it is in a long-press tooltip and to
-     * screen readers through its content description.
+     * The bottom bar - Home, Bookmarks, the raised New tab button, Tabs and
+     * Menu - and the gear at the top. Icons only, so each says what it is in
+     * a long-press tooltip and to screen readers through its content
+     * description. Back, Forward and Reload are the first row of the menu.
+     *
+     * Every button first closes an open find bar, as the system Back does:
+     * the find bar is drawn over the deck and the page, so leaving it up
+     * would put its controls on top of whatever the button opened.
      */
     private fun setupBars() {
-        binding.navBack.setOnClickListener { navBack() }
-        binding.navForward.setOnClickListener {
-            activeWeb()?.takeIf { it.canGoForward() }?.goForward()
+        binding.navHome.setOnClickListener { leaveTransientUi(); navHome() }
+        binding.navBookmarks.setOnClickListener {
+            leaveTransientUi(); openDeck(); showBookmarks()
         }
-        binding.navHome.setOnClickListener { navHome() }
-        binding.navTabs.setOnClickListener {
-            if (searchMode) exitSearchMode()
-            openDeck()
-        }
-        // Long-pressing the tab count opens a new tab, as it does in Chrome.
+        binding.navNewTab.setOnClickListener { leaveTransientUi(); addNewTab(homePage) }
+        binding.navTabs.setOnClickListener { leaveTransientUi(); openDeck() }
+        // Long-pressing Tabs also opens a new tab, as it does in Chrome.
         binding.navTabs.setOnLongClickListener {
-            if (searchMode) exitSearchMode()
-            addNewTab(homePage)
-            true
+            leaveTransientUi(); addNewTab(homePage); true
         }
         binding.navMenu.setOnClickListener {
-            if (binding.menuScrim.visibility == View.VISIBLE) closeMenu() else openMenu()
+            if (binding.menuScrim.visibility == View.VISIBLE) closeMenu()
+            else { if (findActive) closeFindBar(); openMenu() }
         }
         binding.settingsBtn.setOnClickListener {
             startActivity(android.content.Intent(this, SettingsActivity::class.java))
         }
-        listOf(binding.navBack, binding.navForward, binding.navHome,
-            binding.navMenu, binding.settingsBtn).forEach { b ->
+        binding.menuBack.setOnClickListener { closeMenuNow(); navBack() }
+        binding.menuForward.setOnClickListener {
+            closeMenuNow(); activeWeb()?.takeIf { it.canGoForward() }?.goForward()
+        }
+        binding.menuRefresh.setOnClickListener { closeMenuNow(); activeWeb()?.reload() }
+        listOf(binding.navHome, binding.navBookmarks, binding.navNewTab, binding.navMenu,
+            binding.settingsBtn, binding.menuBack, binding.menuForward, binding.menuRefresh
+        ).forEach { b ->
             androidx.core.view.ViewCompat.setTooltipText(b, b.contentDescription)
         }
         androidx.core.view.ViewCompat.setTooltipText(binding.navTabs, "Tabs")
         refreshNav()
     }
 
-    /** The bar's Back: the same steps as the system Back, for the page. */
+    /** Find bar and search sheet give way before a bar button acts. */
+    private fun leaveTransientUi() {
+        if (findActive) closeFindBar()
+        if (searchMode) exitSearchMode()
+    }
+
+    /** Back for the page: the same steps as the system Back. */
     private fun navBack() {
+        if (findActive) { closeFindBar(); return }
         if (searchMode) { exitSearchMode(); return }
         val web = activeWeb()
         when {
@@ -4822,7 +4934,6 @@ class MainActivity : AppCompatActivity() {
 
     /** Home, or back to the top of it when already there. */
     private fun navHome() {
-        if (searchMode) exitSearchMode()
         val url = tabs.activeTab?.url
         if (url == null || url == homePage) {
             activeWeb()?.evaluateJavascript(
@@ -4837,41 +4948,68 @@ class MainActivity : AppCompatActivity() {
     private fun navIconColor(): Int =
         androidx.core.content.ContextCompat.getColor(this, R.color.navIcon)
 
+    // The New tab button's paint, rebuilt only when the accent changes.
+    private var newTabAccent = 0
+
     /**
-     * Puts the bars in step with the tab on screen: Back and Forward dimmed
-     * when there is nowhere to go, and Home filled in the accent while home is
-     * showing. Called on every load, history change and tab switch.
+     * Puts the bars in step with the tab on screen: Home filled in the accent,
+     * with its dot, while home is showing; the menu's Back and Forward dimmed
+     * when there is nowhere to go. Called on every load, history change and
+     * tab switch, and when the accent changes.
      */
     private fun refreshNav() {
         if (!::binding.isInitialized) return
         val web = activeWeb()
         val tab = tabs.activeTab
         val neutral = android.content.res.ColorStateList.valueOf(navIconColor())
-        setNavEnabled(binding.navBack, web?.canGoBack() == true || tab?.openerId != null)
-        setNavEnabled(binding.navForward, web?.canGoForward() == true)
-        val onHome = tab == null || tab.url == homePage
         val accent = currentAccent()
+        val accentTint = android.content.res.ColorStateList.valueOf(accent)
+        val onHome = tab == null || tab.url == homePage
         binding.navHomeIcon.setImageResource(
             if (onHome) R.drawable.nav_home_active else R.drawable.nav_home)
-        binding.navHomeIcon.imageTintList = if (onHome)
-            android.content.res.ColorStateList.valueOf(accent) else neutral
-        // The selected state's pill: the accent, faint - a touch stronger on
-        // the dark theme, where the same alpha all but disappears.
-        binding.navHomePill.visibility = if (onHome) View.VISIBLE else View.GONE
-        if (onHome) {
-            val dark = (resources.configuration.uiMode and
-                android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
-                android.content.res.Configuration.UI_MODE_NIGHT_YES
-            val alpha = if (dark) 0x2E else 0x1F
-            binding.navHomePill.backgroundTintList = android.content.res.ColorStateList
-                .valueOf((accent and 0x00FFFFFF) or (alpha shl 24))
-        }
-        binding.navBack.imageTintList = neutral
-        binding.navForward.imageTintList = neutral
+        binding.navHomeIcon.imageTintList = if (onHome) accentTint else neutral
+        binding.navHomeDot.backgroundTintList = accentTint
+        binding.navHomeDot.visibility = if (onHome) View.VISIBLE else View.INVISIBLE
+        binding.navBookmarks.imageTintList = neutral
         binding.navTabsIcon.imageTintList = neutral
-        binding.navTabsCount.setTextColor(navIconColor())
+        binding.navTabsCount.backgroundTintList = accentTint
         binding.navMenu.imageTintList = neutral
         binding.settingsBtn.imageTintList = neutral
+        setNavEnabled(binding.menuBack, web?.canGoBack() == true || tab?.openerId != null)
+        setNavEnabled(binding.menuForward, web?.canGoForward() == true)
+        if (accent != newTabAccent) paintNewTabButton(accent)
+    }
+
+    /**
+     * The raised New tab button: a circle running from a lighter to a deeper
+     * shade of the accent, with a soft glow of the accent around it and, on
+     * Android 9 and up, a shadow in the accent rather than grey.
+     */
+    private fun paintNewTabButton(accent: Int) {
+        newTabAccent = accent
+        val hsv = FloatArray(3)
+        android.graphics.Color.colorToHSV(accent, hsv)
+        val light = android.graphics.Color.HSVToColor(floatArrayOf(
+            hsv[0], (hsv[1] * 0.80f).coerceIn(0f, 1f), (hsv[2] * 1.10f).coerceIn(0f, 1f)))
+        val deep = android.graphics.Color.HSVToColor(floatArrayOf(
+            hsv[0], (hsv[1] * 1.15f).coerceIn(0f, 1f), (hsv[2] * 0.82f).coerceIn(0f, 1f)))
+        binding.navNewTab.background = android.graphics.drawable.GradientDrawable(
+            android.graphics.drawable.GradientDrawable.Orientation.TL_BR, intArrayOf(light, deep)
+        ).apply { shape = android.graphics.drawable.GradientDrawable.OVAL }
+        binding.navNewTab.outlineProvider = android.view.ViewOutlineProvider.BACKGROUND
+        binding.navNewTabGlow.background = android.graphics.drawable.GradientDrawable().apply {
+            shape = android.graphics.drawable.GradientDrawable.OVAL
+            gradientType = android.graphics.drawable.GradientDrawable.RADIAL_GRADIENT
+            gradientRadius = 42f * resources.displayMetrics.density
+            colors = intArrayOf(
+                (accent and 0x00FFFFFF) or (0x40 shl 24),
+                (accent and 0x00FFFFFF) or (0x14 shl 24),
+                accent and 0x00FFFFFF)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            binding.navNewTab.outlineSpotShadowColor = accent
+            binding.navNewTab.outlineAmbientShadowColor = accent
+        }
     }
 
     private fun setNavEnabled(v: View, enabled: Boolean) {
@@ -4896,7 +5034,6 @@ class MainActivity : AppCompatActivity() {
             // would leave it unprivileged and the news feed blank.
             if (onHome) showOwlCloseDialog() else loadInto(activeWeb(), homePage)
         }
-        binding.menuReload.setOnClickListener { closeMenuNow(); activeWeb()?.reload() }
         applyAccentTints()
 
         // Menu scrim tap closes the menu
@@ -4929,9 +5066,6 @@ class MainActivity : AppCompatActivity() {
         }
         binding.menuHistory.setOnClickListener {
             closeMenuNow(); openDeck(); showHistory()
-        }
-        binding.menuBookmarks.setOnClickListener {
-            closeMenuNow(); openDeck(); showBookmarks()
         }
         if (DebugLog.enabled) {
             binding.menuDebugLog.visibility = View.VISIBLE
@@ -5225,20 +5359,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun activeWeb(): WebView? = tabs.activeTab?.webView
 
-    /** The count now lives in the menu row that opens the deck. */
+    /** The open-tab count, on the badge at the Tabs button's corner. */
     private fun updateTabCount() {
         val n = tabs.count()
-        // Inside the Tabs button's frame, as Chrome shows it. Three digits do
-        // not fit the frame at a readable size, so past 99 it says so.
+        // A circle for one digit and a pill for two; past 99 there is no
+        // room, so it says so the way Chrome does.
         binding.navTabsCount.text = if (n > 99) ":D" else n.toString()
-        // Measured against the frame's 14dp hollow: one digit at 11sp, two in
-        // the condensed face at 10sp so "88" keeps clear of the sides.
-        val twoDigits = n in 10..99
-        binding.navTabsCount.typeface = android.graphics.Typeface.create(
-            if (twoDigits) "sans-serif-condensed" else "sans-serif",
-            android.graphics.Typeface.BOLD)
-        binding.navTabsCount.setTextSize(
-            android.util.TypedValue.COMPLEX_UNIT_SP, if (twoDigits) 10f else 11f)
         binding.navTabs.contentDescription = if (n == 1) "1 tab" else "$n tabs"
     }
 
