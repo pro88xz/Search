@@ -39,6 +39,9 @@ Internal working notes. Not user-facing. Keep updated as state changes.
 - **Codespaces default JDK crashes the Kotlin compiler.** The devcontainer pins JDK 17 — use a fresh full Codespace, not github.dev.
 - **XML comments can't contain `--`.** (Broke dimens.xml once — no `----` dividers in comments.)
 - **Push auth (pro88xz):** if plain `git push` prompts, use a fresh terminal + a token credential helper with `$GITHUB_TOKEN`.
+- **Never navigate from inside a WebView callback.** `loadUrl()` called from `shouldOverrideUrlLoading` (or `onReceivedError`) aborts the app with SIGTRAP when the navigation is a new window's first load, because Chromium runs that callback inside its own, non-re-entrant navigation start. Use `loadAfterCallback()`, which posts the load.
+- **`onRenderProcessGone` must return true.** Not handling it means WebView takes the app down whenever its renderer crashes or Android kills it for memory (SIGTRAP in `libwebviewchromium.so`, no app frame). The dead WebView can only be removed and destroyed; `replaceDeadWebView()` does that and reloads the tab.
+- **CookieManager blocks.** `flush()`, `getCookie()` and `setCookie()` wait on Chromium's cookie thread, which shows up in Play as a "native lock contention" ANR. They run on `cookieIo`, never on the main thread. The same goes for drawing a WebView into a software `Canvas`: thumbnails come from PixelCopy only.
 - **Feed cache:** RSS is near-real-time, but the 15-min TTL is now honoured across cold starts (the cache file's mtime is the timestamp), so a change to `SOURCES` can take up to 15 minutes to show on a device that already has a cached feed. Clear app data to see it at once.
 
 ## Config / references

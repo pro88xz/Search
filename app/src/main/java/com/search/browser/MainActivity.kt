@@ -41,7 +41,23 @@ class MainActivity : AppCompatActivity() {
         // Same reasoning for the review prompt, and more so: two Play dialogs
         // in one session would be a lot to put in front of someone.
         private var didOfferReview = false
+
+        /**
+         * Where every CookieManager call that waits for an answer is made.
+         *
+         * flush(), getCookie() and setCookie() are synchronous: Chromium posts
+         * the work to its cookie thread and the caller sleeps on a native lock
+         * until it is done. The cookie thread can be busy - loading the store
+         * from disk, or writing a page's worth of cookies - and a main thread
+         * asleep behind it is the "native lock contention" ANR Play reports.
+         * One thread, so the calls still run in the order they were made.
+         */
+        private val cookieIo = java.util.concurrent.Executors.newSingleThreadExecutor()
     }
+
+    // Posts to the main thread, attached or not. View.post on a WebView that
+    // is not on screen waits until it is, which is no use for a background tab.
+    private val uiHandler = Handler(Looper.getMainLooper())
 
     // ---- Native search-page mode ----
     private var searchMode = false
@@ -673,7 +689,9 @@ class MainActivity : AppCompatActivity() {
         val enc = try {
             java.net.URLEncoder.encode(httpUrl, "UTF-8")
         } catch (e: Exception) { "" }
-        loadInto(view, "file:///android_asset/insecure.html?u=" + enc)
+        // Both callers are WebView callbacks, so the load waits until they
+        // have returned. See loadAfterCallback.
+        loadAfterCallback(view, "file:///android_asset/insecure.html?u=" + enc)
     }
 
     // Night Owl (private browsing) mode state.
@@ -737,7 +755,15 @@ class MainActivity : AppCompatActivity() {
         unregisterNetworkWatch()
         // Persist cookies to disk so logins survive the app being killed
         // (common on low-RAM devices). Without this, sessions can be lost.
-        android.webkit.CookieManager.getInstance().flush()
+        //
+        // Never on the main thread: flush() blocks its caller until the
+        // cookie store has written to disk. Called here, on every pause, it
+        // was the app's ANR - the main thread asleep on a native lock while
+        // the user was trying to leave. Running it a moment later on a
+        // background thread loses nothing, because the store is still there.
+        cookieIo.execute {
+            try { android.webkit.CookieManager.getInstance().flush() } catch (e: Exception) {}
+        }
     }
 
     // Held as a field so onDestroy can tell whether the one installed on
@@ -955,6 +981,7 @@ class MainActivity : AppCompatActivity() {
         })
 
         tabs.onNeedFreeze = { tab -> freezeTab(tab) }
+        tabs.canFreeze = { tab -> canFreezeTab(tab) }
 
         setupUrlBar()
         setupToolbar()
@@ -1481,7 +1508,8 @@ class MainActivity : AppCompatActivity() {
                             upgradedAt[host] = now
                             val https = "https://" + target.substring("http://".length)
                             upgradedFrom[https] = target
-                            view?.loadUrl(https)
+                            // Not view.loadUrl() here - that was the crash.
+                            loadAfterCallback(view, https)
                         }
                         return true
                     }
@@ -1495,7 +1523,12 @@ class MainActivity : AppCompatActivity() {
                 // Only a top-level navigation may leave the app. Without this a
                 // hidden iframe could throw the user into another app on its own.
                 if (!request.isForMainFrame) return true
-                openExternal(uri.toString())
+                // A link that opened a new tab only to hand itself to another
+                // app - a target=_blank mailto:, a "share on WhatsApp" button,
+                // an app's own sign-in scheme - would otherwise leave that tab
+                // behind empty, which reads as a blank page that never loads.
+                // Chrome closes such a tab, and so does this.
+                if (!openExternal(uri.toString(), view)) closeIfNeverLoaded(view)
                 return true
             }
 
@@ -1531,12 +1564,36 @@ class MainActivity : AppCompatActivity() {
                         val enc = try {
                             java.net.URLEncoder.encode(lastFailedUrl ?: "", "UTF-8")
                         } catch (e: Exception) { "" }
-                        loadInto(view, "file:///android_asset/error.html?u=$enc")
+                        loadAfterCallback(view, "file:///android_asset/error.html?u=$enc")
                     } else {
                         // Genuinely no connectivity: show the offline page.
-                        loadInto(view, "file:///android_asset/offline.html")
+                        loadAfterCallback(view, "file:///android_asset/offline.html")
                     }
                 }
+            }
+
+            /**
+             * The page renderer has died - crashed, or killed by Android to
+             * free memory, which on a low-RAM phone is routine once the app
+             * is in the background.
+             *
+             * Not overriding this means returning false, and false tells
+             * WebView to take the whole app down with it: a renderer crash
+             * becomes a crash of this app (SIGTRAP in libwebviewchromium.so,
+             * no Java frame from here in the stack), and a renderer killed for
+             * memory kills this app too. Returning true keeps the app alive;
+             * the price is that this WebView can never be used again, so it
+             * is thrown away and the tab reloads in a new one.
+             *
+             * Called once per WebView the renderer was serving, which is
+             * usually every tab at once.
+             */
+            override fun onRenderProcessGone(
+                view: WebView?,
+                detail: android.webkit.RenderProcessGoneDetail?
+            ): Boolean {
+                if (view != null) replaceDeadWebView(view)
+                return true
             }
 
             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
@@ -1551,7 +1608,14 @@ class MainActivity : AppCompatActivity() {
                     if (!binding.urlBar.hasFocus()) binding.urlBar.setText(displayUrl(url))
                     refreshOmniboxVisibility(url)
                 }
-                url?.let { tabs.activeTab?.url = it }
+                // The tab this page is loading in, which is not necessarily
+                // the one on screen. This used to write to the active tab
+                // whatever the source: while a sign-in pop-up was showing, the
+                // page behind it moving on after the sign-in landed in the
+                // pop-up's tab, and the tab that really changed kept its old
+                // address - the one it would be rebuilt from if its WebView
+                // were frozen or lost.
+                url?.let { u -> tabOf(view)?.url = u }
             }
             override fun onPageFinished(view: WebView?, url: String?) {
                 // The upgrade worked, so nothing needs remembering about it.
@@ -1581,7 +1645,8 @@ class MainActivity : AppCompatActivity() {
                     val scale = (sw.toFloat() / 980f * 100f).toInt().coerceIn(20, 100)
                     view?.setInitialScale(scale)
                 }
-                tabs.activeTab?.let { t ->
+                // The owning tab, for the reason given in onPageStarted.
+                tabOf(view)?.let { t ->
                     t.title = view?.title ?: t.title
                     t.url = url ?: t.url
                 }
@@ -1759,7 +1824,9 @@ class MainActivity : AppCompatActivity() {
                 // Validate the transport BEFORE creating any tab, so a malformed
                 // window.open() can't leave an orphan about:blank tab in the list.
                 val transport = resultMsg.obj as? WebView.WebViewTransport ?: return false
-                val opener = tabs.activeTab
+                // The tab whose page called window.open(), which is usually but
+                // not necessarily the one on screen.
+                val opener = tabOf(view) ?: tabs.activeTab
                 val popupTab = tabs.createTab("about:blank")
                 popupTab.openerId = opener?.id
                 popupTab.title = "Opening\u2026"
@@ -1774,8 +1841,14 @@ class MainActivity : AppCompatActivity() {
             // opened it. closeTabFromDeck resolves the opener and re-attaches it.
             override fun onCloseWindow(window: WebView?) {
                 super.onCloseWindow(window)
-                val closing = tabs.tabs.firstOrNull { it.webView == window }
-                if (closing != null) closeTabFromDeck(closing)
+                // After the callback, not inside it: closing the tab destroys
+                // this very WebView, and Chromium is still part-way through
+                // closing it when it calls here.
+                val closing = window ?: return
+                uiHandler.post {
+                    tabs.tabs.firstOrNull { it.webView === closing }
+                        ?.let { closeTabFromDeck(it) }
+                }
             }
             // File uploads: <input type="file"> on web pages.
             override fun onShowFileChooser(
@@ -2378,17 +2451,6 @@ class MainActivity : AppCompatActivity() {
         onDone?.invoke()
     }
 
-    private fun softwareCapture(tab: Tab) {
-        if (deckVisible) return
-        val web = tab.webView ?: return
-        if (web.width <= 0 || web.height <= 0) return
-        try {
-            val full = Bitmap.createBitmap(web.width, web.height, Bitmap.Config.RGB_565)
-            web.draw(Canvas(full))
-            storeScaled(tab, full)
-        } catch (e: Exception) { /* skip */ }
-    }
-
     private fun storeScaled(tab: Tab, full: Bitmap) {
         try {
             val ratio = full.height.toFloat() / full.width.toFloat()
@@ -2421,17 +2483,112 @@ class MainActivity : AppCompatActivity() {
         target.loadUrl(url)
     }
 
+    /**
+     * Loads [url] into [web] once the WebView callback that asked for it has
+     * returned.
+     *
+     * Starting a navigation from inside a navigation callback is the crash Play
+     * reports against shouldOverrideUrlLoading. For a link that opens a new
+     * tab - target=_blank, window.open - Chromium asks that callback from
+     * inside its own navigation start, and that code is not re-entrant: a
+     * loadUrl() there fails a CHECK and the process is aborted with SIGTRAP,
+     * which nothing in Kotlin can catch. With HTTPS-only on, the default,
+     * every http:// link that opened in a new tab went down that path.
+     *
+     * The pages put up from onReceivedError are loaded the same way, since a
+     * load can fail - and report it - before the call that started it has
+     * returned. Posted, the load runs a moment later from a clean stack, and
+     * only if the WebView is still one the app owns.
+     */
+    private fun loadAfterCallback(web: WebView?, url: String) {
+        val target = web ?: return
+        uiHandler.post { if (isLiveWeb(target)) loadInto(target, url) }
+    }
+
+    /** The tab a WebView belongs to - not necessarily the one on screen. */
+    private fun tabOf(web: WebView?): Tab? =
+        if (web == null) null else tabs.tabs.firstOrNull { it.webView === web }
+
+    /**
+     * Closes a tab a page opened, if nothing ever loaded in it. Run after the
+     * callback that decided its first navigation was not ours to load.
+     */
+    private fun closeIfNeverLoaded(web: WebView?) {
+        val target = web ?: return
+        uiHandler.post {
+            val tab = tabOf(target) ?: return@post
+            // about:blank is what onCreateWindow names the tab, and
+            // onPageStarted replaces it as soon as a page starts loading.
+            if (tab.openerId != null && tab.url == "about:blank") closeTabFromDeck(tab)
+        }
+    }
+
+    /**
+     * Throws away a WebView whose renderer has gone, and puts the tab's page
+     * back in a new one if it is the tab on screen. Background tabs are left
+     * frozen and reload when next opened, as any frozen tab does.
+     *
+     * The dead view is only removed and destroyed - WebView's own instruction,
+     * since anything else called on it may reach the renderer that is gone.
+     */
+    private fun replaceDeadWebView(dead: WebView) {
+        val tab = tabOf(dead)
+        if (tab != null && tab === tabs.activeTab && fullscreenView != null) {
+            // The player's callback belongs to the dead page. Dropped rather
+            // than called, then fullscreen is unwound as usual.
+            fullscreenCallback = null
+            exitFullscreen()
+        }
+        (dead.parent as? ViewGroup)?.removeView(dead)
+        dead.destroy()
+        if (tab == null) return
+        tab.webView = null
+        // State saved by an earlier freeze is older than the page that just
+        // died. The address onPageStarted last recorded is where the tab was.
+        tab.savedState = null
+        if (tab === tabs.activeTab) {
+            // Outside the callback, which WebView is still running for the
+            // other tabs this renderer served.
+            uiHandler.post {
+                if (!isFinishing && !isDestroyed && tab === tabs.activeTab &&
+                    tab.webView == null
+                ) openTab(tab)
+            }
+        }
+    }
+
     private fun openTab(tab: Tab, loadUrl: String? = null) {
-        binding.webContainer.removeAllViews()
+        // The tab being left keeps a picture of itself for the deck, taken
+        // while it is still on screen. PixelCopy reads what the display already
+        // shows and asks the page for nothing. freezeTab used to draw the
+        // WebView into a software canvas instead, which makes Chromium render a
+        // frame on the main thread and wait for it - on a busy page, a wait of
+        // no fixed length, and an ANR. captureThumbnail skips anything not on
+        // screen, and nothing is taken while the deck is up, because the deck
+        // is what would be in the picture.
+        val leaving = tabs.activeTab
+        if (leaving != null && leaving !== tab &&
+            binding.menuScrim.visibility != View.VISIBLE
+        ) captureThumbnail(leaving)
+        // Already on screen - the current tab picked in the deck - so it stays
+        // attached. Taking a WebView off the window and putting it back makes
+        // it release its drawing resources and claim them again, each time in
+        // step with the render thread, and the main thread waits for that.
+        val shown = binding.webContainer.childCount == 1 &&
+            binding.webContainer.getChildAt(0) === tab.webView
+        if (!shown) binding.webContainer.removeAllViews()
         if (tab.webView == null) {
             val web = newWebView()
             tab.webView = web
             val restored = tab.savedState?.let { web.restoreState(it) != null } ?: false
+            // Spent. Kept, it would be restored again over newer pages the
+            // next time this tab is rebuilt - after a renderer loss, say.
+            tab.savedState = null
             if (!restored) loadInto(web, loadUrl ?: tab.url)
         } else if (loadUrl != null) {
             loadInto(tab.webView, loadUrl)
         }
-        binding.webContainer.addView(tab.webView)
+        if (!shown) binding.webContainer.addView(tab.webView)
         tabs.setActive(tab)
         tabs.markLive(tab)
         binding.urlBar.setText(displayUrl(tab.url))
@@ -2656,14 +2813,35 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Whether a tab may be frozen to stay under the live-tab cap.
+     *
+     * Freezing destroys the WebView, and a window.open() pair lives in its two
+     * WebViews: the pop-up hands its result back through window.opener, then
+     * closes itself, which is how every pop-up sign-in returns to the site. A
+     * restored tab is a new page with no opener, so a sign-in pop-up rebuilt
+     * from a frozen tab finishes on its callback page with nobody to tell and
+     * no right to close - a blank page that never moves. Only reachable with
+     * several tabs live at once, but checking email in another tab halfway
+     * through a sign-up is exactly that.
+     */
+    private fun canFreezeTab(tab: Tab): Boolean {
+        // The opener side, while any pop-up it opened is still open.
+        if (tabs.tabs.any { it.openerId == tab.id }) return false
+        // The pop-up side, while its opener is still live. Only the newest
+        // pop-up from each opener is held: every target=_blank link is a
+        // pop-up too, and holding all of them would hold a whole news site's
+        // worth of articles in memory.
+        val openerId = tab.openerId ?: return true
+        if (tabs.tabs.none { it.id == openerId && it.isLive }) return true
+        return tabs.tabs.lastOrNull { it.openerId == openerId } !== tab
+    }
+
     private fun freezeTab(tab: Tab) {
         val web = tab.webView ?: return
-        // Never freeze a tab that opened a pop-up still on screen. Freezing
-        // destroys the WebView, and with it the window.opener handle the pop-up
-        // needs to hand its result back - which is what a sign-in callback rides
-        // on. Only reachable with several tabs live at once.
-        if (tabs.tabs.any { it.openerId == tab.id }) return
-        softwareCapture(tab)
+        // No picture is taken here. It used to be drawn now, through a
+        // software canvas, which blocks the main thread on the renderer. The
+        // tab already has the one openTab took when it was last left.
         val state = Bundle()
         web.saveState(state)
         tab.savedState = state
@@ -2752,20 +2930,25 @@ class MainActivity : AppCompatActivity() {
         val hosts = nightOwlHosts.toSet()
         nightOwlHosts.clear()
 
-        val cookies = android.webkit.CookieManager.getInstance()
-        hosts.forEach { host ->
-            listOf("https://" + host, "http://" + host).forEach { origin ->
-                try {
-                    cookies.getCookie(origin)?.split(";")?.forEach { pair ->
-                        val name = pair.substringBefore('=').trim()
-                        if (name.isNotEmpty()) {
-                            cookies.setCookie(origin, name + "=; Max-Age=0; Path=/")
+        // On the cookie thread: getCookie and setCookie each wait on Chromium
+        // for an answer, two per host visited, and on the main thread a long
+        // private session made leaving it an ANR.
+        cookieIo.execute {
+            val cookies = android.webkit.CookieManager.getInstance()
+            hosts.forEach { host ->
+                listOf("https://" + host, "http://" + host).forEach { origin ->
+                    try {
+                        cookies.getCookie(origin)?.split(";")?.forEach { pair ->
+                            val name = pair.substringBefore('=').trim()
+                            if (name.isNotEmpty()) {
+                                cookies.setCookie(origin, name + "=; Max-Age=0; Path=/")
+                            }
                         }
-                    }
-                } catch (e: Exception) { /* nothing stored for this one */ }
+                    } catch (e: Exception) { /* nothing stored for this one */ }
+                }
             }
+            try { cookies.flush() } catch (e: Exception) {}
         }
-        try { cookies.flush() } catch (e: Exception) {}
 
         // Storage is addressable per origin, so this part is exact. getOrigins
         // reports them in WebView's own spelling, which is why they are matched
@@ -3229,6 +3412,21 @@ class MainActivity : AppCompatActivity() {
         // the process. Only clear it if it is still ours: a recreated activity
         // has already replaced it by now.
         if (MediaService.onControl === mediaControl) MediaService.onControl = null
+        // Nothing posted for these tabs may run once they are gone.
+        uiHandler.removeCallbacksAndMessages(null)
+        // Each tab's WebView belongs to this activity and goes with it. They
+        // were left for the garbage collector, so after a recreation - a theme
+        // change is one - every old page stayed alive beside its replacement,
+        // still holding its share of the renderer's memory: the shortage that
+        // gets the renderer killed. Their history is already in TabStore by
+        // now; onSaveInstanceState runs before this.
+        tabs.tabs.forEach { t ->
+            t.webView?.let { w ->
+                (w.parent as? ViewGroup)?.removeView(w)
+                w.destroy()
+            }
+            t.webView = null
+        }
         super.onDestroy()
     }
 
@@ -3254,7 +3452,10 @@ class MainActivity : AppCompatActivity() {
     private fun setupDeck() {
         tabAdapter = TabAdapter(
             tabs = tabs.tabs,
-            onSelect = { tab -> closeDeck(); openTab(tab) },
+            // openTab before closeDeck, here and below: openTab takes a picture
+            // of the tab being left, and refuses while the deck is still up -
+            // closed first, the last frame on screen would be the deck itself.
+            onSelect = { tab -> openTab(tab); closeDeck() },
             onClose = { tab -> closeTabFromDeck(tab) },
             // Lambdas, not values: the deck rebinds on every open, so these
             // stay current through tab switches and accent changes without the
@@ -3266,7 +3467,7 @@ class MainActivity : AppCompatActivity() {
         binding.tabList.adapter = tabAdapter
 
         binding.deckClose.setOnClickListener { closeDeck() }
-        binding.deckNewTab.setOnClickListener { closeDeck(); addNewTab(homePage) }
+        binding.deckNewTab.setOnClickListener { addNewTab(homePage); closeDeck() }
 
         binding.deckSearch.setOnEditorActionListener { _, actionId, event ->
             val enter = actionId == EditorInfo.IME_ACTION_GO ||
@@ -3274,8 +3475,8 @@ class MainActivity : AppCompatActivity() {
             if (enter) {
                 val q = binding.deckSearch.text.toString()
                 if (q.isNotBlank()) {
-                    closeDeck()
                     addNewTab(UrlHelper.toUrlOrSearch(q, Settings.getEngineUrl(this)))
+                    closeDeck()
                     binding.deckSearch.setText("")
                 }
                 true
@@ -3547,8 +3748,8 @@ class MainActivity : AppCompatActivity() {
         val adapter = HistoryAdapter(
             entries = entries,
             onSelect = { entry ->
-                closeDeck()
                 addNewTab(entry.url)
+                closeDeck()
             },
             onDelete = { entry ->
                 History.delete(this, entry.url)
@@ -3577,7 +3778,7 @@ class MainActivity : AppCompatActivity() {
         val entries = Bookmarks.load(this).map { History.Entry(it.title, it.url, it.time) }
         val adapter = HistoryAdapter(
             entries = entries,
-            onSelect = { entry -> closeDeck(); addNewTab(entry.url) },
+            onSelect = { entry -> addNewTab(entry.url); closeDeck() },
             onDelete = { entry -> Bookmarks.remove(this, entry.url); showBookmarks() }
         )
         binding.bookmarkList.layoutManager =
@@ -3804,14 +4005,8 @@ class MainActivity : AppCompatActivity() {
             // one with whatever the extension says.
             request.setMimeType(downloadMime(fileName, mimeType))
             userAgent?.let { request.addRequestHeader("User-Agent", it) }
-            // DownloadManager fetches in its own process, with none of the
-            // WebView's state. Without the session cookie, anything behind a
-            // sign-in hands back the sign-in page instead of the file, and the
-            // download "succeeds" - you get a saved HTML page named report.pdf.
-            // Some hosts also refuse a request that arrives with no referer.
-            android.webkit.CookieManager.getInstance().getCookie(url)?.let {
-                if (it.isNotBlank()) request.addRequestHeader("Cookie", it)
-            }
+            // Some hosts refuse a request that arrives with no referer. Read
+            // here: a WebView answers on the main thread only.
             activeWeb()?.url?.let {
                 if (it.startsWith("http")) request.addRequestHeader("Referer", it)
             }
@@ -3824,10 +4019,30 @@ class MainActivity : AppCompatActivity() {
                 android.os.Environment.DIRECTORY_DOWNLOADS, fileName
             )
             val dm = getSystemService(DOWNLOAD_SERVICE) as android.app.DownloadManager
-            dm.enqueue(request)
-            android.widget.Toast.makeText(
-                this, "Downloading $fileName", android.widget.Toast.LENGTH_SHORT
-            ).show()
+            // DownloadManager fetches in its own process, with none of the
+            // WebView's state. Without the session cookie, anything behind a
+            // sign-in hands back the sign-in page instead of the file, and the
+            // download "succeeds" - you get a saved HTML page named report.pdf.
+            //
+            // getCookie() waits on Chromium's cookie thread, so it is asked on
+            // the cookie thread's queue here rather than on the main thread,
+            // and the enqueue follows it there.
+            cookieIo.execute {
+                val ok = try {
+                    android.webkit.CookieManager.getInstance().getCookie(url)?.let {
+                        if (it.isNotBlank()) request.addRequestHeader("Cookie", it)
+                    }
+                    dm.enqueue(request)
+                    true
+                } catch (e: Exception) { false }
+                runOnUiThread {
+                    android.widget.Toast.makeText(
+                        this,
+                        if (ok) "Downloading $fileName" else "Download failed",
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
         } catch (e: Exception) {
             android.widget.Toast.makeText(
                 this, "Download failed", android.widget.Toast.LENGTH_SHORT
@@ -4452,8 +4667,11 @@ class MainActivity : AppCompatActivity() {
      * Nothing here uses resolveActivity: under package visibility it reports
      * "nothing handles this" for apps we cannot see, while startActivity would
      * have worked. Trying and catching is both simpler and more accurate.
+     *
+     * Returns true only when a web fallback is being loaded into [from], which
+     * is the one outcome that leaves something to show in that tab.
      */
-    private fun openExternal(url: String): Boolean {
+    private fun openExternal(url: String, from: WebView?): Boolean {
         val isIntentUri = url.startsWith("intent://", ignoreCase = true)
         val intent = try {
             if (isIntentUri) {
@@ -4479,7 +4697,7 @@ class MainActivity : AppCompatActivity() {
             android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION.inv()
         try {
             startActivity(intent)
-            return true
+            return false
         } catch (e: Exception) { /* no app claims it - fall through */ }
 
         // intent:// can name a web page to use when the app isn't installed.
@@ -4491,7 +4709,10 @@ class MainActivity : AppCompatActivity() {
         if (!fallback.isNullOrBlank() &&
             (fallback.startsWith("http://") || fallback.startsWith("https://"))
         ) {
-            activeWeb()?.loadUrl(fallback)
+            // Into the tab the link was followed in, which is not always the
+            // one on screen, and after the callback that asked - see
+            // loadAfterCallback for why never during it.
+            loadAfterCallback(from ?: activeWeb(), fallback)
             return true
         }
         // Say so plainly. The old path showed "this site can't be reached",
@@ -4499,7 +4720,7 @@ class MainActivity : AppCompatActivity() {
         android.widget.Toast.makeText(
             this, "No app on this phone opens that kind of link",
             android.widget.Toast.LENGTH_SHORT).show()
-        return true
+        return false
     }
 
     /**

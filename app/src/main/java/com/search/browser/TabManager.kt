@@ -24,6 +24,8 @@ class TabManager(
     // Callbacks the Activity provides:
     // onNeedFreeze: freeze this tab (saveState + destroy its WebView)
     var onNeedFreeze: ((Tab) -> Unit)? = null
+    // canFreeze: false for a tab that has to stay live over the cap for now
+    var canFreeze: ((Tab) -> Boolean)? = null
 
     fun createTab(url: String? = null): Tab {
         val tab = Tab(id = nextId++)
@@ -51,22 +53,24 @@ class TabManager(
     }
 
     private fun enforceCap() {
-        while (liveOrder.size > maxLiveTabs) {
-            val lruId = liveOrder.first()
-            // Never freeze the active tab.
-            if (lruId == activeTab?.id) {
-                // Move active to the back and try the next candidate.
-                liveOrder.remove(lruId)
-                liveOrder.add(lruId)
-                // If active is the only live tab over cap, stop.
-                if (liveOrder.first() == activeTab?.id) break
+        // Least recently used first. The active tab is never frozen, and nor
+        // is a tab the Activity says must stay live. Both keep their place in
+        // the order: a tab passed over now is still holding a WebView, so it
+        // has to be counted, and reconsidered on the next pass.
+        //
+        // This used to drop a refused tab from the order while leaving its
+        // WebView alive, so it was never counted or frozen again.
+        for (id in liveOrder.toList()) {
+            if (liveOrder.size <= maxLiveTabs) break
+            if (id == activeTab?.id) continue
+            val tab = tabs.find { it.id == id }
+            if (tab == null || !tab.isLive) {
+                liveOrder.remove(id)
                 continue
             }
-            val lruTab = tabs.find { it.id == lruId }
-            liveOrder.remove(lruId)
-            if (lruTab != null && lruTab.isLive) {
-                onNeedFreeze?.invoke(lruTab)
-            }
+            if (canFreeze?.invoke(tab) == false) continue
+            liveOrder.remove(id)
+            onNeedFreeze?.invoke(tab)
         }
     }
 

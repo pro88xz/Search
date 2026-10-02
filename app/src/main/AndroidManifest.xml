@@ -38,11 +38,21 @@
             android:name="com.google.mlkit.vision.DEPENDENCIES"
             android:value="barcode_ui" />
 
+        <!--
+          singleTask, not singleTop. A link tapped in another app - the
+          confirmation link in a sign-up email, a magic sign-in link - arrives
+          as a VIEW intent, and most apps send it without NEW_TASK. A singleTop
+          activity is then started inside the sender's task, as a second
+          browser with one tab, while the tab the sign-up began in sits
+          untouched in the first: signed in, but showing the page from before
+          until the site is reopened. singleTask always brings the one browser
+          forward and hands it the link through onNewIntent.
+        -->
         <activity
             android:name=".MainActivity"
             android:supportsPictureInPicture="true"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden"
-            android:launchMode="singleTop"
+            android:launchMode="singleTask"
             android:theme="@style/Theme.Search.Splash"
             android:exported="true">
             <intent-filter>
