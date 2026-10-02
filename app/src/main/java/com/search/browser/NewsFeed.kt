@@ -321,6 +321,8 @@ object NewsFeed {
     /** Fewer items than this from a refresh is a bad connection, not a feed. */
     private const val MIN_FRESH = 10
     private const val THIN_RETRY_MS = 5L * 60 * 1000
+    /** After a refresh that produced nothing at all. */
+    private const val EMPTY_RETRY_MS = 60L * 1000
     /** Past this age the old feed is worse than a thin new one. */
     private const val STALE_MS = 6L * 60 * 60 * 1000
 
@@ -439,7 +441,15 @@ object NewsFeed {
         val mem = PrefsMemory(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE))
         val fresh = build(context, sources, mem, now)
 
-        if (fresh.isEmpty()) return warm ?: "[]"
+        if (fresh.isEmpty()) {
+            // Nothing usable came back - no connection worth the name, or not
+            // one story with a picture. With a feed to show, wait a minute
+            // before asking every publisher again rather than doing it on each
+            // home page open; a minute is short enough that a phone back
+            // online soon after still gets fresh stories.
+            if (warm != null) retryAt = now + EMPTY_RETRY_MS
+            return warm ?: "[]"
+        }
 
         // A handful of items is what a flaky connection produces, and a full
         // feed from an hour ago is better than it. Keep the old one and try
@@ -777,9 +787,10 @@ object NewsFeed {
      * culture feeds actually carry: puzzle answers and deals posts every day,
      * evergreen guides re-dated to look new, the odd year-old item.
      *
-     * No image is not a gate. An imageless item still joins its story's
-     * cluster and counts toward that story's momentum; it is only ever shown
-     * after every story that has a picture.
+     * No image is not a gate here. An imageless item still joins its story's
+     * cluster and counts toward that story's momentum - the story is shown
+     * through a copy from an outlet that has a picture - but it is never shown
+     * itself (see arrange).
      */
     internal fun gate(items: List<Item>, src: Source, now: Long): List<Item> {
         // An image a source attaches to three or more items is its logo or a
@@ -1059,9 +1070,11 @@ object NewsFeed {
      * [WOVEN] no category takes more than [CATEGORY_CAP] places and no
      * publisher more than [SOURCE_CAP]. Each slot takes the best story that
      * fits; when nothing fits, the publisher limit gives first, then the
-     * category one. Those [WOVEN] cards all have an image that is not a known
-     * thumbnail; after them come the remaining stories with pictures, by
-     * score, and last the ones without.
+     * category one. Every story shown has a picture that holds up full width:
+     * the page draws each one as a full-width card, and the owner's rule is
+     * that a story without a proper image is not shown at all. Known-small
+     * thumbnails and stories with no image are left out rather than placed
+     * last.
      */
     internal fun arrange(stories: List<Story>, now: Long, last: LeadMemory?): List<Item> {
         if (stories.isEmpty()) return emptyList()
@@ -1079,8 +1092,9 @@ object NewsFeed {
         val lead = stories
             .filter { it.rep.imageQuality >= Q_OK && it.rep.summary.isNotEmpty() && it.rep.sourceId != YOUTUBE_ID }
             .maxByOrNull { leadScore(it) }
-            ?: stories.filter { it.rep.image.isNotEmpty() && it.rep.sourceId != YOUTUBE_ID }.maxByOrNull { leadScore(it) }
-            ?: stories.first()
+            ?: stories.filter { it.rep.imageQuality >= Q_OK && it.rep.sourceId != YOUTUBE_ID }
+                .maxByOrNull { leadScore(it) }
+            ?: return emptyList()
 
         val out = ArrayList<Item>()
         out.add(lead.rep)
@@ -1089,11 +1103,8 @@ object NewsFeed {
         perCategory[lead.rep.category] = 1
         perSource[lead.rep.sourceId] = 1
 
-        // The woven cards all get a picture that survives being shown full
-        // width; a known-small thumbnail waits below them with the rest.
+        // Only pictures that survive being shown full width.
         val pool = stories.filter { it !== lead && it.rep.imageQuality >= Q_OK }.toMutableList()
-        val thumbs = stories.filter { it !== lead && it.rep.imageQuality == Q_SMALL }
-        val imageless = stories.filter { it !== lead && it.rep.image.isEmpty() }
 
         while (out.size < WOVEN && pool.isNotEmpty()) {
             fun catOk(s: Story) = (perCategory[s.rep.category] ?: 0) < CATEGORY_CAP
@@ -1106,9 +1117,8 @@ object NewsFeed {
             perCategory[s.rep.category] = (perCategory[s.rep.category] ?: 0) + 1
             perSource[s.rep.sourceId] = (perSource[s.rep.sourceId] ?: 0) + 1
         }
-        val rest = (pool + thumbs).sortedWith(compareByDescending<Story> { it.score }.thenByDescending { it.newest })
+        val rest = pool.sortedWith(compareByDescending<Story> { it.score }.thenByDescending { it.newest })
         for (s in rest) { if (out.size >= OUTPUT_ITEMS) break; out.add(s.rep) }
-        for (s in imageless) { if (out.size >= OUTPUT_ITEMS) break; out.add(s.rep) }
         return out
     }
 
