@@ -31,17 +31,18 @@ object MediaDetect {
     } catch(e){}
   }
 
-  function hook(m){
-    if (m.__searchHooked) return;
-    m.__searchHooked = true;
-    ['play','pause','ended','emptied'].forEach(function(ev){
-      m.addEventListener(ev, report);
-    });
-  }
-
-  function scan(){
-    document.querySelectorAll('video,audio').forEach(hook);
-  }
+  // One set of listeners on the document, in the capture phase, rather than
+  // one per player plus a MutationObserver over the whole page to find new
+  // players. Media events do not bubble, but they are captured on the way
+  // down, so every <video> and <audio> - however late it was added - is heard
+  // here. The observer this replaces ran on every change to the page's DOM,
+  // which on a heavy single-page site is continuously.
+  ['play','pause','ended','emptied'].forEach(function(ev){
+    document.addEventListener(ev, function(e){
+      var t = e.target;
+      if (t && (t.tagName === 'VIDEO' || t.tagName === 'AUDIO')) report();
+    }, true);
+  });
 
   window.__searchMediaControl = function(action){
     var m = pickMedia();
@@ -50,23 +51,7 @@ object MediaDetect {
     else if (action === 'play') m.play();
   };
 
-  scan();
   report();
-  // Catch dynamically added players.
-  //
-  // Throttled, because this observes childList over the whole subtree: on a
-  // feed or any React-shaped page it fires continuously, and it used to run a
-  // querySelectorAll across the entire document every single time. That is a
-  // page-wide scan several times a second, on every page the browser has open,
-  // for the sake of noticing a <video> that might appear - paid for in battery
-  // and in scroll smoothness.
-  var scanQueued = false;
-  var mo = new MutationObserver(function(){
-    if (scanQueued) return;
-    scanQueued = true;
-    setTimeout(function(){ scanQueued = false; scan(); }, 500);
-  });
-  try { mo.observe(document.documentElement, {childList:true, subtree:true}); } catch(e){}
 })();
 """.trim()
 }

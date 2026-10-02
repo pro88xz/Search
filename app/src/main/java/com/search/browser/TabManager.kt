@@ -11,7 +11,9 @@ package com.search.browser
  * via the callbacks.
  */
 class TabManager(
-    private val maxLiveTabs: Int = 3
+    // A var because the Activity sizes it to the phone's memory in onCreate,
+    // after the field holding this has been built.
+    var maxLiveTabs: Int = 3
 ) {
     private var nextId = 1L
     val tabs = mutableListOf<Tab>()
@@ -52,7 +54,14 @@ class TabManager(
         liveOrder.add(id)
     }
 
-    private fun enforceCap() {
+    /**
+     * Freezes background tabs until at most [keep] are live - the active one
+     * always among them. For when the system says memory is short: a frozen
+     * tab costs a saved history, a live one a whole page in the renderer.
+     */
+    fun trimLive(keep: Int) = enforceCap(keep.coerceAtLeast(1))
+
+    private fun enforceCap(limit: Int = maxLiveTabs) {
         // Least recently used first. The active tab is never frozen, and nor
         // is a tab the Activity says must stay live. Both keep their place in
         // the order: a tab passed over now is still holding a WebView, so it
@@ -61,7 +70,7 @@ class TabManager(
         // This used to drop a refused tab from the order while leaving its
         // WebView alive, so it was never counted or frozen again.
         for (id in liveOrder.toList()) {
-            if (liveOrder.size <= maxLiveTabs) break
+            if (liveOrder.size <= limit) break
             if (id == activeTab?.id) continue
             val tab = tabs.find { it.id == id }
             if (tab == null || !tab.isLive) {

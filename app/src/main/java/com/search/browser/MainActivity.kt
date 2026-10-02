@@ -53,6 +53,24 @@ class MainActivity : AppCompatActivity() {
          * One thread, so the calls still run in the order they were made.
          */
         private val cookieIo = java.util.concurrent.Executors.newSingleThreadExecutor()
+
+        // History is rewritten whole on every page load; one thread keeps
+        // those writes in order and off the main thread.
+        private val historyIo = java.util.concurrent.Executors.newSingleThreadExecutor()
+
+        /**
+         * How long a sign-in pop-up may sit on the site's own page, back from
+         * the provider and showing nothing, before it is taken to have
+         * stalled. A callback page that works closes itself well inside this.
+         */
+        private const val POPUP_STALL_MS = 3500L
+
+        /**
+         * How long the page behind a returned sign-in gets to show something
+         * before it is reloaded. Longer than the pop-up's allowance: a heavy
+         * site can spend a few seconds drawing nothing while it starts up.
+         */
+        private const val OPENER_STALL_MS = 6000L
     }
 
     // Posts to the main thread, attached or not. View.post on a WebView that
@@ -324,12 +342,8 @@ class MainActivity : AppCompatActivity() {
     }
     private var suggestAdapter: SuggestAdapter? = null
     private var suggestSeq = 0
-    // The list's own bottom padding from the layout, kept so the keyboard
-    // inset can be added on top of it rather than replacing it.
-    private var suggestBasePad = -1
 
     private fun setupSuggestOverlay() {
-        if (suggestBasePad < 0) suggestBasePad = binding.suggestBackdrop.paddingBottom
         suggestAdapter = SuggestAdapter(emptyList(), { item ->
             if (suggestListMoving()) return@SuggestAdapter
             val kind = item.optString("kind")
@@ -593,8 +607,9 @@ class MainActivity : AppCompatActivity() {
         binding.urlBar.isFocusable = true
         binding.urlBar.isFocusableInTouchMode = true
         // The owl stays on the search page, so the field runs from the owl
-        // to the right edge rather than replacing it.
+        // to the right edge rather than replacing it - the gear steps aside.
         binding.starBtn.visibility = View.GONE
+        binding.settingsBtn.visibility = View.GONE
         // The home bar's collapse animation writes urlBarContainer.alpha
         // directly, from setHomeBarProgress, and it is a ValueAnimator - so the
         // animate().cancel() in animateSearchIn does not reach it. Left running
@@ -639,6 +654,7 @@ class MainActivity : AppCompatActivity() {
         binding.urlBarContainer.translationY = 0f
         binding.homeBtn.visibility = View.VISIBLE
         binding.starBtn.visibility = View.VISIBLE
+        binding.settingsBtn.visibility = View.VISIBLE
         binding.urlBar.clearFocus()
         // Return the bar to non-focusable at rest so nothing but an explicit
         // tap (which re-enables focus via enterSearchMode) can re-open search.
@@ -918,32 +934,26 @@ class MainActivity : AppCompatActivity() {
         // stays above the navigation bar.
         androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(binding.root) { v, insets ->
             val bars = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars())
-            v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
-
-            // Under edge-to-edge the keyboard never resizes the window - it just
-            // arrives as an inset. Nothing read it, so the tail of the suggestion
-            // list rendered behind the keyboard and its last rows could not be
-            // scrolled to. Pad the list by whatever the keyboard covers beyond
-            // what the root already gives back for the navigation bar; with
-            // clipToPadding=false that becomes scrollable room, not dead space.
-            // Applied here rather than from a listener on the list itself,
-            // because a ViewGroup with its own listener stops dispatching insets
-            // down to its children.
+            // Under edge-to-edge the keyboard never resizes the window - it
+            // just arrives as an inset. Nothing read it for the page, so a
+            // field in the lower half of a form - the email or password box of
+            // a sign-up - sat behind the keyboard while being typed into, and
+            // the page could not scroll it into view because, as far as the
+            // WebView knew, nothing had covered it. Taking the keyboard off the
+            // bottom of the whole layer shrinks the page above it, and
+            // Chromium then brings the focused field into view as Chrome does.
+            // The suggestion list, inside the same layer, ends where the
+            // keyboard starts for the same reason.
             val ime = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.ime()).bottom
-            val extra = (ime - bars.bottom).coerceAtLeast(0)
-            // On the backdrop, not the card. The card is wrap_content: bottom
-            // padding there would simply make it taller by the keyboard's
-            // height, leaving a band of empty white under the last row.
-            // Shortening the backdrop instead makes the card stop where the
-            // keyboard starts.
-            val base = if (suggestBasePad >= 0) suggestBasePad
-                else binding.suggestBackdrop.paddingBottom
-            binding.suggestBackdrop.setPadding(
-                binding.suggestBackdrop.paddingLeft,
-                binding.suggestBackdrop.paddingTop,
-                binding.suggestBackdrop.paddingRight,
-                base + extra
-            )
+            val typing = ime > bars.bottom
+            v.setPadding(bars.left, bars.top, bars.right, if (typing) ime else bars.bottom)
+            // And the bottom bar steps out of the way while typing, as it does
+            // in Chrome, so the keyboard does not cost the page its height twice.
+            val bar = if (typing) View.GONE else View.VISIBLE
+            if (binding.bottomBar.visibility != bar) {
+                binding.bottomBar.visibility = bar
+                binding.bottomBarLine.visibility = bar
+            }
             insets
         }
         setupSuggestOverlay()
@@ -968,7 +978,7 @@ class MainActivity : AppCompatActivity() {
                     // and re-attaches the tab that opened this one, which is
                     // the same path window.close() already used.
                     tabs.activeTab?.openerId != null ->
-                        tabs.activeTab?.let { closeTabFromDeck(it) }
+                        tabs.activeTab?.let { foldBackPopup(it, "closed with Back") }
                     // Nothing left to go back to. Leave, but do not die:
                     // finish() destroys the activity and every live WebView
                     // with it, so returning means rebuilding every tab from
@@ -980,6 +990,7 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
+        tabs.maxLiveTabs = liveTabBudget()
         tabs.onNeedFreeze = { tab -> freezeTab(tab) }
         tabs.canFreeze = { tab -> canFreezeTab(tab) }
 
@@ -1528,6 +1539,7 @@ class MainActivity : AppCompatActivity() {
                 // an app's own sign-in scheme - would otherwise leave that tab
                 // behind empty, which reads as a blank page that never loads.
                 // Chrome closes such a tab, and so does this.
+                DebugLog.add("tab#" + tabOf(view)?.id + " hands " + scheme + ": link to another app")
                 if (!openExternal(uri.toString(), view)) closeIfNeverLoaded(view)
                 return true
             }
@@ -1549,6 +1561,9 @@ class MainActivity : AppCompatActivity() {
                 super.onReceivedError(view, request, error)
                 // Only replace the main-frame failure (not sub-resources like images/ads).
                 if (request?.isForMainFrame == true) {
+                    DebugLog.add("tab#" + tabOf(view)?.id + " load error " +
+                        error?.errorCode + " " + error?.description + " at " +
+                        DebugLog.url(request.url?.toString()))
                     // If this was our own https attempt, the site may simply
                     // not offer https. Say that, rather than reporting it as
                     // unreachable - which was both wrong and a dead end.
@@ -1592,8 +1607,30 @@ class MainActivity : AppCompatActivity() {
                 view: WebView?,
                 detail: android.webkit.RenderProcessGoneDetail?
             ): Boolean {
+                DebugLog.add("renderer gone for tab#" + tabOf(view)?.id +
+                    " crashed=" + (detail?.didCrash() ?: "?"))
                 if (view != null) replaceDeadWebView(view)
                 return true
+            }
+
+            override fun onReceivedHttpError(
+                view: WebView?,
+                request: android.webkit.WebResourceRequest?,
+                errorResponse: android.webkit.WebResourceResponse?
+            ) {
+                super.onReceivedHttpError(view, request, errorResponse)
+                if (request?.isForMainFrame == true) {
+                    DebugLog.add("tab#" + tabOf(view)?.id + " HTTP " +
+                        errorResponse?.statusCode + " at " + DebugLog.url(request.url?.toString()))
+                }
+            }
+
+            // Every history change, including the ones a single-page site makes
+            // with pushState and that never start a page load - so Back and
+            // Forward light up exactly when there is somewhere to go.
+            override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
+                super.doUpdateVisitedHistory(view, url, isReload)
+                if (view != null && view === activeWeb()) refreshNav()
             }
 
             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
@@ -1616,6 +1653,18 @@ class MainActivity : AppCompatActivity() {
                 // address - the one it would be rebuilt from if its WebView
                 // were frozen or lost.
                 url?.let { u -> tabOf(view)?.url = u }
+                tabOf(view)?.let { t ->
+                    t.loadsStarted++
+                    t.loadToken++
+                    if (t.openerId != null) {
+                        val site = UrlHelper.siteOf(url)
+                        if (site != null && t.openerSite != null && site != t.openerSite) {
+                            t.leftOpenerSite = true
+                        }
+                    }
+                    DebugLog.add("tab#" + t.id + " start " + DebugLog.url(url))
+                }
+                refreshNav()
             }
             override fun onPageFinished(view: WebView?, url: String?) {
                 // The upgrade worked, so nothing needs remembering about it.
@@ -1649,10 +1698,16 @@ class MainActivity : AppCompatActivity() {
                 tabOf(view)?.let { t ->
                     t.title = view?.title ?: t.title
                     t.url = url ?: t.url
+                    DebugLog.add("tab#" + t.id + " finish " + DebugLog.url(url))
+                    if (t.openerId != null) watchReturnedPopup(t, url)
                 }
                 // Record the visited page in history (never in Night Owl mode).
                 if (url != null && !nightOwl) {
-                    History.add(this@MainActivity, view?.title ?: "", url)
+                    // Off the main thread: it reads, edits and rewrites the
+                    // whole 200-entry list as JSON, on every page load.
+                    val title = view?.title ?: ""
+                    val ctx = applicationContext
+                    historyIo.execute { History.add(ctx, title, url) }
                 } else if (url != null && nightOwl) {
                     // Noted so leaving can clear these hosts and only these.
                     // Held in memory only: a list of privately visited sites
@@ -1820,7 +1875,10 @@ class MainActivity : AppCompatActivity() {
                 // sign-in pop-up is one. A site opening windows by itself does
                 // not, and is refused, so ad pop-ups stay blocked.
                 if (!isUserGesture && Settings.getBool(
-                        this@MainActivity, Settings.SEC_BLOCK_POPUPS, true)) return false
+                        this@MainActivity, Settings.SEC_BLOCK_POPUPS, true)) {
+                    DebugLog.add("pop-up refused: no user gesture, from tab#" + tabOf(view)?.id)
+                    return false
+                }
                 // Validate the transport BEFORE creating any tab, so a malformed
                 // window.open() can't leave an orphan about:blank tab in the list.
                 val transport = resultMsg.obj as? WebView.WebViewTransport ?: return false
@@ -1829,7 +1887,11 @@ class MainActivity : AppCompatActivity() {
                 val opener = tabOf(view) ?: tabs.activeTab
                 val popupTab = tabs.createTab("about:blank")
                 popupTab.openerId = opener?.id
+                popupTab.openerSite = UrlHelper.siteOf(opener?.url)
+                popupTab.openerLoadsAtOpen = opener?.loadsStarted ?: 0
                 popupTab.title = "Opening\u2026"
+                DebugLog.add("pop-up tab#" + popupTab.id + " opened by tab#" + opener?.id +
+                    " on " + popupTab.openerSite + " (dialog=" + isDialog + ")")
                 val popupWeb = newWebView()
                 popupTab.webView = popupWeb
                 transport.webView = popupWeb
@@ -1845,11 +1907,52 @@ class MainActivity : AppCompatActivity() {
                 // this very WebView, and Chromium is still part-way through
                 // closing it when it calls here.
                 val closing = window ?: return
+                DebugLog.add("window.close() from tab#" + tabOf(closing)?.id)
                 uiHandler.post {
-                    tabs.tabs.firstOrNull { it.webView === closing }
-                        ?.let { closeTabFromDeck(it) }
+                    val tab = tabs.tabs.firstOrNull { it.webView === closing } ?: return@post
+                    // A sign-in pop-up that came back to the site and closed
+                    // itself, as it should. The page behind it is then
+                    // watched in case it never shows the result.
+                    val opener = tabs.tabs.firstOrNull { it.id == tab.openerId && it !== tab }
+                    val returned = tab.leftOpenerSite && tab.openerSite != null &&
+                        UrlHelper.siteOf(tab.url) == tab.openerSite
+                    closeTabFromDeck(tab)
+                    if (returned && opener != null) watchOpenerAfterSignIn(opener)
                 }
             }
+            /**
+             * The page's console, read for one message in particular.
+             *
+             * "Scripts may close only the windows that were opened by them" is
+             * what Chromium logs when a page calls window.close() and is
+             * refused. In a pop-up that is a sign-in callback trying to hand
+             * back to the site and finding it is not allowed to - after
+             * which it sits on its blank page for good. The page asked to be
+             * closed, so it is closed, and the site behind it picks up the
+             * sign-in. In debug builds warnings and errors are also kept for
+             * the debug log.
+             */
+            override fun onConsoleMessage(message: android.webkit.ConsoleMessage?): Boolean {
+                val m = message ?: return false
+                val text = m.message() ?: ""
+                val level = m.messageLevel()
+                if (DebugLog.enabled && (level == android.webkit.ConsoleMessage.MessageLevel.ERROR ||
+                        level == android.webkit.ConsoleMessage.MessageLevel.WARNING)
+                ) {
+                    DebugLog.add("tab#" + tabOf(web)?.id + " console " + level + ": " +
+                        text.take(300) + " (" + DebugLog.url(m.sourceId()) + ":" + m.lineNumber() + ")")
+                }
+                if (text.startsWith("Scripts may close only the windows that were opened by")) {
+                    uiHandler.post {
+                        val tab = tabOf(web)
+                        if (tab != null && tab.openerId != null) {
+                            foldBackPopup(tab, "window.close() was refused")
+                        }
+                    }
+                }
+                return false
+            }
+
             // File uploads: <input type="file"> on web pages.
             override fun onShowFileChooser(
                 webView: WebView?,
@@ -1896,6 +1999,23 @@ class MainActivity : AppCompatActivity() {
         }
 
         setupLongPress(web)
+
+        // A page that stops answering - a script stuck in a loop, a site too
+        // heavy for the phone - is offered the way out Chrome offers: wait, or
+        // end it. Android 10 and up; earlier versions have no such signal.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            web.setWebViewRenderProcessClient(object : android.webkit.WebViewRenderProcessClient() {
+                override fun onRenderProcessUnresponsive(
+                    view: WebView,
+                    renderer: android.webkit.WebViewRenderProcess?
+                ) = onPageUnresponsive(view, renderer)
+
+                override fun onRenderProcessResponsive(
+                    view: WebView,
+                    renderer: android.webkit.WebViewRenderProcess?
+                ) = onPageResponsive(view)
+            })
+        }
 
         web.setOnScrollChangeListener { v, _, scrollY, _, _ ->
             lastWebScroll = android.os.SystemClock.uptimeMillis()
@@ -2557,6 +2677,224 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * A pop-up that has been to another site and come back to its opener's is
+     * a sign-in that has returned: the provider is done, and the page now
+     * showing is the site's own callback. A working one hands the result to
+     * its opener and closes within a second. One that is still there a few
+     * seconds later, with nothing on it to use, has stalled - the opener
+     * could not be reached, or the close was refused - and that is the blank
+     * page the user was left on, signed in but stuck. It is folded back into
+     * the tab that opened it, as foldBackPopup describes.
+     *
+     * Only while the pop-up is the tab on screen, and only if the page really
+     * is empty: a site that carries on in the pop-up with a form or a page of
+     * its own is left alone.
+     */
+    private fun watchReturnedPopup(popup: Tab, url: String?) {
+        if (!popup.leftOpenerSite) return
+        val site = UrlHelper.siteOf(url) ?: return
+        if (site != popup.openerSite) return
+        val token = popup.loadToken
+        val web = popup.webView ?: return
+        DebugLog.add("pop-up tab#" + popup.id + " is back on " + site + "; watching for a stall")
+        uiHandler.postDelayed({
+            if (isFinishing || isDestroyed) return@postDelayed
+            if (popup.loadToken != token || popup.webView !== web) return@postDelayed
+            if (popup !== tabs.activeTab || !tabs.tabs.contains(popup)) return@postDelayed
+            web.evaluateJavascript(PAGE_EMPTINESS_JS) { result ->
+                val empty = isEmptyPage(result)
+                DebugLog.add("pop-up tab#" + popup.id + " after " + POPUP_STALL_MS +
+                    "ms: " + result + (if (empty) " - stalled" else " - has content, left alone"))
+                if (empty && popup.loadToken == token && popup.webView === web &&
+                    tabs.tabs.contains(popup)
+                ) foldBackPopup(popup, "stalled on its callback page")
+            }
+        }, POPUP_STALL_MS)
+    }
+
+    /**
+     * How much of a page there is to use: visible text, and visible controls
+     * someone could press or type into. Read in one pass, as a JSON object.
+     */
+    private val PAGE_EMPTINESS_JS = """
+        (function(){
+          var b = document.body;
+          if (!b) return {text: 0, controls: 0};
+          var controls = 0;
+          var els = document.querySelectorAll('input:not([type=hidden]),button,select,textarea,a[href],[role=button]');
+          for (var i = 0; i < els.length && controls < 3; i++) {
+            var r = els[i].getBoundingClientRect();
+            if (r.width > 0 && r.height > 0) controls++;
+          }
+          return {text: (b.innerText || '').trim().length, controls: controls};
+        })()
+    """.trimIndent()
+
+    /** Nothing to press and next to nothing to read: "Signing you in..." at most. */
+    private fun isEmptyPage(json: String?): Boolean = try {
+        val o = JSONObject(json ?: "")
+        o.optInt("controls", 1) == 0 && o.optInt("text", 999) < 80
+    } catch (e: Exception) { false }
+
+    /**
+     * Closes a sign-in pop-up and puts the user back on the page that opened
+     * it - and, when the sign-in came back without that page ever hearing of
+     * it, reloads that page.
+     *
+     * The session a sign-in leaves behind is a cookie or local storage on the
+     * site, so a fresh load of the site is signed in. That is the "close it
+     * and open the site again" users were having to do by hand. The reload is
+     * skipped when the opener has already started a load of its own since the
+     * pop-up opened, because then it did hear, and is on its way.
+     */
+    private fun foldBackPopup(popup: Tab, why: String) {
+        if (!tabs.tabs.contains(popup)) return
+        val opener = tabs.tabs.firstOrNull { it.id == popup.openerId && it !== popup }
+        val returned = popup.leftOpenerSite && popup.openerSite != null &&
+            UrlHelper.siteOf(popup.url) == popup.openerSite
+        val openerMovedOn = opener != null && opener.loadsStarted != popup.openerLoadsAtOpen
+        DebugLog.add("folding pop-up tab#" + popup.id + " back into tab#" + opener?.id +
+            " (" + why + "); returned=" + returned + " openerMovedOn=" + openerMovedOn)
+        val openerWasLive = opener?.webView != null
+        closeTabFromDeck(popup)
+        if (opener == null || !returned) return
+        if (openerMovedOn) {
+            // It heard, and started loading. Make sure it got somewhere.
+            watchOpenerAfterSignIn(opener)
+            return
+        }
+        // A frozen opener needs nothing more: it loads afresh whenever it is
+        // next opened, which closeTabFromDeck has just done if the pop-up was
+        // the tab on screen.
+        if (!openerWasLive) return
+        val web = opener.webView ?: return
+        loadInto(web, web.url ?: opener.url)
+    }
+
+    /**
+     * After a sign-in pop-up has returned, the page that opened it should show
+     * the result - by loading a new page, or by redrawing itself. One that
+     * has done neither a few seconds later, and is showing nothing at all, is
+     * stuck on the way, and a fresh load of it is signed in. A page that
+     * moved on, or that has anything on it, is left exactly as it is.
+     */
+    private fun watchOpenerAfterSignIn(opener: Tab) {
+        val web = opener.webView ?: return
+        val token = opener.loadToken
+        DebugLog.add("watching tab#" + opener.id + " after its sign-in pop-up returned")
+        uiHandler.postDelayed({
+            if (isFinishing || isDestroyed) return@postDelayed
+            if (opener.webView !== web || !tabs.tabs.contains(opener)) return@postDelayed
+            web.evaluateJavascript(PAGE_EMPTINESS_JS) { result ->
+                val empty = isEmptyPage(result)
+                DebugLog.add("tab#" + opener.id + " after sign-in: " + result +
+                    (if (empty) " - blank, reloading" else " - fine"))
+                if (empty && opener.webView === web && tabs.tabs.contains(opener) &&
+                    (opener.loadToken == token || web.progress >= 100)
+                ) loadInto(web, web.url ?: opener.url)
+            }
+        }, OPENER_STALL_MS)
+    }
+
+    // ---------- A page that stops answering ----------
+
+    private var unresponsiveDialog: android.app.AlertDialog? = null
+    // Set when the user chose to wait, so the prompt is not put straight back
+    // up by the next unresponsive report for the same hang.
+    private var waitingOnHang = false
+
+    @android.annotation.TargetApi(Build.VERSION_CODES.Q)
+    private fun onPageUnresponsive(view: WebView, renderer: android.webkit.WebViewRenderProcess?) {
+        DebugLog.add("page not responding in tab#" + tabOf(view)?.id)
+        if (view !== activeWeb() || waitingOnHang || unresponsiveDialog != null) return
+        if (isFinishing || isDestroyed) return
+        unresponsiveDialog = android.app.AlertDialog.Builder(this)
+            .setTitle("This page isn't responding")
+            .setMessage("You can wait for it, or close it and reload. Reloading restarts every open page.")
+            .setNegativeButton("Wait") { _, _ -> waitingOnHang = true }
+            .setPositiveButton("Reload") { _, _ ->
+                DebugLog.add("user ended the unresponsive page")
+                // Ending the renderer comes back through onRenderProcessGone,
+                // which rebuilds the tabs. If there is no renderer to end,
+                // a plain reload is the next best thing.
+                val ended = try { renderer?.terminate() == true } catch (e: Exception) { false }
+                if (!ended && isLiveWeb(view)) view.reload()
+            }
+            .setOnDismissListener { unresponsiveDialog = null }
+            .show()
+    }
+
+    private fun onPageResponsive(view: WebView) {
+        waitingOnHang = false
+        if (view === activeWeb()) {
+            unresponsiveDialog?.dismiss()
+            unresponsiveDialog = null
+        }
+    }
+
+    // ---------- Memory ----------
+
+    /**
+     * How many tabs keep a live page, by how much memory the phone has. Every
+     * live tab's page sits in the same renderer process, and when Android
+     * needs memory back it kills that process - every page at once - so a
+     * small phone keeps fewer, and a big one keeps enough that switching tabs
+     * does not mean waiting for a reload.
+     */
+    private fun liveTabBudget(): Int {
+        val am = getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager
+        if (am.isLowRamDevice) return 2
+        val info = android.app.ActivityManager.MemoryInfo()
+        am.getMemoryInfo(info)
+        val gb = info.totalMem / (1024.0 * 1024.0 * 1024.0)
+        return when {
+            gb < 3.0 -> 2
+            gb < 5.0 -> 3
+            gb < 7.0 -> 4
+            else -> 5
+        }
+    }
+
+    /**
+     * When Android says memory is running short, background tabs are frozen
+     * before it decides to take the renderer - and with it every tab - by
+     * force. Not on simply leaving the app (TRIM_MEMORY_UI_HIDDEN): only when
+     * memory is low while running, or the app is on the list to be killed.
+     */
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        val low = level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW &&
+            level < android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN
+        val background = level >= android.content.ComponentCallbacks2.TRIM_MEMORY_BACKGROUND
+        if (!low && !background) return
+        DebugLog.add("memory trim level " + level + ": freezing background tabs")
+        tabs.trimLive(1)
+    }
+
+    // ---------- Debug log ----------
+
+    private fun shareDebugLog() {
+        val webView = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            WebView.getCurrentWebViewPackage()?.let { it.packageName + " " + it.versionName }
+        } else null
+        val header = "Search " + BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")" +
+            ", Android " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")" +
+            ", " + Build.MANUFACTURER + " " + Build.MODEL +
+            ", WebView " + (webView ?: "unknown") +
+            ", live tabs " + tabs.maxLiveTabs
+        val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(android.content.Intent.EXTRA_SUBJECT, "Search debug log")
+            putExtra(android.content.Intent.EXTRA_TEXT, header + "\n\n" + DebugLog.text())
+        }
+        try {
+            startActivity(android.content.Intent.createChooser(send, "Share debug log"))
+        } catch (e: Exception) {
+            toast("Nothing on this phone can share text")
+        }
+    }
+
     private fun openTab(tab: Tab, loadUrl: String? = null) {
         // The tab being left keeps a picture of itself for the deck, taken
         // while it is still on screen. PixelCopy reads what the display already
@@ -2804,6 +3142,7 @@ class MainActivity : AppCompatActivity() {
         }
         binding.urlBarContainer.visibility =
             if (isHome && !homeCompact) View.INVISIBLE else View.VISIBLE
+        refreshNav()
         refreshAdSlot()
         // Desktop mode is meaningless on the home page — reset it when we land
         // home so the next site opens as a normal mobile page.
@@ -3004,6 +3343,7 @@ class MainActivity : AppCompatActivity() {
             // Subtle purple wash matched to the theme.
             val tint = if (isDark) "#231A3A" else "#ECE7F5"
             topBar.setBackgroundColor(android.graphics.Color.parseColor(tint))
+            binding.bottomBar.setBackgroundColor(android.graphics.Color.parseColor(tint))
             binding.rootView.setBackgroundColor(android.graphics.Color.parseColor(tint))
             // Icons: light icons on dark tint, dark icons on light tint.
             controller.isAppearanceLightStatusBars = !isDark
@@ -3012,6 +3352,7 @@ class MainActivity : AppCompatActivity() {
             val tv = android.util.TypedValue()
             theme.resolveAttribute(android.R.attr.colorBackground, tv, true)
             binding.rootView.setBackgroundColor(tv.data)
+            binding.bottomBar.setBackgroundColor(tv.data)
             controller.isAppearanceLightStatusBars = !isDark
         }
     }
@@ -3040,8 +3381,9 @@ class MainActivity : AppCompatActivity() {
         binding.menuScrim.animate().alpha(1f).setDuration(150).start()
         val panel = binding.menuPanel
         panel.post {
+            // From the bottom right corner, where the Menu button is.
             panel.pivotX = panel.width.toFloat()
-            panel.pivotY = 0f
+            panel.pivotY = panel.height.toFloat()
             panel.scaleX = 0.85f
             panel.scaleY = 0.85f
             panel.alpha = 0f
@@ -3056,7 +3398,7 @@ class MainActivity : AppCompatActivity() {
     private fun closeMenu() {
         val panel = binding.menuPanel
         panel.pivotX = panel.width.toFloat()
-        panel.pivotY = 0f
+        panel.pivotY = panel.height.toFloat()
         panel.animate()
             .scaleX(0.9f).scaleY(0.9f).alpha(0f)
             .setInterpolator(android.view.animation.AccelerateInterpolator())
@@ -4432,11 +4774,102 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * The bottom bar - Back, Forward, Home, Tabs, Menu - and the gear at the
+     * top. Icons only, so each says what it is in a long-press tooltip and to
+     * screen readers through its content description.
+     */
+    private fun setupBars() {
+        binding.navBack.setOnClickListener { navBack() }
+        binding.navForward.setOnClickListener {
+            activeWeb()?.takeIf { it.canGoForward() }?.goForward()
+        }
+        binding.navHome.setOnClickListener { navHome() }
+        binding.navTabs.setOnClickListener {
+            if (searchMode) exitSearchMode()
+            openDeck()
+        }
+        // Long-pressing the tab count opens a new tab, as it does in Chrome.
+        binding.navTabs.setOnLongClickListener {
+            if (searchMode) exitSearchMode()
+            addNewTab(homePage)
+            true
+        }
+        binding.navMenu.setOnClickListener {
+            if (binding.menuScrim.visibility == View.VISIBLE) closeMenu() else openMenu()
+        }
+        binding.settingsBtn.setOnClickListener {
+            startActivity(android.content.Intent(this, SettingsActivity::class.java))
+        }
+        listOf(binding.navBack, binding.navForward, binding.navHome,
+            binding.navMenu, binding.settingsBtn).forEach { b ->
+            androidx.core.view.ViewCompat.setTooltipText(b, b.contentDescription)
+        }
+        androidx.core.view.ViewCompat.setTooltipText(binding.navTabs, "Tabs")
+        refreshNav()
+    }
+
+    /** The bar's Back: the same steps as the system Back, for the page. */
+    private fun navBack() {
+        if (searchMode) { exitSearchMode(); return }
+        val web = activeWeb()
+        when {
+            web?.canGoBack() == true -> web.goBack()
+            tabs.activeTab?.openerId != null ->
+                tabs.activeTab?.let { foldBackPopup(it, "closed with Back") }
+        }
+    }
+
+    /** Home, or back to the top of it when already there. */
+    private fun navHome() {
+        if (searchMode) exitSearchMode()
+        val url = tabs.activeTab?.url
+        if (url == null || url == homePage) {
+            activeWeb()?.evaluateJavascript(
+                "window.scrollTo({top: 0, behavior: 'smooth'})", null)
+        } else {
+            // Through loadInto, which grants the home page's bridge its
+            // privilege; a bare loadUrl would leave the news feed blank.
+            loadInto(activeWeb(), homePage)
+        }
+    }
+
+    private fun navIconColor(): Int =
+        androidx.core.content.ContextCompat.getColor(this, R.color.navIcon)
+
+    /**
+     * Puts the bars in step with the tab on screen: Back and Forward dimmed
+     * when there is nowhere to go, and Home filled in the accent while home is
+     * showing. Called on every load, history change and tab switch.
+     */
+    private fun refreshNav() {
+        if (!::binding.isInitialized) return
+        val web = activeWeb()
+        val tab = tabs.activeTab
+        val neutral = android.content.res.ColorStateList.valueOf(navIconColor())
+        setNavEnabled(binding.navBack, web?.canGoBack() == true || tab?.openerId != null)
+        setNavEnabled(binding.navForward, web?.canGoForward() == true)
+        val onHome = tab == null || tab.url == homePage
+        binding.navHome.setImageResource(
+            if (onHome) R.drawable.nav_home_active else R.drawable.nav_home)
+        binding.navHome.imageTintList = if (onHome)
+            android.content.res.ColorStateList.valueOf(currentAccent()) else neutral
+        binding.navBack.imageTintList = neutral
+        binding.navForward.imageTintList = neutral
+        binding.navTabsIcon.imageTintList = neutral
+        binding.navTabsCount.setTextColor(navIconColor())
+        binding.navMenu.imageTintList = neutral
+        binding.settingsBtn.imageTintList = neutral
+    }
+
+    private fun setNavEnabled(v: View, enabled: Boolean) {
+        v.isEnabled = enabled
+        v.alpha = if (enabled) 1f else 0.32f
+    }
+
     private fun setupToolbar() {
 
-        // The owl is the menu now. Its old job - go home, or offer to close
-        // the tab when already there - moves to a long press.
-        binding.homeBtn.setOnClickListener { openMenu() }
+        setupBars()
         // Re-read rather than trusting what openMenu painted: a page can
         // finish loading, or a tab be restored, between the menu opening and
         // this row being pressed, and a row that says one thing while doing
@@ -4451,7 +4884,6 @@ class MainActivity : AppCompatActivity() {
             // would leave it unprivileged and the news feed blank.
             if (onHome) showOwlCloseDialog() else loadInto(activeWeb(), homePage)
         }
-        binding.menuTabs.setOnClickListener { closeMenuNow(); openDeck() }
         binding.menuReload.setOnClickListener { closeMenuNow(); activeWeb()?.reload() }
         applyAccentTints()
 
@@ -4489,9 +4921,9 @@ class MainActivity : AppCompatActivity() {
         binding.menuBookmarks.setOnClickListener {
             closeMenuNow(); openDeck(); showBookmarks()
         }
-        binding.menuSettings.setOnClickListener {
-            closeMenuNow()
-            startActivity(android.content.Intent(this, SettingsActivity::class.java))
+        if (DebugLog.enabled) {
+            binding.menuDebugLog.visibility = View.VISIBLE
+            binding.menuDebugLog.setOnClickListener { closeMenuNow(); shareDebugLog() }
         }
         binding.menuDownloads.setOnClickListener {
             closeMenuNow()
@@ -4784,11 +5216,18 @@ class MainActivity : AppCompatActivity() {
     /** The count now lives in the menu row that opens the deck. */
     private fun updateTabCount() {
         val n = tabs.count()
-        binding.menuTabsLabel.text = if (n > 1) "Tabs (" + n + ")" else "Tabs"
-        // And on the owl. Hidden at one tab: a badge reading "1" is decoration,
-        // and the owl is the wordmark as much as it is a button.
-        binding.tabBadge.text = if (n > 99) "99+" else n.toString()
-        binding.tabBadge.visibility = if (n > 1) View.VISIBLE else View.GONE
+        // Inside the Tabs button's frame, as Chrome shows it. Three digits do
+        // not fit the frame at a readable size, so past 99 it says so.
+        binding.navTabsCount.text = if (n > 99) ":D" else n.toString()
+        // Measured against the frame's 14dp hollow: one digit at 11sp, two in
+        // the condensed face at 10sp so "88" keeps clear of the sides.
+        val twoDigits = n in 10..99
+        binding.navTabsCount.typeface = android.graphics.Typeface.create(
+            if (twoDigits) "sans-serif-condensed" else "sans-serif",
+            android.graphics.Typeface.BOLD)
+        binding.navTabsCount.setTextSize(
+            android.util.TypedValue.COMPLEX_UNIT_SP, if (twoDigits) 10f else 11f)
+        binding.navTabs.contentDescription = if (n == 1) "1 tab" else "$n tabs"
     }
 
     // Everything that carries the accent on the home page carries it here too:
@@ -4810,10 +5249,8 @@ class MainActivity : AppCompatActivity() {
         val tint = android.content.res.ColorStateList.valueOf(accent)
         binding.micBtn.imageTintList = tint
         binding.scanBtn.imageTintList = tint
-        // The badge is a background rather than an image, so it takes the
-        // accent through backgroundTintList. The ring drawn under it stays the
-        // window colour, which is what keeps it legible on the owl.
-        binding.tabBadge.backgroundTintList = tint
+        // Selected Home wears the accent, so the bars follow it too.
+        refreshNav()
         applyArtAccent(accent)
         pushAccentToPage(activeWeb())
     }

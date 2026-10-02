@@ -118,4 +118,36 @@ object UrlHelper {
     }
 
     private fun search(query: String, prefix: String): String = prefix + Uri.encode(query)
+
+    /**
+     * Second-level labels that sit under a country code as a registry of their
+     * own: the "co" in example.co.uk. A full public-suffix list is a large,
+     * ever-changing download; this covers how sign-in sites are actually
+     * named, which is all [siteOf] is used for.
+     */
+    private val REGISTRY_LABELS = setOf(
+        "co", "com", "net", "org", "gov", "edu", "ac", "gob", "gouv", "nic",
+        "ne", "or", "go", "mil", "sch", "ltd", "plc"
+    )
+
+    /**
+     * The site an address belongs to - its registrable domain, roughly:
+     * "app.meshy.ai" and "www.meshy.ai" are both "meshy.ai", and
+     * "accounts.google.co.uk" is "google.co.uk". Null for anything that is not
+     * an http(s) page, and for bare IP addresses, which are their own site.
+     */
+    fun siteOf(url: String?): String? {
+        if (url == null) return null
+        val uri = try { Uri.parse(url) } catch (e: Exception) { return null }
+        val scheme = uri.scheme?.lowercase()
+        if (scheme != "http" && scheme != "https") return null
+        val host = uri.host?.lowercase()?.removeSuffix(".") ?: return null
+        if (host.isEmpty()) return null
+        if (looksLikeIp(host) || !host.contains('.')) return host
+        val labels = host.split('.')
+        val keep = if (labels.size >= 3 && labels.last().length == 2 &&
+            labels[labels.size - 2] in REGISTRY_LABELS
+        ) 3 else 2
+        return labels.takeLast(keep).joinToString(".")
+    }
 }

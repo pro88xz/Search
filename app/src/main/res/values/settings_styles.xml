@@ -81,6 +81,16 @@
         <item name="android:clickable">true</item>
         <item name="android:focusable">true</item>
     </style>
+    <!-- One slot of the bottom bar: an equal fifth of the width, the full
+         height as the touch target, the 24dp glyph drawn at its own size. -->
+    <style name="NavButton">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">match_parent</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:background">@drawable/nav_ripple</item>
+        <item name="android:scaleType">center</item>
+        <item name="android:padding">0dp</item>
+    </style>
     <style name="OwlDialogAnim">
         <item name="android:windowEnterAnimation">@anim/owl_pop_in</item>
         <item name="android:windowExitAnimation">@anim/owl_pop_out</item>

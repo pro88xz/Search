@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A round press ripple the size of a 48dp touch target, centred on the glyph.
+     No mask, so it is not cut to the slot's tall rectangle. -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="?android:attr/colorControlHighlight"
+    android:radius="24dp" />

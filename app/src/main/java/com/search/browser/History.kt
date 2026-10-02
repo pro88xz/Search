@@ -9,6 +9,9 @@ import org.json.JSONObject
  * Keeps the most recent [MAX] entries, newest first, de-duplicated by URL.
  */
 object History {
+    // Synchronized throughout: pages are added from a background thread
+    // (MainActivity.historyIo) while the history list reads and deletes on the
+    // main thread, and each change is a read-modify-write of the whole list.
 
     private const val PREFS = "search_history"
     private const val KEY = "entries"
@@ -16,6 +19,7 @@ object History {
 
     data class Entry(val title: String, val url: String, val time: Long)
 
+    @Synchronized
     fun add(context: Context, title: String, url: String) {
         // Skip blanks and every page shipped inside the app. Only home.html was
         // skipped before, so a failed load wrote the error page into history -
@@ -33,6 +37,7 @@ object History {
         save(context, list)
     }
 
+    @Synchronized
     fun load(context: Context): List<Entry> {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val raw = prefs.getString(KEY, "[]") ?: "[]"
@@ -47,12 +52,14 @@ object History {
         }
     }
 
+    @Synchronized
     fun delete(context: Context, url: String) {
         val list = load(context).toMutableList()
         list.removeAll { it.url == url }
         save(context, list)
     }
 
+    @Synchronized
     fun clear(context: Context) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().remove(KEY).apply()

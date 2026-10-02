@@ -28,35 +28,16 @@
                 android:layout_height="wrap_content"
                 android:clipChildren="false">
 
-                <ImageButton
+                <!-- The owl is the brand mark. The menu it used to open is on
+                     the bottom bar now, and the tab count with it. -->
+                <ImageView
                     android:id="@+id/homeBtn"
                     android:layout_width="48dp"
                     android:layout_height="48dp"
-                    android:background="?attr/selectableItemBackgroundBorderless"
                     android:src="@drawable/ic_owl"
                     android:scaleType="fitCenter"
                     android:padding="1dp"
-                    android:contentDescription="Home" />
-
-                <!-- Bottom right of the owl's body, not out on an ear. The ink
-                     fills the button vertically and to within ~4dp of its
-                     sides, so this inset lands on the body itself. -->
-                <TextView
-                    android:id="@+id/tabBadge"
-                    android:layout_width="18dp"
-                    android:layout_height="18dp"
-                    android:layout_gravity="bottom|end"
-                    android:layout_marginEnd="0dp"
-                    android:layout_marginBottom="-2dp"
-                    android:gravity="center"
-                    android:includeFontPadding="false"
-                    android:text="2"
-                    android:textSize="10sp"
-                    android:textStyle="bold"
-                    android:textColor="#FFFFFF"
-                    android:background="@drawable/tab_badge_bg"
-                    android:visibility="gone"
-                    android:contentDescription="Open tabs" />
+                    android:importantForAccessibility="no" />
             </FrameLayout>
 
             <TextView
@@ -160,6 +141,15 @@
                 </LinearLayout>
             </FrameLayout>
 
+            <ImageButton
+                android:id="@+id/settingsBtn"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="@drawable/nav_ripple"
+                android:src="@drawable/nav_settings"
+                android:scaleType="center"
+                android:contentDescription="Settings" />
+
         </LinearLayout>
 
         <ProgressBar
@@ -172,23 +162,106 @@
             android:visibility="gone" />
 
         <FrameLayout
-            android:id="@+id/webContainer"
+            android:id="@+id/webArea"
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_weight="1" />
-    </LinearLayout>
+            android:layout_weight="1">
 
-    <!-- ===== Native feed ad. 14dp gutters match .wrap in home.html, so the
-         card lines up with the feed cards above it. Hidden until one loads. -->
-    <com.search.browser.AdSlotLayout
-        android:id="@+id/adSlot"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom"
-        android:layout_marginStart="14dp"
-        android:layout_marginEnd="14dp"
-        android:layout_marginBottom="40dp"
-        android:visibility="gone" />
+            <FrameLayout
+                android:id="@+id/webContainer"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+
+            <!-- ===== Native feed ad. 14dp gutters match .wrap in home.html,
+                 so the card lines up with the feed cards above it. Hidden
+                 until one loads. Inside the page's own frame, so it is
+                 positioned against the bottom of the page and clipped there,
+                 and can never ride over the bottom bar. -->
+            <com.search.browser.AdSlotLayout
+                android:id="@+id/adSlot"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="bottom"
+                android:layout_marginStart="14dp"
+                android:layout_marginEnd="14dp"
+                android:layout_marginBottom="40dp"
+                android:visibility="gone" />
+        </FrameLayout>
+
+        <!-- ===== BOTTOM navigation bar. Icons only: each carries its name
+             as a content description and a long-press tooltip instead. ===== -->
+        <View
+            android:id="@+id/bottomBarLine"
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@color/cardLine" />
+
+        <LinearLayout
+            android:id="@+id/bottomBar"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="?android:attr/colorBackground">
+
+            <ImageButton
+                android:id="@+id/navBack"
+                style="@style/NavButton"
+                android:src="@drawable/nav_back"
+                android:contentDescription="Back" />
+
+            <ImageButton
+                android:id="@+id/navForward"
+                style="@style/NavButton"
+                android:src="@drawable/nav_forward"
+                android:contentDescription="Forward" />
+
+            <ImageButton
+                android:id="@+id/navHome"
+                style="@style/NavButton"
+                android:src="@drawable/nav_home"
+                android:contentDescription="Home" />
+
+            <FrameLayout
+                android:id="@+id/navTabs"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:background="@drawable/nav_ripple"
+                android:clickable="true"
+                android:focusable="true"
+                android:contentDescription="Tabs">
+
+                <ImageView
+                    android:id="@+id/navTabsIcon"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:layout_gravity="center"
+                    android:src="@drawable/nav_tabs"
+                    android:importantForAccessibility="no" />
+
+                <TextView
+                    android:id="@+id/navTabsCount"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:layout_gravity="center"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:text="1"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/navIcon"
+                    android:importantForAccessibility="no" />
+            </FrameLayout>
+
+            <ImageButton
+                android:id="@+id/navMenu"
+                style="@style/NavButton"
+                android:src="@drawable/nav_menu"
+                android:contentDescription="Menu" />
+        </LinearLayout>
+    </LinearLayout>
 
     <!-- ===== Tab deck overlay (hidden by default) ===== -->
     <LinearLayout
@@ -379,8 +452,8 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:minWidth="220dp"
-            android:layout_gravity="top|end"
-            android:layout_marginTop="60dp"
+            android:layout_gravity="bottom|end"
+            android:layout_marginBottom="65dp"
             android:layout_marginEnd="8dp"
             android:orientation="vertical"
             android:background="@drawable/menu_bg"
@@ -403,14 +476,6 @@
                     android:src="@drawable/menu_home" android:layout_marginEnd="18dp" />
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
                     android:text="Take me home" android:textSize="16sp"
-                    android:textColor="?android:attr/textColorPrimary" />
-            </LinearLayout>
-            <LinearLayout android:id="@+id/menuTabs" style="@style/MenuRow">
-                <ImageView android:layout_width="22dp" android:layout_height="22dp"
-                    android:src="@drawable/menu_tabs" android:layout_marginEnd="18dp" />
-                <TextView android:id="@+id/menuTabsLabel"
-                    android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:text="Tabs" android:textSize="16sp"
                     android:textColor="?android:attr/textColorPrimary" />
             </LinearLayout>
             <LinearLayout android:id="@+id/menuNewTab" style="@style/MenuRow">
@@ -483,11 +548,13 @@
                     android:text="Play games" android:textSize="16sp"
                     android:textColor="?android:attr/textColorPrimary" />
             </LinearLayout>
-            <LinearLayout android:id="@+id/menuSettings" style="@style/MenuRow">
+            <!-- Debug builds only: shown from setupToolbar. -->
+            <LinearLayout android:id="@+id/menuDebugLog" style="@style/MenuRow"
+                android:visibility="gone">
                 <ImageView android:layout_width="22dp" android:layout_height="22dp"
-                    android:src="@drawable/menu_settings" android:layout_marginEnd="18dp" />
+                    android:src="@drawable/menu_find" android:layout_marginEnd="18dp" />
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:text="Settings" android:textSize="16sp"
+                    android:text="Share debug log" android:textSize="16sp"
                     android:textColor="?android:attr/textColorPrimary" />
             </LinearLayout>
         </LinearLayout>

@@ -28,5 +28,24 @@ class Tab(
      */
     var openerId: Long? = null
 
+    /**
+     * For a pop-up: the site its opener was on when it opened, whether the
+     * pop-up has since been to a different one (the sign-in provider), and how
+     * many loads the opener had started at the time - so it can be told later
+     * whether the opener moved on by itself.
+     */
+    var openerSite: String? = null
+    var leftOpenerSite = false
+    var openerLoadsAtOpen = 0
+
+    /** Main-frame loads started in this tab. */
+    var loadsStarted = 0
+
+    /**
+     * Bumped with every load, so a check scheduled against one page can tell
+     * that the tab has moved on before it runs.
+     */
+    var loadToken = 0
+
     val isLive: Boolean get() = webView != null
 }

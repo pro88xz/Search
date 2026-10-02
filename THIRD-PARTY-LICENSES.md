@@ -5,10 +5,16 @@ Work included in Search that other people wrote.
 ## Phosphor Icons
 
 `app/src/main/res/drawable/menu_reload.xml` is Phosphor's `arrow-clockwise`,
-`app/src/main/res/drawable/menu_tabs.xml` is Phosphor's `browsers`, and
 `app/src/main/res/drawable/menu_home.xml` is Phosphor's `house`, and
 `app/src/main/res/drawable/menu_close.xml` is Phosphor's `x` - all Bold
 weight, from `@phosphor-icons/core` 2.1.1.
+
+The bottom bar and the top bar's gear are Phosphor too, from the same
+package: `nav_back.xml` is `arrow-left`, `nav_forward.xml` is `arrow-right`,
+`nav_home.xml` is `house`, `nav_tabs.xml` is `square`, `nav_menu.xml` is
+`list` and `nav_settings.xml` is `gear-six`, all Bold weight, and
+`nav_home_active.xml` is `house` in the Fill weight. Path data is copied
+unchanged; each file names its source glyph.
 
 MIT License
 
