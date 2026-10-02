@@ -45,6 +45,7 @@ Internal working notes. Not user-facing. Keep updated as state changes.
 - **Debug log (debug builds only).** `DebugLog` records tab and pop-up events, page loads, main-frame errors, page console warnings/errors, renderer loss and hangs, with URL query values and fragments stripped. Menu → "Share debug log" sends it with the app, Android and WebView versions. It is the way to see what a site actually did on the owner's phone.
 - **Feed cache:** the 30-minute TTL is honoured across cold starts (the cache file's mtime is the timestamp), so a change to `SOURCES` can take up to 30 minutes to show on a device that already has a cached feed; a cache in the old four-field shape is refreshed at once when online. Clear app data to see a change immediately - that also resets each source's remembered feed URL and dead-URL marks (SharedPreferences "news_feed").
 - **Never rename a feed `Source.id`:** it keys the remembered URL for that source.
+- **Android compiles regexes with ICU, not the JVM's engine.** ICU reads `[:` and `:]` inside a character class as a `[:name:]` property and rejects the pattern, where the JVM accepts it - so a desktop test passes and the phone fails. A `Regex` in an `object` that fails to compile fails the whole object's initialisation. That is how one `[^.:]` in `NewsFeed` crashed the app on every launch. Escape colons inside `[]` (`\\:`). The feed thread in `getFeed` also catches everything, so a feed failure shows the empty state rather than ending the process.
 
 ## Config / references
 

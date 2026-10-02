@@ -1316,7 +1316,17 @@ class MainActivity : AppCompatActivity() {
         fun getFeed(requestId: Int) {
             if (!privileged) return
             Thread {
-                val json = NewsFeed.fetch(this@MainActivity)
+                // Nothing the feed does may take the app down. This thread has
+                // no handler above it, so an error escaping here - one bad
+                // pattern in NewsFeed failed its initialisation on Android -
+                // ended the process on every launch, as soon as home asked for
+                // stories. The page shows its empty state instead.
+                val json = try {
+                    NewsFeed.fetch(this@MainActivity)
+                } catch (t: Throwable) {
+                    DebugLog.add("feed  failed: " + t.javaClass.simpleName + ": " + t.message)
+                    "[]"
+                }
                 runOnUiThread { pushFeed(requestId, json) }
             }.start()
         }

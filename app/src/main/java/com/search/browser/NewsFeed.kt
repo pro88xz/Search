@@ -754,9 +754,15 @@ object NewsFeed {
      * Written to miss news that shares a word with them: "Best Buy closes
      * stores", "Live Nation sued", "Apple picks TSMC", "the best-selling Mac
      * since 2021", "Spotify's podcast business" all pass.
+     *
+     * Every colon inside [] is escaped. Android compiles these with ICU, which
+     * reads "[:" and ":]" as the edges of a [:name:] property and rejects the
+     * pattern - and a pattern that fails here fails NewsFeed's initialisation,
+     * which crashed the app on launch. The JVM accepts both forms, so a desktop
+     * test does not catch it.
      */
     private val JUNK_TITLE = Regex(
-        "^(watch|listen)\\b|^(video|live|podcast|newsletter|quiz)\\s*[:|\\-–—]" +
+        "^(watch|listen)\\b|^(video|live|podcast|newsletter|quiz)\\s*[\\:|\\-–—]" +
         "|\\b(live ?blog|live updates|as it happened|sponsored|giveaway|webinar|horoscope|quiz)\\b" +
         "|\\b(wordle|quordle|nyt connections|connections (hints|answers|today)|nyt strands|strands (hints|answers|today)" +
         "|spelling bee|crossword|hints? and answers?|today'?s answers?)\\b" +
@@ -766,7 +772,7 @@ object NewsFeed {
         "|\\b(save|drops? to|dropped to|falls? to|fell to|down to|slashed to|reduced to)\\b.{0,30}[$£€]\\s?\\d" +
         "|[$£€]\\s?\\d[\\d,.]*\\s?off\\b|\\bfor (just|only) [$£€]\\s?\\d" +
         "|\\b(how to watch|where to watch|live streams? (free|online)|free live stream)\\b" +
-        "|^(the )?best\\b(?!-| buy)|\\bbest\\b(?!-)[^.:]{0,60}\\b(of|in|for) 20\\d\\d\\b|\\b(buying guide|gift guide|gift ideas)\\b" +
+        "|^(the )?best\\b(?!-| buy)|\\bbest\\b(?!-)[^.\\:]{0,60}\\b(of|in|for) 20\\d\\d\\b|\\b(buying guide|gift guide|gift ideas)\\b" +
         "|\\b(best bets|betting (odds|lines|picks|tips)|parlays?|odds,? picks|(expert|staff) picks" +
         "|fantasy (football|baseball|basketball|hockey)|waiver wire)\\b" +
         "|\\b(round-?up|recap|this week in|week in review)\\b",
