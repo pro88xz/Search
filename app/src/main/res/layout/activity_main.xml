@@ -204,15 +204,22 @@
             android:clipChildren="false"
             android:clipToPadding="false">
 
+            <!-- The bar's surface, drawn: the top edge rises in an arc around
+                 the New tab button. Its straight edge is 30dp down, where the
+                 62dp row of buttons below starts. -->
+            <com.search.browser.NavSheetView
+                android:id="@+id/navSheet"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:importantForAccessibility="no" />
+
             <LinearLayout
                 android:id="@+id/bottomSheet"
                 android:layout_width="match_parent"
                 android:layout_height="62dp"
                 android:layout_gravity="bottom"
                 android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:background="@drawable/bottom_sheet_bg"
-                android:elevation="12dp">
+                android:gravity="center_vertical">
 
                 <FrameLayout
                     android:id="@+id/navHome"
@@ -245,7 +252,7 @@
                     android:src="@drawable/nav_bookmark"
                     android:contentDescription="Bookmarks" />
 
-                <!-- Room for the raised New tab button above it. -->
+                <!-- Room for the New tab button, which sits in the arc. -->
                 <Space
                     android:layout_width="0dp"
                     android:layout_height="match_parent"
@@ -293,25 +300,13 @@
                     android:contentDescription="Menu" />
             </LinearLayout>
 
-            <!-- A soft glow in the accent behind the New tab button. Drawn in
-                 code from the accent; no outline, so it casts no shadow. -->
-            <View
-                android:id="@+id/navNewTabGlow"
-                android:layout_width="84dp"
-                android:layout_height="84dp"
-                android:layout_gravity="top|center_horizontal"
-                android:layout_marginTop="-7dp"
-                android:elevation="12dp"
-                android:outlineProvider="none"
-                android:importantForAccessibility="no" />
-
             <FrameLayout
                 android:id="@+id/navNewTab"
                 android:layout_width="58dp"
                 android:layout_height="58dp"
                 android:layout_gravity="top|center_horizontal"
-                android:layout_marginTop="6dp"
-                android:elevation="16dp"
+                android:layout_marginTop="22dp"
+                android:elevation="6dp"
                 android:clickable="true"
                 android:focusable="true"
                 android:foreground="@drawable/nav_ripple"

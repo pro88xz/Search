@@ -3438,8 +3438,7 @@ class MainActivity : AppCompatActivity() {
             // Subtle purple wash matched to the theme.
             val tint = if (isDark) "#231A3A" else "#ECE7F5"
             topBar.setBackgroundColor(android.graphics.Color.parseColor(tint))
-            binding.bottomSheet.backgroundTintList = android.content.res.ColorStateList
-                .valueOf(android.graphics.Color.parseColor(tint))
+            binding.navSheet.surfaceColor = android.graphics.Color.parseColor(tint)
             binding.rootView.setBackgroundColor(android.graphics.Color.parseColor(tint))
             // Icons: light icons on dark tint, dark icons on light tint.
             controller.isAppearanceLightStatusBars = !isDark
@@ -3448,7 +3447,7 @@ class MainActivity : AppCompatActivity() {
             val tv = android.util.TypedValue()
             theme.resolveAttribute(android.R.attr.colorBackground, tv, true)
             binding.rootView.setBackgroundColor(tv.data)
-            binding.bottomSheet.backgroundTintList = null
+            binding.navSheet.surfaceColor = getColor(R.color.barSurface)
             controller.isAppearanceLightStatusBars = !isDark
         }
     }
@@ -4981,9 +4980,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * The raised New tab button: a circle running from a lighter to a deeper
-     * shade of the accent, with a soft glow of the accent around it and, on
-     * Android 9 and up, a shadow in the accent rather than grey.
+     * The New tab button: a circle running from a lighter to a deeper shade of
+     * the accent, sitting in the bar's arc, whose ring carries a trace of the
+     * same accent. On Android 9 and up its shadow is in the accent rather than
+     * grey.
      */
     private fun paintNewTabButton(accent: Int) {
         newTabAccent = accent
@@ -4997,15 +4997,7 @@ class MainActivity : AppCompatActivity() {
             android.graphics.drawable.GradientDrawable.Orientation.TL_BR, intArrayOf(light, deep)
         ).apply { shape = android.graphics.drawable.GradientDrawable.OVAL }
         binding.navNewTab.outlineProvider = android.view.ViewOutlineProvider.BACKGROUND
-        binding.navNewTabGlow.background = android.graphics.drawable.GradientDrawable().apply {
-            shape = android.graphics.drawable.GradientDrawable.OVAL
-            gradientType = android.graphics.drawable.GradientDrawable.RADIAL_GRADIENT
-            gradientRadius = 42f * resources.displayMetrics.density
-            colors = intArrayOf(
-                (accent and 0x00FFFFFF) or (0x40 shl 24),
-                (accent and 0x00FFFFFF) or (0x14 shl 24),
-                accent and 0x00FFFFFF)
-        }
+        binding.navSheet.accent = accent
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             binding.navNewTab.outlineSpotShadowColor = accent
             binding.navNewTab.outlineAmbientShadowColor = accent
