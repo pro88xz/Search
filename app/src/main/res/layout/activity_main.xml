@@ -216,11 +216,35 @@
                 android:src="@drawable/nav_forward"
                 android:contentDescription="Forward" />
 
-            <ImageButton
+            <!-- A frame rather than a button, so the selected state's pill can
+                 sit behind the icon while the press ripple stays on the slot. -->
+            <FrameLayout
                 android:id="@+id/navHome"
-                style="@style/NavButton"
-                android:src="@drawable/nav_home"
-                android:contentDescription="Home" />
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:background="@drawable/nav_ripple"
+                android:clickable="true"
+                android:focusable="true"
+                android:contentDescription="Home">
+
+                <View
+                    android:id="@+id/navHomePill"
+                    android:layout_width="52dp"
+                    android:layout_height="32dp"
+                    android:layout_gravity="center"
+                    android:background="@drawable/nav_pill"
+                    android:visibility="gone"
+                    android:importantForAccessibility="no" />
+
+                <ImageView
+                    android:id="@+id/navHomeIcon"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:layout_gravity="center"
+                    android:src="@drawable/nav_home"
+                    android:importantForAccessibility="no" />
+            </FrameLayout>
 
             <FrameLayout
                 android:id="@+id/navTabs"

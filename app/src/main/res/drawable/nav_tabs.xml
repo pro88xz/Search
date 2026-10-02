@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Phosphor Icons, package @phosphor-icons/core 2.1.1, MIT licence. Glyph "square", bold weight. Source file assets/bold/square-bold.svg, path data copied unchanged. Colour is applied by tint at runtime. -->
+<!-- Derived from Phosphor Icons "square", bold weight (@phosphor-icons/core 2.1.1, MIT licence, assets/bold/square-bold.svg). Same outer box, 24-unit wall and 152-unit hollow for the tab count, with the outer corner radius raised from 20 to 32 and the hollow given a concentric radius of 8, to match the app's rounded shapes. The hollow winds the opposite way to the outline, so it is cut out under the default nonzero fill. Colour is applied by tint at runtime. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
@@ -7,5 +7,5 @@
     android:viewportHeight="256">
     <path
         android:fillColor="#FF000000"
-        android:pathData="M208,28H48A20,20,0,0,0,28,48V208a20,20,0,0,0,20,20H208a20,20,0,0,0,20-20V48A20,20,0,0,0,208,28Zm-4,176H52V52H204Z" />
+        android:pathData="M60,28H196A32,32,0,0,1,228,60V196A32,32,0,0,1,196,228H60A32,32,0,0,1,28,196V60A32,32,0,0,1,60,28ZM60,52A8,8,0,0,0,52,60V196A8,8,0,0,0,60,204H196A8,8,0,0,0,204,196V60A8,8,0,0,0,196,52Z" />
 </vector>

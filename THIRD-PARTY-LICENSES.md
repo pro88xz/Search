@@ -11,10 +11,11 @@ weight, from `@phosphor-icons/core` 2.1.1.
 
 The bottom bar and the top bar's gear are Phosphor too, from the same
 package: `nav_back.xml` is `arrow-left`, `nav_forward.xml` is `arrow-right`,
-`nav_home.xml` is `house`, `nav_tabs.xml` is `square`, `nav_menu.xml` is
-`list` and `nav_settings.xml` is `gear-six`, all Bold weight, and
-`nav_home_active.xml` is `house` in the Fill weight. Path data is copied
-unchanged; each file names its source glyph.
+`nav_home.xml` is `house`, `nav_menu.xml` is `list` and `nav_settings.xml` is
+`gear`, all Bold weight, and `nav_home_active.xml` is `house` in the Fill
+weight, with path data copied unchanged. `nav_tabs.xml` is derived from the
+Bold `square`: same box and wall, rounder corners. `menu_find.xml` is the Bold
+`magnifying-glass`. Each file names its source glyph.
 
 MIT License
 

@@ -4850,10 +4850,22 @@ class MainActivity : AppCompatActivity() {
         setNavEnabled(binding.navBack, web?.canGoBack() == true || tab?.openerId != null)
         setNavEnabled(binding.navForward, web?.canGoForward() == true)
         val onHome = tab == null || tab.url == homePage
-        binding.navHome.setImageResource(
+        val accent = currentAccent()
+        binding.navHomeIcon.setImageResource(
             if (onHome) R.drawable.nav_home_active else R.drawable.nav_home)
-        binding.navHome.imageTintList = if (onHome)
-            android.content.res.ColorStateList.valueOf(currentAccent()) else neutral
+        binding.navHomeIcon.imageTintList = if (onHome)
+            android.content.res.ColorStateList.valueOf(accent) else neutral
+        // The selected state's pill: the accent, faint - a touch stronger on
+        // the dark theme, where the same alpha all but disappears.
+        binding.navHomePill.visibility = if (onHome) View.VISIBLE else View.GONE
+        if (onHome) {
+            val dark = (resources.configuration.uiMode and
+                android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+                android.content.res.Configuration.UI_MODE_NIGHT_YES
+            val alpha = if (dark) 0x2E else 0x1F
+            binding.navHomePill.backgroundTintList = android.content.res.ColorStateList
+                .valueOf((accent and 0x00FFFFFF) or (alpha shl 24))
+        }
         binding.navBack.imageTintList = neutral
         binding.navForward.imageTintList = neutral
         binding.navTabsIcon.imageTintList = neutral
@@ -4864,7 +4876,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun setNavEnabled(v: View, enabled: Boolean) {
         v.isEnabled = enabled
-        v.alpha = if (enabled) 1f else 0.32f
+        v.alpha = if (enabled) 1f else 0.38f
     }
 
     private fun setupToolbar() {
