@@ -4,7 +4,7 @@ Internal working notes. Not user-facing. Keep updated as state changes.
 
 ## Current state (as of versionCode 20)
 
-- **Latest version:** 1.4.0, versionCode 20, on `origin/main`. Since 1.3.1 (19): the launch-crash fix (an ICU-rejected regex in NewsFeed), the home page and bottom bar to the owner's design, curated Top Stories with full picture cards, the feed ad card on home only, Google UMP consent with Ad privacy choices where required, bars that follow the scroll, swipe between tabs, flick-to-close tabs, pull to refresh, and the debug log moved out of release builds.
+- **Latest version:** 1.4.0, versionCode 20, on `origin/main`. Since 1.3.1 (19): the launch-crash fix (an ICU-rejected regex in NewsFeed), the home page and bottom bar to the owner's design, curated Top Stories with full picture cards, the feed ad card on home only, Google UMP consent with Ad privacy choices where required, swipe between tabs, flick-to-close tabs, pull to refresh, and the debug log moved out of release builds.
 
 ## What's in versionCode 10 (this batch)
 

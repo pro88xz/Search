@@ -613,7 +613,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun enterSearchMode() {
         if (searchMode) return
-        showChrome()
         searchMode = true
         // The bar is non-focusable at rest; make it typable now that the user
         // has deliberately entered search mode. This is the ONLY place focus is
@@ -1471,15 +1470,8 @@ class MainActivity : AppCompatActivity() {
     @SuppressLint("SetJavaScriptEnabled", "AddJavascriptInterface")
     private fun newWebView(): WebView {
         val web = BrowserWebView(this)
-        // Letting go of the page: the bars settle once any fling has stopped,
-        // and a pull at the top either refreshes or springs back.
-        web.onTouchEnd = {
-            if (web === activeWeb()) {
-                uiHandler.removeCallbacks(chromeSettle)
-                uiHandler.postDelayed(chromeSettle, 120L)
-                releasePull()
-            }
-        }
+        // Letting go of the page: a pull at the top either refreshes or springs back.
+        web.onTouchEnd = { if (web === activeWeb()) releasePull() }
         web.onTopOverscroll = { px -> if (web === activeWeb()) pullBy(px) }
         web.layoutParams = FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -1736,8 +1728,6 @@ class MainActivity : AppCompatActivity() {
                     view === activeWeb()) exitSearchMode()
                 super.onPageStarted(view, url, favicon)
                 if (view == tabs.activeTab?.webView) {
-                    // A new page arrives with its bars, as in Chrome.
-                    showChrome()
                     if (!binding.urlBar.hasFocus()) binding.urlBar.setText(displayUrl(url))
                     refreshOmniboxVisibility(url)
                 }
@@ -2115,10 +2105,9 @@ class MainActivity : AppCompatActivity() {
             })
         }
 
-        web.setOnScrollChangeListener { v, _, scrollY, _, oldScrollY ->
+        web.setOnScrollChangeListener { v, _, scrollY, _, _ ->
             lastWebScroll = android.os.SystemClock.uptimeMillis()
             positionAdSlot(v as android.webkit.WebView, scrollY)
-            onChromeScroll(v, scrollY, oldScrollY)
         }
         return web
     }
@@ -3023,7 +3012,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openTab(tab: Tab, loadUrl: String? = null) {
-        showChrome(animate = false)
         endPullRefresh(now = true)
         // The tab being left keeps a picture of itself for the deck, taken
         // while it is still on screen. PixelCopy reads what the display already
@@ -3274,7 +3262,6 @@ class MainActivity : AppCompatActivity() {
         }
         binding.urlBarContainer.visibility =
             if (isHome && !homeCompact) View.INVISIBLE else View.VISIBLE
-        if (isHome) showChrome()
         refreshNav()
         refreshAdSlot()
         // Desktop mode is meaningless on the home page — reset it when we land
@@ -3496,7 +3483,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openMenu() {
-        showChrome()
         // The first row carries both of the jobs the owl's long press used to,
         // and says which one it is about to do. On the home page there is
         // nothing to go home to, so it offers the way out instead.
@@ -3603,7 +3589,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun openFindBar() {
         val web = activeWeb() ?: return
-        showChrome()
         findActive = true
         binding.findBar.visibility = View.VISIBLE
         binding.findInput.text?.clear()
@@ -3953,13 +3938,6 @@ class MainActivity : AppCompatActivity() {
         if (changed || show) binding.adSlot.post { syncAdSlotReserve() }
     }
 
-    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
-        super.onConfigurationChanged(newConfig)
-        // Turning the phone is handled in place, and the page's frame was
-        // sized for the old shape while the bars were away.
-        showChrome(animate = false)
-    }
-
     override fun onDestroy() {
         nativeAd?.destroy()
         nativeAd = null
@@ -4104,7 +4082,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showDeckNow() {
-        showChrome(animate = false)
         deckVisible = true
         androidx.core.view.ViewCompat.requestApplyInsets(binding.root)
         tabAdapter.notifyDataSetChanged()
@@ -5068,7 +5045,6 @@ class MainActivity : AppCompatActivity() {
      * would put its controls on top of whatever the button opened.
      */
     private fun setupBars() {
-        barOverlap = (binding.bottomBar.layoutParams as android.widget.LinearLayout.LayoutParams).topMargin
         setupTabSwipe()
         setupMenuDrag()
         binding.navHome.setOnClickListener { leaveTransientUi(); navHome() }
@@ -5376,227 +5352,6 @@ class MainActivity : AppCompatActivity() {
             pullSpring.cancel()
             placePull(0f)
         } else pullSpring.animate(pullSpring.value, 0f)
-    }
-
-    // ---------- Bars that follow the page ----------
-    //
-    // On a web page the top and bottom bars move with the scroll, as Chrome's
-    // do. Scrolling down pushes them away exactly as far as the page moved,
-    // scrolling up draws them back the same way, and a fling carries them with
-    // it. When the page comes to rest with the bars part way, a spring
-    // finishes the move: on by how far they had gone, or by how fast the page
-    // was still moving.
-    //
-    // The page is never resized while they move. Before they first leave, its
-    // frame is made full height once - up under the top bar, down under the
-    // bottom one - and held in place by a translation equal to the top bar's
-    // height. The bars wait for Chromium to paint the taller page before they
-    // move, so nothing unpainted is ever uncovered, and the frame goes back to
-    // normal once they have been home for a moment. Resizing a WebView every
-    // frame would make a heavy site relayout sixty times a second; this
-    // resizes it once each way, as the keyboard does.
-
-    /** 0 with the bars in place, 1 with them gone. */
-    private var chromeShift = 0f
-    private val chromeSpring by lazy {
-        Spring(stiffness = 520f, dampingRatio = 0.9f, precision = 0.002f) { applyChromeShift(it) }
-    }
-    /** The page is laid out under both bars. */
-    private var chromeExpanded = false
-    /** The page has been made taller and the bars wait for it to be painted. */
-    private var chromeWaiting = false
-    /** Bumped on every expand and collapse, so a pending callback can tell it is stale. */
-    private var chromeSeq = 0
-    /** Scroll events are ignored until then: a resize scrolls the page by itself. */
-    private var chromeQuietUntil = 0L
-    /** How far the bottom bar overlaps the page normally, from the layout. */
-    private var barOverlap = 0
-    private var chromeLastScrollAt = 0L
-    /** How fast the bars were moving with the page, in shifts per second. */
-    private var chromeVelocity = 0f
-    private val chromeSettle = Runnable { settleChrome() }
-    private val chromeCollapse = Runnable {
-        if (chromeShift == 0f && !chromeSpring.isRunning) collapseChrome()
-    }
-
-    private fun chromeMayHide(): Boolean {
-        val url = tabs.activeTab?.url ?: return false
-        return url != homePage && !searchMode && !deckVisible && !findActive &&
-            fullscreenView == null &&
-            binding.menuScrim.visibility != View.VISIBLE &&
-            binding.bottomBar.visibility == View.VISIBLE
-    }
-
-    private fun onChromeScroll(web: WebView, scrollY: Int, oldScrollY: Int) {
-        if (web !== activeWeb()) return
-        val dy = scrollY - oldScrollY
-        if (dy == 0) return
-        val now = android.os.SystemClock.uptimeMillis()
-        if (now < chromeQuietUntil) return
-        if (!chromeMayHide()) {
-            if (chromeShift > 0f) showChrome()
-            return
-        }
-        val top = binding.topBar.height.toFloat()
-        if (top <= 0f) return
-        // At the very top of the page the bars are always all there.
-        if (scrollY <= 0) {
-            if (chromeShift > 0f) springChrome(0f, 0f)
-            return
-        }
-        if (!chromeExpanded) {
-            if (dy > 0 && scrollY > top && roomToHide(web)) beginChromeTravel()
-            return
-        }
-        if (chromeWaiting) return
-        // The page has the bars now; a spring still running lets go of them.
-        chromeSpring.cancel()
-        uiHandler.removeCallbacks(chromeCollapse)
-        val step = dy / top
-        val dt = now - chromeLastScrollAt
-        val v = if (dt in 1..100) step * 1000f / dt else 0f
-        chromeVelocity = if (dt in 1..100) chromeVelocity * 0.4f + v * 0.6f else v
-        chromeLastScrollAt = now
-        applyChromeShift((chromeShift + step).coerceIn(0f, 1f))
-        // Settled once the scroll and any fling after it have stopped.
-        uiHandler.removeCallbacks(chromeSettle)
-        uiHandler.postDelayed(chromeSettle, 120L)
-    }
-
-    // A page only a little taller than the screen would stop scrolling once the
-    // bars gave it their room, and could flip them back and forth. It keeps
-    // its bars.
-    @Suppress("DEPRECATION") // getScale: see positionAdSlot.
-    private fun roomToHide(web: WebView): Boolean {
-        val content = web.contentHeight * web.scale
-        val bars = binding.topBar.height + binding.bottomBar.height
-        return content - web.height > bars * 3
-    }
-
-    /** Lays the page out under the bars, then lets them move once it is painted. */
-    private fun beginChromeTravel() {
-        expandForChrome()
-        chromeWaiting = true
-        val seq = ++chromeSeq
-        val ready = { if (seq == chromeSeq && chromeWaiting) chromeWaiting = false }
-        afterPagePaints(ready)
-        uiHandler.postDelayed({ ready() }, 350L)
-        chromeQuietUntil = android.os.SystemClock.uptimeMillis() + 80L
-        // If the page stops before the bars ever move, the frame goes back.
-        uiHandler.removeCallbacks(chromeCollapse)
-        uiHandler.postDelayed(chromeCollapse, 1500L)
-    }
-
-    // The page has stopped. With a finger still on it, wait for the release.
-    private fun settleChrome() {
-        if ((activeWeb() as? BrowserWebView)?.touching == true) {
-            uiHandler.postDelayed(chromeSettle, 120L)
-            return
-        }
-        if (!chromeExpanded || chromeWaiting) return
-        // A page that has been still for a moment is not moving, whatever it
-        // was doing before the pause.
-        val idle = android.os.SystemClock.uptimeMillis() - chromeLastScrollAt
-        val v = if (idle > 200L) 0f else chromeVelocity
-        val target = when {
-            v > 1.5f -> 1f
-            v < -1.5f -> 0f
-            chromeShift >= 0.5f -> 1f
-            else -> 0f
-        }
-        springChrome(target, v)
-    }
-
-    private fun springChrome(target: Float, velocity: Float) {
-        uiHandler.removeCallbacks(chromeSettle)
-        if (target > 0f && !chromeExpanded) return
-        chromeSpring.animate(chromeShift, target, velocity) {
-            if (target == 0f) {
-                uiHandler.removeCallbacks(chromeCollapse)
-                uiHandler.postDelayed(chromeCollapse, 600L)
-            }
-        }
-    }
-
-    /** Brings the bars back, if they are away. Safe to call from anywhere. */
-    private fun showChrome(animate: Boolean = true) {
-        uiHandler.removeCallbacks(chromeSettle)
-        if (!chromeExpanded) return
-        if (!animate || chromeWaiting || chromeShift == 0f) {
-            chromeSpring.cancel()
-            applyChromeShift(0f)
-            collapseChrome()
-            return
-        }
-        springChrome(0f, 0f)
-    }
-
-    /**
-     * Calls [then] once the active page has painted a frame at its current
-     * size. The new size only reaches Chromium in the next layout pass, so the
-     * request for a painted frame is made just before that pass draws.
-     */
-    private fun afterPagePaints(then: () -> Unit) {
-        val web = activeWeb() ?: return then()
-        val area = binding.webArea
-        area.viewTreeObserver.addOnPreDrawListener(object : android.view.ViewTreeObserver.OnPreDrawListener {
-            override fun onPreDraw(): Boolean {
-                area.viewTreeObserver.removeOnPreDrawListener(this)
-                if (isLiveWeb(web)) {
-                    web.postVisualStateCallback(0L, object : WebView.VisualStateCallback() {
-                        override fun onComplete(requestId: Long) = then()
-                    })
-                } else then()
-                return true
-            }
-        })
-    }
-
-    // The one relayout on the way out: the page's frame grows under both bars,
-    // and the translation applied with it keeps every pixel where it was.
-    private fun expandForChrome() {
-        if (chromeExpanded) return
-        // The top bar gives up its room through its own bottom margin, not
-        // through a negative top margin on the page. LinearLayout never lets a
-        // negative margin shrink its total, so on the page - the child that
-        // takes the leftover space - a negative margin only moved it up: it
-        // stayed the same height, and with the bars gone a 58dp strip of the
-        // app's background showed above the bottom bar. On the top bar the
-        // margin cancels its own height, which LinearLayout does count, and
-        // the page gets all of it.
-        val topLp = binding.topBar.layoutParams as android.widget.LinearLayout.LayoutParams
-        topLp.bottomMargin = -binding.topBar.height
-        binding.topBar.layoutParams = topLp
-        val bar = binding.bottomBar.layoutParams as android.widget.LinearLayout.LayoutParams
-        bar.topMargin = -binding.bottomBar.height
-        binding.bottomBar.layoutParams = bar
-        chromeExpanded = true
-        applyChromeShift(chromeShift)
-    }
-
-    // And the one on the way back, once the bars are home.
-    private fun collapseChrome() {
-        chromeSeq++
-        chromeWaiting = false
-        uiHandler.removeCallbacks(chromeCollapse)
-        if (!chromeExpanded) return
-        val topLp = binding.topBar.layoutParams as android.widget.LinearLayout.LayoutParams
-        topLp.bottomMargin = 0
-        binding.topBar.layoutParams = topLp
-        val bar = binding.bottomBar.layoutParams as android.widget.LinearLayout.LayoutParams
-        bar.topMargin = barOverlap
-        binding.bottomBar.layoutParams = bar
-        chromeExpanded = false
-        applyChromeShift(0f)
-        chromeQuietUntil = android.os.SystemClock.uptimeMillis() + 80L
-    }
-
-    private fun applyChromeShift(f: Float) {
-        chromeShift = f
-        val top = binding.topBar.height.toFloat()
-        binding.topBar.translationY = -top * f
-        binding.webArea.translationY = if (chromeExpanded) top * (1f - f) else 0f
-        binding.bottomBar.translationY = binding.bottomBar.height * f
     }
 
     private fun setNavEnabled(v: View, enabled: Boolean) {
