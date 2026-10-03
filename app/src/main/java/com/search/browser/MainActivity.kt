@@ -5556,9 +5556,17 @@ class MainActivity : AppCompatActivity() {
     // and the translation applied with it keeps every pixel where it was.
     private fun expandForChrome() {
         if (chromeExpanded) return
-        val web = binding.webArea.layoutParams as android.widget.LinearLayout.LayoutParams
-        web.topMargin = -binding.topBar.height
-        binding.webArea.layoutParams = web
+        // The top bar gives up its room through its own bottom margin, not
+        // through a negative top margin on the page. LinearLayout never lets a
+        // negative margin shrink its total, so on the page - the child that
+        // takes the leftover space - a negative margin only moved it up: it
+        // stayed the same height, and with the bars gone a 58dp strip of the
+        // app's background showed above the bottom bar. On the top bar the
+        // margin cancels its own height, which LinearLayout does count, and
+        // the page gets all of it.
+        val topLp = binding.topBar.layoutParams as android.widget.LinearLayout.LayoutParams
+        topLp.bottomMargin = -binding.topBar.height
+        binding.topBar.layoutParams = topLp
         val bar = binding.bottomBar.layoutParams as android.widget.LinearLayout.LayoutParams
         bar.topMargin = -binding.bottomBar.height
         binding.bottomBar.layoutParams = bar
@@ -5572,9 +5580,9 @@ class MainActivity : AppCompatActivity() {
         chromeWaiting = false
         uiHandler.removeCallbacks(chromeCollapse)
         if (!chromeExpanded) return
-        val web = binding.webArea.layoutParams as android.widget.LinearLayout.LayoutParams
-        web.topMargin = 0
-        binding.webArea.layoutParams = web
+        val topLp = binding.topBar.layoutParams as android.widget.LinearLayout.LayoutParams
+        topLp.bottomMargin = 0
+        binding.topBar.layoutParams = topLp
         val bar = binding.bottomBar.layoutParams as android.widget.LinearLayout.LayoutParams
         bar.topMargin = barOverlap
         binding.bottomBar.layoutParams = bar
