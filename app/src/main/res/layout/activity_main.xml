@@ -160,6 +160,17 @@
             android:layout_height="0dp"
             android:layout_weight="1">
 
+            <!-- The neighbouring tab, as it slides in beside the page while
+                 the bottom bar is swiped. -->
+            <ImageView
+                android:id="@+id/tabPeek"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="?android:attr/colorBackground"
+                android:scaleType="centerCrop"
+                android:visibility="gone"
+                android:importantForAccessibility="no" />
+
             <FrameLayout
                 android:id="@+id/webContainer"
                 android:layout_width="match_parent"
@@ -177,6 +188,20 @@
                 android:max="100"
                 android:progress="0"
                 android:visibility="gone" />
+
+            <!-- Pull to refresh: comes down from the top of the page with the
+                 pull, placed and turned from code (MainActivity, pullBy). -->
+            <ImageView
+                android:id="@+id/pullIndicator"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_gravity="top|center_horizontal"
+                android:padding="9dp"
+                android:background="@drawable/pull_bg"
+                android:elevation="6dp"
+                android:src="@drawable/menu_refresh"
+                android:visibility="gone"
+                android:importantForAccessibility="no" />
 
             <!-- ===== Native feed ad. 14dp gutters match .wrap in home.html,
                  so the card lines up with the feed cards above it. Hidden
@@ -203,7 +228,7 @@
              corners instead of a white block. The strip passes touches to the
              page. The ad slot's 68dp bottom margin and home.html's bottom
              padding allow for the same 58dp. ===== -->
-        <FrameLayout
+        <com.search.browser.SwipeBar
             android:id="@+id/bottomBar"
             android:layout_width="match_parent"
             android:layout_height="92dp"
@@ -327,7 +352,7 @@
                     android:tint="#FFFFFF"
                     android:importantForAccessibility="no" />
             </FrameLayout>
-        </FrameLayout>
+        </com.search.browser.SwipeBar>
     </LinearLayout>
 
     <!-- ===== Tab deck overlay (hidden by default) ===== -->
@@ -514,7 +539,7 @@
         android:clickable="true"
         android:focusable="true">
 
-        <LinearLayout
+        <com.search.browser.DragPanel
             android:id="@+id/menuPanel"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -649,7 +674,7 @@
             <!-- Debug builds append "Share debug log" here (src/debug). -->
             </LinearLayout>
             </ScrollView>
-        </LinearLayout>
+        </com.search.browser.DragPanel>
     </FrameLayout>
 
     <!-- ===== Find-in-page bar (overlay, top) ===== -->

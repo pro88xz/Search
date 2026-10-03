@@ -1470,7 +1470,17 @@ class MainActivity : AppCompatActivity() {
 
     @SuppressLint("SetJavaScriptEnabled", "AddJavascriptInterface")
     private fun newWebView(): WebView {
-        val web = WebView(this)
+        val web = BrowserWebView(this)
+        // Letting go of the page: the bars settle once any fling has stopped,
+        // and a pull at the top either refreshes or springs back.
+        web.onTouchEnd = {
+            if (web === activeWeb()) {
+                uiHandler.removeCallbacks(chromeSettle)
+                uiHandler.postDelayed(chromeSettle, 120L)
+                releasePull()
+            }
+        }
+        web.onTopOverscroll = { px -> if (web === activeWeb()) pullBy(px) }
         web.layoutParams = FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT
@@ -1942,6 +1952,7 @@ class MainActivity : AppCompatActivity() {
 
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
                 if (view == tabs.activeTab?.webView) {
+                    if (newProgress >= 100) endPullRefresh()
                     binding.progressBar.progress = newProgress
                     binding.progressBar.visibility =
                         if (newProgress in 1..99) View.VISIBLE else View.GONE
@@ -2628,7 +2639,7 @@ class MainActivity : AppCompatActivity() {
     private fun captureThumbnail(tab: Tab, onDone: (() -> Unit)? = null) {
         val web = tab.webView
         if (deckVisible || web == null || web.width <= 0 || web.height <= 0 ||
-            !web.isAttachedToWindow
+            !web.isAttachedToWindow || binding.webContainer.translationX != 0f
         ) { onDone?.invoke(); return }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             try {
@@ -3013,6 +3024,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun openTab(tab: Tab, loadUrl: String? = null) {
         showChrome(animate = false)
+        endPullRefresh(now = true)
         // The tab being left keeps a picture of itself for the deck, taken
         // while it is still on screen. PixelCopy reads what the display already
         // shows and asks the page for nothing. freezeTab used to draw the
@@ -3498,51 +3510,85 @@ class MainActivity : AppCompatActivity() {
         // Reflect current Night Owl state in the menu label.
         (binding.menuNightOwl.getChildAt(1) as? android.widget.TextView)?.text =
             if (nightOwl) "Exit Night Owl" else "Night Owl"
+        menuDragSpring.cancel()
+        binding.menuPanel.translationY = 0f
+        binding.menuScrim.background?.mutate()?.alpha = 255
         binding.menuScrim.visibility = View.VISIBLE
-        binding.menuScrim.alpha = 0f
-        binding.menuScrim.animate().alpha(1f).setDuration(150).start()
+        placeMenu(0f)
+        // Once laid out, so it grows from the corner where the Menu button is.
+        binding.menuPanel.post { menuSpring.animate(0f, 1f) }
+    }
+
+    // ---------- Menu motion ----------
+    //
+    // The menu opens and closes on a spring, growing from the Menu button's
+    // corner with a little give. It can also be dragged down to close: the
+    // panel follows the finger, the dimming lightens with it, and on release
+    // it drops away or bounces back - by how far it went, or how fast.
+
+    private val menuSpring by lazy {
+        Spring(stiffness = 460f, dampingRatio = 0.72f, precision = 0.002f) { placeMenu(it) }
+    }
+    private val menuDragSpring by lazy {
+        Spring(stiffness = 420f, dampingRatio = 0.86f, precision = 0.5f) { dragMenu(it) }
+    }
+
+    private fun placeMenu(p: Float) {
         val panel = binding.menuPanel
-        panel.post {
-            // From the bottom right corner, where the Menu button is.
-            panel.pivotX = panel.width.toFloat()
-            panel.pivotY = panel.height.toFloat()
-            panel.scaleX = 0.85f
-            panel.scaleY = 0.85f
-            panel.alpha = 0f
-            panel.animate()
-                .scaleX(1f).scaleY(1f).alpha(1f)
-                .setInterpolator(android.view.animation.OvershootInterpolator(1.2f))
-                .setDuration(220)
-                .start()
+        panel.pivotX = panel.width.toFloat()
+        panel.pivotY = panel.height.toFloat()
+        val scale = 0.86f + 0.14f * p
+        panel.scaleX = scale
+        panel.scaleY = scale
+        binding.menuScrim.alpha = p.coerceIn(0f, 1f)
+    }
+
+    private fun dragMenu(y: Float) {
+        binding.menuPanel.translationY = y
+        val h = binding.menuPanel.height.toFloat().coerceAtLeast(1f)
+        // Only the dimming lightens; the panel itself stays solid.
+        binding.menuScrim.background?.alpha = (255f * (1f - y / (h * 1.3f)).coerceIn(0f, 1f)).toInt()
+    }
+
+    private fun setupMenuDrag() {
+        val panel = binding.menuPanel
+        panel.canDrag = { !binding.menuScroll.canScrollVertically(-1) && !menuSpring.isRunning }
+        panel.onDrag = { dy ->
+            menuDragSpring.cancel()
+            // Upward it only gives a little.
+            val give = 24f * resources.displayMetrics.density
+            dragMenu(if (dy >= 0f) dy else -give * (1f - kotlin.math.exp(dy / give)))
+        }
+        panel.onRelease = { dy, vy ->
+            val y = panel.translationY
+            val h = panel.height.toFloat()
+            val fast = 900f * resources.displayMetrics.density
+            if (dy > 0f && (y > h * 0.28f || vy > fast)) {
+                val away = h + 80f * resources.displayMetrics.density
+                menuDragSpring.animate(y, away, vy) { closeMenuNow() }
+            } else {
+                menuDragSpring.animate(y, 0f, vy)
+            }
         }
     }
 
     private fun closeMenu() {
-        val panel = binding.menuPanel
-        panel.pivotX = panel.width.toFloat()
-        panel.pivotY = panel.height.toFloat()
-        panel.animate()
-            .scaleX(0.9f).scaleY(0.9f).alpha(0f)
-            .setInterpolator(android.view.animation.AccelerateInterpolator())
-            .setDuration(130)
-            .start()
-        binding.menuScrim.animate().alpha(0f).setDuration(130)
-            .withEndAction {
-                binding.menuScrim.visibility = View.GONE
-                panel.scaleX = 1f; panel.scaleY = 1f; panel.alpha = 1f
-            }.start()
+        menuDragSpring.cancel()
+        menuSpring.animate(menuSpring.value, 0f) { closeMenuNow() }
     }
 
     /** Instant close (no fade) for when a menu item's action follows immediately,
      *  so the panel doesn't linger see-through over the page during the action. */
     private fun closeMenuNow() {
-        binding.menuScrim.animate().cancel()
-        binding.menuPanel.animate().cancel()
+        menuSpring.cancel()
+        menuDragSpring.cancel()
         binding.menuScrim.visibility = View.GONE
         binding.menuScrim.alpha = 1f
+        binding.menuScrim.background?.alpha = 255
         binding.menuPanel.scaleX = 1f
         binding.menuPanel.scaleY = 1f
         binding.menuPanel.alpha = 1f
+        binding.menuPanel.translationY = 0f
     }
 
     private fun addNewTab(loadUrl: String = homePage) {
@@ -3976,6 +4022,53 @@ class MainActivity : AppCompatActivity() {
         )
         binding.tabList.layoutManager = GridLayoutManager(this, 2)
         binding.tabList.adapter = tabAdapter
+        // Flick a card sideways to close its tab. The throw keeps its
+        // momentum: a fast flick flies off from a short drag, a slow drag has
+        // to carry the card over a third of its width, and anything less
+        // springs back into place. The card tilts and fades as it goes.
+        androidx.recyclerview.widget.ItemTouchHelper(object :
+            androidx.recyclerview.widget.ItemTouchHelper.SimpleCallback(0,
+                androidx.recyclerview.widget.ItemTouchHelper.LEFT or
+                    androidx.recyclerview.widget.ItemTouchHelper.RIGHT) {
+            override fun onMove(
+                rv: androidx.recyclerview.widget.RecyclerView,
+                vh: androidx.recyclerview.widget.RecyclerView.ViewHolder,
+                target: androidx.recyclerview.widget.RecyclerView.ViewHolder
+            ) = false
+
+            override fun getSwipeThreshold(vh: androidx.recyclerview.widget.RecyclerView.ViewHolder) = 0.35f
+
+            // A flick counts sooner than the default asks.
+            override fun getSwipeEscapeVelocity(defaultValue: Float) = defaultValue * 0.6f
+
+            override fun onSwiped(vh: androidx.recyclerview.widget.RecyclerView.ViewHolder, direction: Int) {
+                val tab = tabs.tabs.getOrNull(vh.bindingAdapterPosition)
+                if (tab == null) tabAdapter.notifyDataSetChanged() else closeTabFromDeck(tab)
+            }
+
+            override fun onChildDraw(
+                c: android.graphics.Canvas, rv: androidx.recyclerview.widget.RecyclerView,
+                vh: androidx.recyclerview.widget.RecyclerView.ViewHolder,
+                dX: Float, dY: Float, actionState: Int, isCurrentlyActive: Boolean
+            ) {
+                super.onChildDraw(c, rv, vh, dX, dY, actionState, isCurrentlyActive)
+                if (actionState == androidx.recyclerview.widget.ItemTouchHelper.ACTION_STATE_SWIPE) {
+                    val w = vh.itemView.width.toFloat().coerceAtLeast(1f)
+                    val t = (dX / w).coerceIn(-1f, 1f)
+                    vh.itemView.alpha = 1f - kotlin.math.abs(t) * 0.8f
+                    vh.itemView.rotation = t * 8f
+                }
+            }
+
+            override fun clearView(
+                rv: androidx.recyclerview.widget.RecyclerView,
+                vh: androidx.recyclerview.widget.RecyclerView.ViewHolder
+            ) {
+                super.clearView(rv, vh)
+                vh.itemView.alpha = 1f
+                vh.itemView.rotation = 0f
+            }
+        }).attachToRecyclerView(binding.tabList)
 
         binding.deckClose.setOnClickListener { closeDeck() }
         binding.deckNewTab.setOnClickListener { addNewTab(homePage); closeDeck() }
@@ -4016,10 +4109,28 @@ class MainActivity : AppCompatActivity() {
         androidx.core.view.ViewCompat.requestApplyInsets(binding.root)
         tabAdapter.notifyDataSetChanged()
         binding.tabDeck.visibility = View.VISIBLE
+        // It rises into place on a spring rather than appearing.
+        placeDeck(0f)
+        deckSpring.animate(0f, 1f)
+    }
+
+    private val deckSpring by lazy {
+        Spring(stiffness = 420f, dampingRatio = 0.8f, precision = 0.002f) { placeDeck(it) }
+    }
+
+    private fun placeDeck(p: Float) {
+        val deck = binding.tabDeck
+        deck.alpha = p.coerceIn(0f, 1f)
+        deck.translationY = (1f - p) * 28f * resources.displayMetrics.density
+        val scale = 0.97f + 0.03f * p
+        deck.scaleX = scale
+        deck.scaleY = scale
     }
 
     private fun closeDeck() {
         hideKeyboard()
+        deckSpring.cancel()
+        placeDeck(1f)
         binding.tabDeck.visibility = View.GONE
         deckVisible = false
         androidx.core.view.ViewCompat.requestApplyInsets(binding.root)
@@ -4958,6 +5069,8 @@ class MainActivity : AppCompatActivity() {
      */
     private fun setupBars() {
         barOverlap = (binding.bottomBar.layoutParams as android.widget.LinearLayout.LayoutParams).topMargin
+        setupTabSwipe()
+        setupMenuDrag()
         binding.navHome.setOnClickListener { leaveTransientUi(); navHome() }
         binding.navBookmarks.setOnClickListener {
             leaveTransientUi(); openDeck(); showBookmarks()
@@ -5080,37 +5193,231 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ---------- Bars that step aside while reading ----------
+    // ---------- Swipe between tabs ----------
     //
-    // On a web page, scrolling down slides the top and bottom bars away and
-    // scrolling up brings them back, as Chrome does.
-    //
-    // Nothing is resized while they move. Before the bars leave, the page is
-    // laid out once at full height - up under the top bar, down under the
-    // bottom one - and held where it was by a translation equal to the top
-    // bar's height. The animation then only moves things: the top bar and the
-    // page rise together, the bottom bar sinks, and the page's lower edge is
-    // already there to be uncovered. Coming back runs the same in reverse, and
-    // only once the bars are fully back does the page get its usual frame.
-    // Resizing a WebView every frame would make a heavy site relayout sixty
-    // times a second; this resizes it once each way, as the keyboard does.
+    // A sideways swipe across the bottom bar moves between tabs, as on
+    // Chrome's toolbar. The page goes with the finger and the neighbouring
+    // tab's picture comes in beside it. On release a spring finishes the move,
+    // carrying the finger's speed: through to the neighbour if the page went
+    // over a third of the way or was flicked that way, back otherwise. Past
+    // the first or last tab the page only gives a little, like rubber.
+    // Swiping left brings in the tab after this one, as in Chrome.
 
-    private var chromeHidden = false
+    private var swipeNeighbor: Tab? = null
+    /** -1: moving to the next tab, +1: to the previous one, 0: not decided. */
+    private var swipeDir = 0
+    private val swipeSpring by lazy {
+        Spring(stiffness = 340f, dampingRatio = 0.9f, precision = 0.5f) { placeSwipe(it) }
+    }
+
+    private fun setupTabSwipe() {
+        binding.bottomBar.onSwipeStart = { beginSwipe() }
+        binding.bottomBar.onSwipe = { dx ->
+            swipeSpring.cancel()
+            placeSwipe(followSwipe(dx))
+        }
+        binding.bottomBar.onSwipeEnd = { dx, vx -> finishSwipe(followSwipe(dx), vx) }
+    }
+
+    private fun beginSwipe(): Boolean {
+        if (searchMode || deckVisible || swipeSpring.isRunning || activeWeb() == null) return false
+        if (binding.menuScrim.visibility == View.VISIBLE) return false
+        swipeDir = 0
+        swipeNeighbor = null
+        // The deck's picture of this tab, taken while it is still in place.
+        tabs.activeTab?.let { captureThumbnail(it) }
+        return true
+    }
+
+    private fun followSwipe(dx: Float): Float {
+        val dir = if (dx < 0f) -1 else 1
+        if (dir != swipeDir) {
+            swipeDir = dir
+            val list = tabs.tabs
+            val i = list.indexOf(tabs.activeTab)
+            swipeNeighbor = if (i < 0) null else list.getOrNull(if (dir < 0) i + 1 else i - 1)
+            val peek = binding.tabPeek
+            peek.setImageBitmap(swipeNeighbor?.thumbnail?.takeIf { !it.isRecycled })
+            peek.visibility = if (swipeNeighbor != null) View.VISIBLE else View.GONE
+        }
+        if (swipeNeighbor != null) return dx
+        val reach = 56f * resources.displayMetrics.density
+        return kotlin.math.sign(dx) * reach * (1f - kotlin.math.exp(-kotlin.math.abs(dx) / reach))
+    }
+
+    private fun placeSwipe(x: Float) {
+        val w = binding.webArea.width.toFloat()
+        binding.webContainer.translationX = x
+        binding.adSlot.translationX = x
+        binding.tabPeek.translationX = if (x < 0f) x + w else x - w
+    }
+
+    private fun finishSwipe(x: Float, vx: Float) {
+        val w = binding.webArea.width.toFloat()
+        val n = swipeNeighbor
+        val fast = 900f * resources.displayMetrics.density
+        val flung = kotlin.math.abs(vx) > fast
+        val toward = flung && kotlin.math.sign(vx) == kotlin.math.sign(x)
+        val back = flung && !toward
+        if (n != null && w > 0f && !back && (toward || kotlin.math.abs(x) > w * 0.35f)) {
+            swipeSpring.animate(x, if (x < 0f) -w else w, vx) {
+                // The page is off screen; the tab it slid to takes its place
+                // in the same frame, where its picture was.
+                if (tabs.tabs.contains(n)) openTab(n)
+                endSwipe()
+            }
+        } else {
+            swipeSpring.animate(x, 0f, vx) { endSwipe() }
+        }
+    }
+
+    private fun endSwipe() {
+        swipeSpring.cancel()
+        placeSwipe(0f)
+        binding.tabPeek.visibility = View.GONE
+        binding.tabPeek.setImageDrawable(null)
+        swipeNeighbor = null
+        swipeDir = 0
+    }
+
+    // ---------- Pull to refresh ----------
+    //
+    // Pulling a web page down past its top brings a refresh disc down after
+    // it. The disc follows the finger one to one at first and then ever more
+    // stiffly, like stretched rubber; let go past the trigger and it holds and
+    // spins while the page reloads, let go short of it and it springs back up.
+    // Driven by the page's own overscroll (BrowserWebView), so it only answers
+    // once the page really is at its top - not while a list inside it scrolls.
+
+    private var pullRaw = 0f
+    private var pullRefreshing = false
+    private var pullSpin: android.animation.ObjectAnimator? = null
+    private var pullStartedAt = 0L
+    private val pullTimeout = Runnable { endPullRefresh() }
+    private val pullSpring by lazy { Spring(stiffness = 420f, dampingRatio = 0.72f, precision = 0.5f) { placePull(it) } }
+    private val pullTrigger get() = 84f * resources.displayMetrics.density
+    private val pullReach get() = 140f * resources.displayMetrics.density
+    private val pullHold get() = 64f * resources.displayMetrics.density
+
+    private fun pullBy(px: Int) {
+        if (pullRefreshing || searchMode || deckVisible) return
+        val url = tabs.activeTab?.url
+        if (url == null || url == homePage) return
+        pullSpring.cancel()
+        pullRaw += px
+        placePull(rubber(pullRaw))
+    }
+
+    // 1:1 at the start, approaching pullReach and never passing it.
+    private fun rubber(raw: Float): Float = pullReach * (1f - kotlin.math.exp(-raw / pullReach))
+
+    private fun placePull(y: Float) {
+        val disc = binding.pullIndicator
+        val size = disc.height.takeIf { it > 0 } ?: (40f * resources.displayMetrics.density).toInt()
+        if (y <= 0.5f && !pullRefreshing) {
+            disc.visibility = View.GONE
+            return
+        }
+        if (disc.visibility != View.VISIBLE) {
+            disc.imageTintList = android.content.res.ColorStateList.valueOf(newTabAccent)
+            disc.visibility = View.VISIBLE
+        }
+        disc.translationY = y - size
+        val armed = (y / pullTrigger).coerceIn(0f, 1f)
+        disc.alpha = 0.4f + 0.6f * armed
+        disc.scaleX = 0.7f + 0.3f * armed
+        disc.scaleY = disc.scaleX
+        if (!pullRefreshing) disc.rotation = y * 1.6f
+    }
+
+    private fun releasePull() {
+        if (pullRaw <= 0f) return
+        val y = rubber(pullRaw)
+        pullRaw = 0f
+        if (pullRefreshing) return
+        if (y < pullTrigger) {
+            pullSpring.animate(y, 0f)
+            return
+        }
+        pullRefreshing = true
+        pullStartedAt = android.os.SystemClock.uptimeMillis()
+        pullSpring.animate(y, pullHold)
+        val disc = binding.pullIndicator
+        pullSpin = android.animation.ObjectAnimator.ofFloat(disc, View.ROTATION, disc.rotation, disc.rotation + 360f).apply {
+            duration = 700L
+            repeatCount = android.animation.ValueAnimator.INFINITE
+            interpolator = android.view.animation.LinearInterpolator()
+            start()
+        }
+        activeWeb()?.reload()
+        // A reload that never reports back still lets the disc go.
+        uiHandler.removeCallbacks(pullTimeout)
+        uiHandler.postDelayed(pullTimeout, 10_000L)
+    }
+
+    /** The reload has landed - or the tab changed. The disc goes back up. */
+    private fun endPullRefresh(now: Boolean = false) {
+        pullRaw = 0f
+        if (!pullRefreshing) {
+            if (now) { pullSpring.cancel(); placePull(0f) }
+            return
+        }
+        // At least a moment of spinning, or a fast reload reads as a flicker.
+        val shown = android.os.SystemClock.uptimeMillis() - pullStartedAt
+        if (!now && shown < 450L) {
+            uiHandler.postDelayed({ endPullRefresh() }, 450L - shown)
+            return
+        }
+        pullRefreshing = false
+        uiHandler.removeCallbacks(pullTimeout)
+        pullSpin?.cancel()
+        pullSpin = null
+        if (now) {
+            pullSpring.cancel()
+            placePull(0f)
+        } else pullSpring.animate(pullSpring.value, 0f)
+    }
+
+    // ---------- Bars that follow the page ----------
+    //
+    // On a web page the top and bottom bars move with the scroll, as Chrome's
+    // do. Scrolling down pushes them away exactly as far as the page moved,
+    // scrolling up draws them back the same way, and a fling carries them with
+    // it. When the page comes to rest with the bars part way, a spring
+    // finishes the move: on by how far they had gone, or by how fast the page
+    // was still moving.
+    //
+    // The page is never resized while they move. Before they first leave, its
+    // frame is made full height once - up under the top bar, down under the
+    // bottom one - and held in place by a translation equal to the top bar's
+    // height. The bars wait for Chromium to paint the taller page before they
+    // move, so nothing unpainted is ever uncovered, and the frame goes back to
+    // normal once they have been home for a moment. Resizing a WebView every
+    // frame would make a heavy site relayout sixty times a second; this
+    // resizes it once each way, as the keyboard does.
+
     /** 0 with the bars in place, 1 with them gone. */
     private var chromeShift = 0f
-    private var chromeAnim: android.animation.ValueAnimator? = null
+    private val chromeSpring by lazy {
+        Spring(stiffness = 520f, dampingRatio = 0.9f, precision = 0.002f) { applyChromeShift(it) }
+    }
     /** The page is laid out under both bars. */
     private var chromeExpanded = false
-    /** Scroll travel in the current direction, in px. */
-    private var chromeTravel = 0
-    /** Scroll events are ignored until then: the page's own resize scrolls it. */
+    /** The page has been made taller and the bars wait for it to be painted. */
+    private var chromeWaiting = false
+    /** Bumped on every expand and collapse, so a pending callback can tell it is stale. */
+    private var chromeSeq = 0
+    /** Scroll events are ignored until then: a resize scrolls the page by itself. */
     private var chromeQuietUntil = 0L
     /** How far the bottom bar overlaps the page normally, from the layout. */
     private var barOverlap = 0
-    /** Bumped on every change of direction, so a pending start can tell it is stale. */
-    private var chromeSeq = 0
-    /** The page has been made taller and the bars wait for it to be painted. */
-    private var chromeWaiting = false
+    private var chromeLastScrollAt = 0L
+    /** How fast the bars were moving with the page, in shifts per second. */
+    private var chromeVelocity = 0f
+    private val chromeSettle = Runnable { settleChrome() }
+    private val chromeCollapse = Runnable {
+        if (chromeShift == 0f && !chromeSpring.isRunning) collapseChrome()
+    }
 
     private fun chromeMayHide(): Boolean {
         val url = tabs.activeTab?.url ?: return false
@@ -5124,19 +5431,36 @@ class MainActivity : AppCompatActivity() {
         if (web !== activeWeb()) return
         val dy = scrollY - oldScrollY
         if (dy == 0) return
-        if (android.os.SystemClock.uptimeMillis() < chromeQuietUntil) {
-            chromeTravel = 0
+        val now = android.os.SystemClock.uptimeMillis()
+        if (now < chromeQuietUntil) return
+        if (!chromeMayHide()) {
+            if (chromeShift > 0f) showChrome()
             return
         }
-        if (chromeTravel != 0 && (dy > 0) != (chromeTravel > 0)) chromeTravel = 0
-        chromeTravel += dy
-        val d = resources.displayMetrics.density
-        if (!chromeHidden) {
-            if (chromeTravel > 24 * d && scrollY > binding.topBar.height &&
-                chromeMayHide() && roomToHide(web)) setChrome(hidden = true)
-        } else if (chromeTravel < -16 * d || scrollY <= 0) {
-            setChrome(hidden = false)
+        val top = binding.topBar.height.toFloat()
+        if (top <= 0f) return
+        // At the very top of the page the bars are always all there.
+        if (scrollY <= 0) {
+            if (chromeShift > 0f) springChrome(0f, 0f)
+            return
         }
+        if (!chromeExpanded) {
+            if (dy > 0 && scrollY > top && roomToHide(web)) beginChromeTravel()
+            return
+        }
+        if (chromeWaiting) return
+        // The page has the bars now; a spring still running lets go of them.
+        chromeSpring.cancel()
+        uiHandler.removeCallbacks(chromeCollapse)
+        val step = dy / top
+        val dt = now - chromeLastScrollAt
+        val v = if (dt in 1..100) step * 1000f / dt else 0f
+        chromeVelocity = if (dt in 1..100) chromeVelocity * 0.4f + v * 0.6f else v
+        chromeLastScrollAt = now
+        applyChromeShift((chromeShift + step).coerceIn(0f, 1f))
+        // Settled once the scroll and any fling after it have stopped.
+        uiHandler.removeCallbacks(chromeSettle)
+        uiHandler.postDelayed(chromeSettle, 120L)
     }
 
     // A page only a little taller than the screen would stop scrolling once the
@@ -5149,48 +5473,62 @@ class MainActivity : AppCompatActivity() {
         return content - web.height > bars * 3
     }
 
-    /** Brings the bars back, if they are away. Safe to call from anywhere. */
-    private fun showChrome(animate: Boolean = true) {
-        if (chromeHidden || chromeShift > 0f) setChrome(hidden = false, animate = animate)
+    /** Lays the page out under the bars, then lets them move once it is painted. */
+    private fun beginChromeTravel() {
+        expandForChrome()
+        chromeWaiting = true
+        val seq = ++chromeSeq
+        val ready = { if (seq == chromeSeq && chromeWaiting) chromeWaiting = false }
+        afterPagePaints(ready)
+        uiHandler.postDelayed({ ready() }, 350L)
+        chromeQuietUntil = android.os.SystemClock.uptimeMillis() + 80L
+        // If the page stops before the bars ever move, the frame goes back.
+        uiHandler.removeCallbacks(chromeCollapse)
+        uiHandler.postDelayed(chromeCollapse, 1500L)
     }
 
-    private fun setChrome(hidden: Boolean, animate: Boolean = true) {
-        if (hidden == chromeHidden &&
-            (chromeAnim != null || chromeWaiting || chromeShift == (if (hidden) 1f else 0f))) return
-        chromeHidden = hidden
-        chromeTravel = 0
-        chromeSeq++
-        chromeWaiting = false
-        chromeAnim?.let { it.removeAllListeners(); it.cancel() }
-        chromeAnim = null
-        if (hidden) expandForChrome()
-        val to = if (hidden) 1f else 0f
-        if (!animate) {
-            applyChromeShift(to)
-            if (!hidden) settleChrome()
+    // The page has stopped. With a finger still on it, wait for the release.
+    private fun settleChrome() {
+        if ((activeWeb() as? BrowserWebView)?.touching == true) {
+            uiHandler.postDelayed(chromeSettle, 120L)
             return
         }
-        if (hidden && chromeShift == 0f) {
-            // The page has just been made taller, and Chromium paints the new
-            // strip at the bottom a frame or more later. Sliding the bottom bar
-            // away at once uncovered it unpainted: a white band above the bar,
-            // with the site's own bottom bar still sitting at its old height.
-            // So the bars wait for the page to report the new size painted -
-            // or 350ms, whichever comes first - and only then move.
-            chromeWaiting = true
-            val seq = chromeSeq
-            val start = {
-                if (seq == chromeSeq && chromeWaiting) {
-                    chromeWaiting = false
-                    runChromeAnim(1f)
-                }
+        if (!chromeExpanded || chromeWaiting) return
+        // A page that has been still for a moment is not moving, whatever it
+        // was doing before the pause.
+        val idle = android.os.SystemClock.uptimeMillis() - chromeLastScrollAt
+        val v = if (idle > 200L) 0f else chromeVelocity
+        val target = when {
+            v > 1.5f -> 1f
+            v < -1.5f -> 0f
+            chromeShift >= 0.5f -> 1f
+            else -> 0f
+        }
+        springChrome(target, v)
+    }
+
+    private fun springChrome(target: Float, velocity: Float) {
+        uiHandler.removeCallbacks(chromeSettle)
+        if (target > 0f && !chromeExpanded) return
+        chromeSpring.animate(chromeShift, target, velocity) {
+            if (target == 0f) {
+                uiHandler.removeCallbacks(chromeCollapse)
+                uiHandler.postDelayed(chromeCollapse, 600L)
             }
-            afterPagePaints(start)
-            uiHandler.postDelayed({ start() }, 350L)
-            chromeQuietUntil = android.os.SystemClock.uptimeMillis() + 350 + 240 + 150
+        }
+    }
+
+    /** Brings the bars back, if they are away. Safe to call from anywhere. */
+    private fun showChrome(animate: Boolean = true) {
+        uiHandler.removeCallbacks(chromeSettle)
+        if (!chromeExpanded) return
+        if (!animate || chromeWaiting || chromeShift == 0f) {
+            chromeSpring.cancel()
+            applyChromeShift(0f)
+            collapseChrome()
             return
         }
-        runChromeAnim(to)
+        springChrome(0f, 0f)
     }
 
     /**
@@ -5214,23 +5552,6 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
-    private fun runChromeAnim(to: Float) {
-        val dur = (240 * kotlin.math.abs(to - chromeShift)).toLong().coerceAtLeast(1L)
-        chromeQuietUntil = android.os.SystemClock.uptimeMillis() + dur + 150
-        chromeAnim = android.animation.ValueAnimator.ofFloat(chromeShift, to).apply {
-            duration = dur
-            interpolator = searchEase
-            addUpdateListener { applyChromeShift(it.animatedValue as Float) }
-            addListener(object : android.animation.AnimatorListenerAdapter() {
-                override fun onAnimationEnd(animation: android.animation.Animator) {
-                    chromeAnim = null
-                    if (!chromeHidden) settleChrome()
-                }
-            })
-            start()
-        }
-    }
-
     // The one relayout on the way out: the page's frame grows under both bars,
     // and the translation applied with it keeps every pixel where it was.
     private fun expandForChrome() {
@@ -5246,7 +5567,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     // And the one on the way back, once the bars are home.
-    private fun settleChrome() {
+    private fun collapseChrome() {
+        chromeSeq++
+        chromeWaiting = false
+        uiHandler.removeCallbacks(chromeCollapse)
         if (!chromeExpanded) return
         val web = binding.webArea.layoutParams as android.widget.LinearLayout.LayoutParams
         web.topMargin = 0
@@ -5256,6 +5580,7 @@ class MainActivity : AppCompatActivity() {
         binding.bottomBar.layoutParams = bar
         chromeExpanded = false
         applyChromeShift(0f)
+        chromeQuietUntil = android.os.SystemClock.uptimeMillis() + 80L
     }
 
     private fun applyChromeShift(f: Float) {
