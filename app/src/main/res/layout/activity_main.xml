@@ -541,9 +541,8 @@
 
         <com.search.browser.DragPanel
             android:id="@+id/menuPanel"
-            android:layout_width="wrap_content"
+            android:layout_width="264dp"
             android:layout_height="wrap_content"
-            android:minWidth="220dp"
             android:layout_gravity="bottom|end"
             android:layout_marginTop="16dp"
             android:layout_marginBottom="70dp"
@@ -555,7 +554,12 @@
             android:elevation="12dp">
 
             <!-- Back, Forward and Reload, as the first row of Chrome's menu
-                 does. They left the bottom bar for New tab and Bookmarks. -->
+                 does. They left the bottom bar for New tab and Bookmarks.
+                 They share the row's width by weight, which is why the panel
+                 has a fixed width: left to wrap its content, the weights
+                 claimed the whole screen and the menu ran edge to edge, far
+                 from the Menu button. 264dp holds the longest row with room
+                 to spare at a large font size. -->
             <LinearLayout
                 android:id="@+id/menuNavRow"
                 android:layout_width="match_parent"
