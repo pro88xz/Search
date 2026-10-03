@@ -59,11 +59,12 @@
   button { font:inherit; color:inherit; background:none; border:0; padding:0; margin:0; cursor:pointer; }
   svg { display:block; }
 
-  /* The bottom reserve is the ad slot's height plus room for the native "+"
-     button, whose top half rises about 28px over the bottom of this page: the
-     last card must clear it, with air to spare. */
+  /* The bottom reserve is the ad slot's height plus room for the native bar,
+     which overlaps the bottom 58px of this page (its corners, and the arc the
+     "+" button sits in, rise over it): the last card must clear it, with air
+     to spare. */
   .wrap { min-height:100%; display:flex; flex-direction:column; align-items:center;
-    padding:12px var(--gutter) calc(80px + var(--adslot, 0px)); }
+    padding:12px var(--gutter) calc(108px + var(--adslot, 0px)); }
 
   /* ---------- Wordmark ----------
      It used to be a 66px billboard taking a fifth of the first screen. Now it

@@ -357,7 +357,7 @@ class MainActivity : AppCompatActivity() {
             val title = item.optString("title")
             val url = item.optString("url")
             exitSearchMode()
-            if (kind == "web" || url.isBlank()) go(title) else activeWeb()?.loadUrl(url)
+            if (kind == "web" || url.isBlank()) go(title) else loadInto(activeWeb(), url)
         }, { item ->
             // The arrow loads a suggestion into the box instead of running it, so
             // a near-miss can be edited rather than retyped. The box's own text
@@ -485,8 +485,14 @@ class MainActivity : AppCompatActivity() {
 
         val lp = binding.urlBarContainer.layoutParams
             as? android.widget.LinearLayout.LayoutParams ?: return
-        lp.marginStart = ((if (pill) 6 else 4) * d).toInt()
-        lp.marginEnd = ((if (pill) 6 else 4) * d).toInt()
+        // The field reaches as far as it can: about 9dp of air to the owl
+        // (whose picture is inset in its square) and 10dp to the gear's icon
+        // (centred in its 44dp button), the same either side. With the gear
+        // away while searching, 8dp to the screen edge. The old 6dp margins
+        // added to those insets left gaps twice as wide as the ones the
+        // field sits between on the home page.
+        lp.marginStart = (4 * d).toInt()
+        lp.marginEnd = ((if (mode == FIELD_SEARCH) 4 else 0) * d).toInt()
         // Each of these has to hold a 48dp control, which is what a touch
         // target has to be. The three sizes stay three sizes - the step between
         // browsing and collapsed is the same 4dp it was - they just start from
@@ -607,6 +613,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun enterSearchMode() {
         if (searchMode) return
+        showChrome()
         searchMode = true
         // The bar is non-focusable at rest; make it typable now that the user
         // has deliberately entered search mode. This is the ONLY place focus is
@@ -1133,7 +1140,7 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun open(url: String) {
             if (!privileged) return
-            runOnUiThread { activeWeb()?.loadUrl(url) }
+            runOnUiThread { loadInto(activeWeb(), url) }
         }
         @JavascriptInterface
         fun focusSearch() {
@@ -1184,7 +1191,7 @@ class MainActivity : AppCompatActivity() {
                     android.net.Uri.parse(target).host
                         ?.let { httpAllowed.add(it) }
                 } catch (e: Exception) { /* unparseable; load it anyway */ }
-                activeWeb()?.loadUrl(target)
+                loadInto(activeWeb(), target)
             }
         }
 
@@ -1193,7 +1200,7 @@ class MainActivity : AppCompatActivity() {
             if (!privileged) return
             runOnUiThread {
                 val target = lastFailedUrl
-                if (target != null) activeWeb()?.loadUrl(target)
+                if (target != null) loadInto(activeWeb(), target)
                 else activeWeb()?.reload()
             }
         }
@@ -1693,6 +1700,19 @@ class MainActivity : AppCompatActivity() {
             // Forward light up exactly when there is somewhere to go.
             override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
                 super.doUpdateVisitedHistory(view, url, isReload)
+                // An app-style site changing its route with pushState, or a
+                // #fragment, gets no onPageStarted, so the tab kept the address
+                // of the first page it loaded on that site - wrong in the bar,
+                // and wrong for everything that decides by the tab's address.
+                val t = tabOf(view)
+                if (t != null && url != null && url != t.url) {
+                    t.url = url
+                    if (view === activeWeb()) {
+                        if (!binding.urlBar.hasFocus()) binding.urlBar.setText(displayUrl(url))
+                        refreshStar()
+                        refreshAdSlot()
+                    }
+                }
                 if (view != null && view === activeWeb()) refreshNav()
             }
 
@@ -1702,9 +1722,12 @@ class MainActivity : AppCompatActivity() {
                 // shipped inside the app may.
                 (view?.tag as? SearchAppBridge)?.privileged =
                     url != null && url.startsWith("file:///android_asset/")
-                if (searchMode && url != null && url != homePage) exitSearchMode()
+                if (searchMode && url != null && url != homePage && view != null &&
+                    view === activeWeb()) exitSearchMode()
                 super.onPageStarted(view, url, favicon)
                 if (view == tabs.activeTab?.webView) {
+                    // A new page arrives with its bars, as in Chrome.
+                    showChrome()
                     if (!binding.urlBar.hasFocus()) binding.urlBar.setText(displayUrl(url))
                     refreshOmniboxVisibility(url)
                 }
@@ -1727,11 +1750,18 @@ class MainActivity : AppCompatActivity() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 // The upgrade worked, so nothing needs remembering about it.
                 url?.let { upgradedFrom.remove(it) }
+                // This is also reported for a load that never committed - one
+                // superseded or cancelled before it arrived - with that load's
+                // address. Taken at its word, a Home tap cancelled on a site
+                // put home's address on the site's tab, turned the feed ad on
+                // over the site, and handed the site home's bridge. What the
+                // WebView shows is the page that is actually there.
+                val shown = view?.url ?: url
                 // Restated here as well, so a page that arrives by a route
                 // which skips the start callback - a restored tab, say - still
                 // ends up with the right answer.
                 (view?.tag as? SearchAppBridge)?.privileged =
-                    url != null && url.startsWith("file:///android_asset/")
+                    shown != null && shown.startsWith("file:///android_asset/")
                 super.onPageFinished(view, url)
                 // Media detection: report HTML5 playback to the app for the
                 // media-control notification (skipped in Night Owl).
@@ -1755,7 +1785,7 @@ class MainActivity : AppCompatActivity() {
                 // The owning tab, for the reason given in onPageStarted.
                 tabOf(view)?.let { t ->
                     t.title = view?.title ?: t.title
-                    t.url = url ?: t.url
+                    t.url = shown ?: t.url
                     DebugLog.add("tab#" + t.id + " finish " + DebugLog.url(url))
                     if (t.openerId != null) watchReturnedPopup(t, url)
                 }
@@ -1777,7 +1807,7 @@ class MainActivity : AppCompatActivity() {
                     } catch (e: Exception) { /* not an addressable page */ }
                 }
                 if (view == tabs.activeTab?.webView) {
-                    refreshStar(); refreshOmniboxVisibility(url)
+                    refreshStar(); refreshOmniboxVisibility(shown)
                     pushAccentToPage(view)
                 }
             }
@@ -2074,9 +2104,10 @@ class MainActivity : AppCompatActivity() {
             })
         }
 
-        web.setOnScrollChangeListener { v, _, scrollY, _, _ ->
+        web.setOnScrollChangeListener { v, _, scrollY, _, oldScrollY ->
             lastWebScroll = android.os.SystemClock.uptimeMillis()
             positionAdSlot(v as android.webkit.WebView, scrollY)
+            onChromeScroll(v, scrollY, oldScrollY)
         }
         return web
     }
@@ -2658,6 +2689,12 @@ class MainActivity : AppCompatActivity() {
         (target.tag as? SearchAppBridge)?.privileged =
             url.startsWith("file:///android_asset/")
         target.loadUrl(url)
+        // Leaving home: the feed ad card goes now, not when the next page
+        // commits. Home stays on screen until then, and a search or a story
+        // opened from it showed the card over home and then over the new page
+        // as it arrived. The WebView already reports the address it is going
+        // to, which is what refreshAdSlot reads.
+        if (target === activeWeb() && url != homePage) refreshAdSlot()
     }
 
     /**
@@ -2998,6 +3035,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openTab(tab: Tab, loadUrl: String? = null) {
+        showChrome(animate = false)
         // The tab being left keeps a picture of itself for the deck, taken
         // while it is still on screen. PixelCopy reads what the display already
         // shows and asks the page for nothing. freezeTab used to draw the
@@ -3247,6 +3285,7 @@ class MainActivity : AppCompatActivity() {
         }
         binding.urlBarContainer.visibility =
             if (isHome && !homeCompact) View.INVISIBLE else View.VISIBLE
+        if (isHome) showChrome()
         refreshNav()
         refreshAdSlot()
         // Desktop mode is meaningless on the home page — reset it when we land
@@ -3468,6 +3507,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openMenu() {
+        showChrome()
         // The first row carries both of the jobs the owl's long press used to,
         // and says which one it is about to do. On the home page there is
         // nothing to go home to, so it offers the way out instead.
@@ -3540,6 +3580,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun openFindBar() {
         val web = activeWeb() ?: return
+        showChrome()
         findActive = true
         binding.findBar.visibility = View.VISIBLE
         binding.findInput.text?.clear()
@@ -3779,6 +3820,13 @@ class MainActivity : AppCompatActivity() {
         // later without either having to remember.
         if (!isLiveWeb(web)) return
         if (binding.adSlot.visibility != View.VISIBLE) return
+        // Only ever against the home page on screen. A pass posted for one
+        // page, or a scroll from a tab in the background, measured whatever
+        // that WebView held - and seated the card over a site or a search.
+        if (web !== activeWeb() || web.url != homePage) {
+            binding.adSlot.translationY = adSlotParkedY()
+            return
+        }
         val content = (web.contentHeight * web.scale).toInt()
         // contentHeight reads 0 while the page lays out. Taken at face value it
         // gives maxScroll 0, so remaining is 0, so the card seats itself at the
@@ -3828,13 +3876,28 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /** The page the card was last placed against: its WebView and address. */
+    private var adSlotPage: Pair<android.webkit.WebView?, String?>? = null
+
     // Home page only, and never over the search sheet or the tab deck.
     private fun refreshAdSlot() {
         val url = tabs.activeTab?.url
-        val onHome = (url == null || url == homePage)
+        // Both the tab and its WebView must say home. The tab's address is
+        // written when a page arrives, and the WebView's moves first - to the
+        // address being loaded as soon as the app loads one, to the new page
+        // the moment it commits. Going by the tab alone, the card stayed up
+        // over search results and sites until they finished loading.
+        val web = activeWeb()
+        val shown = web?.url
+        val onHome = (url == null || url == homePage) && (shown == null || shown == homePage)
         val show = nativeAd != null && onHome && !searchMode &&
             !deckVisible && !nightOwl
         val changed = (binding.adSlot.visibility == View.VISIBLE) != show
+        // A different page under the card - another home tab, or home loaded
+        // again - starts it parked too, rather than where the last one had it.
+        val page = web to shown
+        if (show && page != adSlotPage) binding.adSlot.translationY = adSlotParkedY()
+        adSlotPage = if (show) page else null
         // THE FLICKER. translationY 0 means "seated at the bottom of the
         // viewport", which is exactly where a fully scrolled page shows the
         // card. Switching the slot on before positionAdSlot has run therefore
@@ -3848,6 +3911,13 @@ class MainActivity : AppCompatActivity() {
         // reserve back to 0 without the slot's visibility ever changing, and
         // the card then overlaps the last feed card.
         if (changed || show) binding.adSlot.post { syncAdSlotReserve() }
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        // Turning the phone is handled in place, and the page's frame was
+        // sized for the old shape while the bars were away.
+        showChrome(animate = false)
     }
 
     override fun onDestroy() {
@@ -3947,6 +4017,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showDeckNow() {
+        showChrome(animate = false)
         deckVisible = true
         androidx.core.view.ViewCompat.requestApplyInsets(binding.root)
         tabAdapter.notifyDataSetChanged()
@@ -4892,6 +4963,7 @@ class MainActivity : AppCompatActivity() {
      * would put its controls on top of whatever the button opened.
      */
     private fun setupBars() {
+        barOverlap = (binding.bottomBar.layoutParams as android.widget.LinearLayout.LayoutParams).topMargin
         binding.navHome.setOnClickListener { leaveTransientUi(); navHome() }
         binding.navBookmarks.setOnClickListener {
             leaveTransientUi(); openDeck(); showBookmarks()
@@ -5012,6 +5084,140 @@ class MainActivity : AppCompatActivity() {
             binding.navNewTab.outlineSpotShadowColor = accent
             binding.navNewTab.outlineAmbientShadowColor = accent
         }
+    }
+
+    // ---------- Bars that step aside while reading ----------
+    //
+    // On a web page, scrolling down slides the top and bottom bars away and
+    // scrolling up brings them back, as Chrome does.
+    //
+    // Nothing is resized while they move. Before the bars leave, the page is
+    // laid out once at full height - up under the top bar, down under the
+    // bottom one - and held where it was by a translation equal to the top
+    // bar's height. The animation then only moves things: the top bar and the
+    // page rise together, the bottom bar sinks, and the page's lower edge is
+    // already there to be uncovered. Coming back runs the same in reverse, and
+    // only once the bars are fully back does the page get its usual frame.
+    // Resizing a WebView every frame would make a heavy site relayout sixty
+    // times a second; this resizes it once each way, as the keyboard does.
+
+    private var chromeHidden = false
+    /** 0 with the bars in place, 1 with them gone. */
+    private var chromeShift = 0f
+    private var chromeAnim: android.animation.ValueAnimator? = null
+    /** The page is laid out under both bars. */
+    private var chromeExpanded = false
+    /** Scroll travel in the current direction, in px. */
+    private var chromeTravel = 0
+    /** Scroll events are ignored until then: the page's own resize scrolls it. */
+    private var chromeQuietUntil = 0L
+    /** How far the bottom bar overlaps the page normally, from the layout. */
+    private var barOverlap = 0
+
+    private fun chromeMayHide(): Boolean {
+        val url = tabs.activeTab?.url ?: return false
+        return url != homePage && !searchMode && !deckVisible && !findActive &&
+            fullscreenView == null &&
+            binding.menuScrim.visibility != View.VISIBLE &&
+            binding.bottomBar.visibility == View.VISIBLE
+    }
+
+    private fun onChromeScroll(web: WebView, scrollY: Int, oldScrollY: Int) {
+        if (web !== activeWeb()) return
+        val dy = scrollY - oldScrollY
+        if (dy == 0) return
+        if (android.os.SystemClock.uptimeMillis() < chromeQuietUntil) {
+            chromeTravel = 0
+            return
+        }
+        if (chromeTravel != 0 && (dy > 0) != (chromeTravel > 0)) chromeTravel = 0
+        chromeTravel += dy
+        val d = resources.displayMetrics.density
+        if (!chromeHidden) {
+            if (chromeTravel > 24 * d && scrollY > binding.topBar.height &&
+                chromeMayHide() && roomToHide(web)) setChrome(hidden = true)
+        } else if (chromeTravel < -16 * d || scrollY <= 0) {
+            setChrome(hidden = false)
+        }
+    }
+
+    // A page only a little taller than the screen would stop scrolling once the
+    // bars gave it their room, and could flip them back and forth. It keeps
+    // its bars.
+    @Suppress("DEPRECATION") // getScale: see positionAdSlot.
+    private fun roomToHide(web: WebView): Boolean {
+        val content = web.contentHeight * web.scale
+        val bars = binding.topBar.height + binding.bottomBar.height
+        return content - web.height > bars * 3
+    }
+
+    /** Brings the bars back, if they are away. Safe to call from anywhere. */
+    private fun showChrome(animate: Boolean = true) {
+        if (chromeHidden || chromeShift > 0f) setChrome(hidden = false, animate = animate)
+    }
+
+    private fun setChrome(hidden: Boolean, animate: Boolean = true) {
+        if (hidden == chromeHidden && (chromeAnim != null || chromeShift == (if (hidden) 1f else 0f))) return
+        chromeHidden = hidden
+        chromeTravel = 0
+        chromeAnim?.let { it.removeAllListeners(); it.cancel() }
+        chromeAnim = null
+        if (hidden) expandForChrome()
+        val to = if (hidden) 1f else 0f
+        if (!animate) {
+            applyChromeShift(to)
+            if (!hidden) settleChrome()
+            return
+        }
+        val dur = (240 * kotlin.math.abs(to - chromeShift)).toLong().coerceAtLeast(1L)
+        chromeQuietUntil = android.os.SystemClock.uptimeMillis() + dur + 150
+        chromeAnim = android.animation.ValueAnimator.ofFloat(chromeShift, to).apply {
+            duration = dur
+            interpolator = searchEase
+            addUpdateListener { applyChromeShift(it.animatedValue as Float) }
+            addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) {
+                    chromeAnim = null
+                    if (!chromeHidden) settleChrome()
+                }
+            })
+            start()
+        }
+    }
+
+    // The one relayout on the way out: the page's frame grows under both bars,
+    // and the translation applied with it keeps every pixel where it was.
+    private fun expandForChrome() {
+        if (chromeExpanded) return
+        val web = binding.webArea.layoutParams as android.widget.LinearLayout.LayoutParams
+        web.topMargin = -binding.topBar.height
+        binding.webArea.layoutParams = web
+        val bar = binding.bottomBar.layoutParams as android.widget.LinearLayout.LayoutParams
+        bar.topMargin = -binding.bottomBar.height
+        binding.bottomBar.layoutParams = bar
+        chromeExpanded = true
+        applyChromeShift(chromeShift)
+    }
+
+    // And the one on the way back, once the bars are home.
+    private fun settleChrome() {
+        if (!chromeExpanded) return
+        val web = binding.webArea.layoutParams as android.widget.LinearLayout.LayoutParams
+        web.topMargin = 0
+        binding.webArea.layoutParams = web
+        val bar = binding.bottomBar.layoutParams as android.widget.LinearLayout.LayoutParams
+        bar.topMargin = barOverlap
+        binding.bottomBar.layoutParams = bar
+        chromeExpanded = false
+        applyChromeShift(0f)
+    }
+
+    private fun applyChromeShift(f: Float) {
+        chromeShift = f
+        val top = binding.topBar.height.toFloat()
+        binding.topBar.translationY = -top * f
+        binding.webArea.translationY = if (chromeExpanded) top * (1f - f) else 0f
+        binding.bottomBar.translationY = binding.bottomBar.height * f
     }
 
     private fun setNavEnabled(v: View, enabled: Boolean) {
@@ -5354,7 +5560,7 @@ class MainActivity : AppCompatActivity() {
         if (searchMode) exitSearchMode()
         // An empty bar has nothing to go to. It used to load a blank search.
         if (input.isBlank()) { hideKeyboard(); return }
-        activeWeb()?.loadUrl(resolveInput(input))
+        loadInto(activeWeb(), resolveInput(input))
         hideKeyboard()
         activeWeb()?.requestFocus()
     }

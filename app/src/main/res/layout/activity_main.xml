@@ -145,7 +145,7 @@
 
             <ImageButton
                 android:id="@+id/settingsBtn"
-                android:layout_width="48dp"
+                android:layout_width="44dp"
                 android:layout_height="48dp"
                 android:background="@drawable/nav_ripple"
                 android:src="@drawable/nav_settings"
@@ -153,15 +153,6 @@
                 android:contentDescription="Settings" />
 
         </LinearLayout>
-
-        <ProgressBar
-            android:id="@+id/progressBar"
-            style="?android:attr/progressBarStyleHorizontal"
-            android:layout_width="match_parent"
-            android:layout_height="3dp"
-            android:max="100"
-            android:progress="0"
-            android:visibility="gone" />
 
         <FrameLayout
             android:id="@+id/webArea"
@@ -173,6 +164,19 @@
                 android:id="@+id/webContainer"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent" />
+
+            <!-- Over the top edge of the page rather than above it, so a load
+                 starting or finishing never moves the page by its height, and
+                 it stays at the top of the page while the bars are away. -->
+            <ProgressBar
+                android:id="@+id/progressBar"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="3dp"
+                android:layout_gravity="top"
+                android:max="100"
+                android:progress="0"
+                android:visibility="gone" />
 
             <!-- ===== Native feed ad. 14dp gutters match .wrap in home.html,
                  so the card lines up with the feed cards above it. Hidden
@@ -186,21 +190,24 @@
                 android:layout_gravity="bottom"
                 android:layout_marginStart="14dp"
                 android:layout_marginEnd="14dp"
-                android:layout_marginBottom="40dp"
+                android:layout_marginBottom="68dp"
                 android:visibility="gone" />
         </FrameLayout>
 
         <!-- ===== BOTTOM navigation bar: Home, Bookmarks, New tab, Tabs, Menu.
              Icons only; each carries its name as a content description and a
              long-press tooltip. The frame is taller than the bar and pulled up
-             over the bottom of the page, so the raised New tab button can sit
-             half above the bar and still be tapped there; the strip above the
-             bar is see-through and passes touches to the page. ===== -->
+             58dp over the bottom of the page: 30dp of see-through strip above
+             the bar's straight edge, where the arc and the New tab button rise,
+             and the 28dp of its rounded corners, so the page shows behind the
+             corners instead of a white block. The strip passes touches to the
+             page. The ad slot's 68dp bottom margin and home.html's bottom
+             padding allow for the same 58dp. ===== -->
         <FrameLayout
             android:id="@+id/bottomBar"
             android:layout_width="match_parent"
             android:layout_height="92dp"
-            android:layout_marginTop="-30dp"
+            android:layout_marginTop="-58dp"
             android:clipChildren="false"
             android:clipToPadding="false">
 
