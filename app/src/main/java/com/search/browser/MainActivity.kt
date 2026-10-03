@@ -1331,7 +1331,7 @@ class MainActivity : AppCompatActivity() {
                 val json = try {
                     NewsFeed.fetch(this@MainActivity)
                 } catch (t: Throwable) {
-                    DebugLog.add("feed  failed: " + t.javaClass.simpleName + ": " + t.message)
+                    DebugLog.add { "feed  failed: " + t.javaClass.simpleName + ": " + t.message }
                     "[]"
                 }
                 runOnUiThread { pushFeed(requestId, json) }
@@ -1609,7 +1609,7 @@ class MainActivity : AppCompatActivity() {
                 // an app's own sign-in scheme - would otherwise leave that tab
                 // behind empty, which reads as a blank page that never loads.
                 // Chrome closes such a tab, and so does this.
-                DebugLog.add("tab#" + tabOf(view)?.id + " hands " + scheme + ": link to another app")
+                DebugLog.add { "tab#" + tabOf(view)?.id + " hands " + scheme + ": link to another app" }
                 if (!openExternal(uri.toString(), view)) closeIfNeverLoaded(view)
                 return true
             }
@@ -1631,9 +1631,9 @@ class MainActivity : AppCompatActivity() {
                 super.onReceivedError(view, request, error)
                 // Only replace the main-frame failure (not sub-resources like images/ads).
                 if (request?.isForMainFrame == true) {
-                    DebugLog.add("tab#" + tabOf(view)?.id + " load error " +
+                    DebugLog.add { "tab#" + tabOf(view)?.id + " load error " +
                         error?.errorCode + " " + error?.description + " at " +
-                        DebugLog.url(request.url?.toString()))
+                        DebugLog.url(request.url?.toString()) }
                     // If this was our own https attempt, the site may simply
                     // not offer https. Say that, rather than reporting it as
                     // unreachable - which was both wrong and a dead end.
@@ -1677,8 +1677,8 @@ class MainActivity : AppCompatActivity() {
                 view: WebView?,
                 detail: android.webkit.RenderProcessGoneDetail?
             ): Boolean {
-                DebugLog.add("renderer gone for tab#" + tabOf(view)?.id +
-                    " crashed=" + (detail?.didCrash() ?: "?"))
+                DebugLog.add { "renderer gone for tab#" + tabOf(view)?.id +
+                    " crashed=" + (detail?.didCrash() ?: "?") }
                 if (view != null) replaceDeadWebView(view)
                 return true
             }
@@ -1690,8 +1690,8 @@ class MainActivity : AppCompatActivity() {
             ) {
                 super.onReceivedHttpError(view, request, errorResponse)
                 if (request?.isForMainFrame == true) {
-                    DebugLog.add("tab#" + tabOf(view)?.id + " HTTP " +
-                        errorResponse?.statusCode + " at " + DebugLog.url(request.url?.toString()))
+                    DebugLog.add { "tab#" + tabOf(view)?.id + " HTTP " +
+                        errorResponse?.statusCode + " at " + DebugLog.url(request.url?.toString()) }
                 }
             }
 
@@ -1743,7 +1743,7 @@ class MainActivity : AppCompatActivity() {
                     t.loadsStarted++
                     t.loadToken++
                     notePopupNavigation(view, url)
-                    DebugLog.add("tab#" + t.id + " start " + DebugLog.url(url))
+                    DebugLog.add { "tab#" + t.id + " start " + DebugLog.url(url) }
                 }
                 refreshNav()
             }
@@ -1786,7 +1786,7 @@ class MainActivity : AppCompatActivity() {
                 tabOf(view)?.let { t ->
                     t.title = view?.title ?: t.title
                     t.url = shown ?: t.url
-                    DebugLog.add("tab#" + t.id + " finish " + DebugLog.url(url))
+                    DebugLog.add { "tab#" + t.id + " finish " + DebugLog.url(url) }
                     if (t.openerId != null) watchReturnedPopup(t, url)
                 }
                 // Record the visited page in history (never in Night Owl mode).
@@ -1964,7 +1964,7 @@ class MainActivity : AppCompatActivity() {
                 // not, and is refused, so ad pop-ups stay blocked.
                 if (!isUserGesture && Settings.getBool(
                         this@MainActivity, Settings.SEC_BLOCK_POPUPS, true)) {
-                    DebugLog.add("pop-up refused: no user gesture, from tab#" + tabOf(view)?.id)
+                    DebugLog.add { "pop-up refused: no user gesture, from tab#" + tabOf(view)?.id }
                     return false
                 }
                 // Validate the transport BEFORE creating any tab, so a malformed
@@ -1978,8 +1978,8 @@ class MainActivity : AppCompatActivity() {
                 popupTab.openerSite = UrlHelper.siteOf(opener?.url)
                 popupTab.openerLoadsAtOpen = opener?.loadsStarted ?: 0
                 popupTab.title = "Opening\u2026"
-                DebugLog.add("pop-up tab#" + popupTab.id + " opened by tab#" + opener?.id +
-                    " on " + popupTab.openerSite + " (dialog=" + isDialog + ")")
+                DebugLog.add { "pop-up tab#" + popupTab.id + " opened by tab#" + opener?.id +
+                    " on " + popupTab.openerSite + " (dialog=" + isDialog + ")" }
                 val popupWeb = newWebView()
                 popupTab.webView = popupWeb
                 transport.webView = popupWeb
@@ -1995,7 +1995,7 @@ class MainActivity : AppCompatActivity() {
                 // this very WebView, and Chromium is still part-way through
                 // closing it when it calls here.
                 val closing = window ?: return
-                DebugLog.add("window.close() from tab#" + tabOf(closing)?.id)
+                DebugLog.add { "window.close() from tab#" + tabOf(closing)?.id }
                 uiHandler.post {
                     val tab = tabs.tabs.firstOrNull { it.webView === closing } ?: return@post
                     // A sign-in pop-up that came back to the site and closed
@@ -2026,8 +2026,8 @@ class MainActivity : AppCompatActivity() {
                 if (DebugLog.enabled && (level == android.webkit.ConsoleMessage.MessageLevel.ERROR ||
                         level == android.webkit.ConsoleMessage.MessageLevel.WARNING)
                 ) {
-                    DebugLog.add("tab#" + tabOf(web)?.id + " console " + level + ": " +
-                        text.take(300) + " (" + DebugLog.url(m.sourceId()) + ":" + m.lineNumber() + ")")
+                    DebugLog.add { "tab#" + tabOf(web)?.id + " console " + level + ": " +
+                        text.take(300) + " (" + DebugLog.url(m.sourceId()) + ":" + m.lineNumber() + ")" }
                 }
                 if (text.startsWith("Scripts may close only the windows that were opened by")) {
                     uiHandler.post {
@@ -2790,7 +2790,7 @@ class MainActivity : AppCompatActivity() {
         val site = UrlHelper.siteOf(url) ?: return
         if (site != popup.openerSite) return
         val web = popup.webView ?: return
-        DebugLog.add("pop-up tab#" + popup.id + " is back on " + site + "; watching for a stall")
+        DebugLog.add { "pop-up tab#" + popup.id + " is back on " + site + "; watching for a stall" }
         checkStalledPopup(popup, web, popup.loadToken, emptyLooks = 0, attempt = 0)
     }
 
@@ -2818,8 +2818,8 @@ class MainActivity : AppCompatActivity() {
                     !tabs.tabs.contains(popup)
                 ) return@evaluateJavascript
                 val empty = isEmptyPage(result)
-                DebugLog.add("pop-up tab#" + popup.id + " look " + (emptyLooks + 1) + ": " +
-                    result + (if (empty) " - empty" else " - has content, left alone"))
+                DebugLog.add { "pop-up tab#" + popup.id + " look " + (emptyLooks + 1) + ": " +
+                    result + (if (empty) " - empty" else " - has content, left alone") }
                 if (!empty) return@evaluateJavascript
                 if (emptyLooks >= 1) foldBackPopup(popup, "stalled on its callback page")
                 else checkStalledPopup(popup, web, token, emptyLooks + 1, attempt + 1)
@@ -2840,7 +2840,7 @@ class MainActivity : AppCompatActivity() {
         if (site != null && t.openerSite != null && site != t.openerSite) t.leftOpenerSite = true
         if (!t.signIn && UrlHelper.looksLikeSignIn(url)) {
             t.signIn = true
-            DebugLog.add("pop-up tab#" + t.id + " is a sign-in (" + DebugLog.url(url) + ")")
+            DebugLog.add { "pop-up tab#" + t.id + " is a sign-in (" + DebugLog.url(url) + ")" }
         }
     }
 
@@ -2893,8 +2893,8 @@ class MainActivity : AppCompatActivity() {
         val openerBusy = (opener?.webView?.progress ?: 100) < 100
         val openerMovedOn = opener != null && (openerBusy ||
             (popup.openerLoadsAtOpen >= 0 && opener.loadsStarted != popup.openerLoadsAtOpen))
-        DebugLog.add("folding pop-up tab#" + popup.id + " back into tab#" + opener?.id +
-            " (" + why + "); returned=" + returned + " openerMovedOn=" + openerMovedOn)
+        DebugLog.add { "folding pop-up tab#" + popup.id + " back into tab#" + opener?.id +
+            " (" + why + "); returned=" + returned + " openerMovedOn=" + openerMovedOn }
         val openerWasLive = opener?.webView != null
         closeTabFromDeck(popup)
         if (opener == null || !returned) return
@@ -2921,14 +2921,14 @@ class MainActivity : AppCompatActivity() {
     private fun watchOpenerAfterSignIn(opener: Tab) {
         val web = opener.webView ?: return
         val token = opener.loadToken
-        DebugLog.add("watching tab#" + opener.id + " after its sign-in pop-up returned")
+        DebugLog.add { "watching tab#" + opener.id + " after its sign-in pop-up returned" }
         uiHandler.postDelayed({
             if (isFinishing || isDestroyed) return@postDelayed
             if (opener.webView !== web || !tabs.tabs.contains(opener)) return@postDelayed
             web.evaluateJavascript(PAGE_EMPTINESS_JS) { result ->
                 val empty = isEmptyPage(result)
-                DebugLog.add("tab#" + opener.id + " after sign-in: " + result +
-                    (if (empty) " - blank, reloading" else " - fine"))
+                DebugLog.add { "tab#" + opener.id + " after sign-in: " + result +
+                    (if (empty) " - blank, reloading" else " - fine") }
                 if (empty && opener.webView === web && tabs.tabs.contains(opener) &&
                     opener.loadToken == token && web.progress >= 100
                 ) loadInto(web, web.url ?: opener.url)
@@ -2945,7 +2945,7 @@ class MainActivity : AppCompatActivity() {
 
     @android.annotation.TargetApi(Build.VERSION_CODES.Q)
     private fun onPageUnresponsive(view: WebView, renderer: android.webkit.WebViewRenderProcess?) {
-        DebugLog.add("page not responding in tab#" + tabOf(view)?.id)
+        DebugLog.add { "page not responding in tab#" + tabOf(view)?.id }
         if (view !== activeWeb() || waitingOnHang || unresponsiveDialog != null) return
         if (isFinishing || isDestroyed) return
         unresponsiveDialog = android.app.AlertDialog.Builder(this)
@@ -2953,7 +2953,7 @@ class MainActivity : AppCompatActivity() {
             .setMessage("You can wait for it, or close it and reload. Reloading restarts every open page.")
             .setNegativeButton("Wait") { _, _ -> waitingOnHang = true }
             .setPositiveButton("Reload") { _, _ ->
-                DebugLog.add("user ended the unresponsive page")
+                DebugLog.add { "user ended the unresponsive page" }
                 // Ending the renderer comes back through onRenderProcessGone,
                 // which rebuilds the tabs. If there is no renderer to end,
                 // a plain reload is the next best thing.
@@ -3007,31 +3007,8 @@ class MainActivity : AppCompatActivity() {
             level < android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN
         val background = level >= android.content.ComponentCallbacks2.TRIM_MEMORY_BACKGROUND
         if (!low && !background) return
-        DebugLog.add("memory trim level " + level + ": freezing background tabs")
+        DebugLog.add { "memory trim level " + level + ": freezing background tabs" }
         tabs.trimLive(1)
-    }
-
-    // ---------- Debug log ----------
-
-    private fun shareDebugLog() {
-        val webView = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            WebView.getCurrentWebViewPackage()?.let { it.packageName + " " + it.versionName }
-        } else null
-        val header = "Search " + BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")" +
-            ", Android " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")" +
-            ", " + Build.MANUFACTURER + " " + Build.MODEL +
-            ", WebView " + (webView ?: "unknown") +
-            ", live tabs " + tabs.maxLiveTabs
-        val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-            type = "text/plain"
-            putExtra(android.content.Intent.EXTRA_SUBJECT, "Search debug log")
-            putExtra(android.content.Intent.EXTRA_TEXT, header + "\n\n" + DebugLog.text())
-        }
-        try {
-            startActivity(android.content.Intent.createChooser(send, "Share debug log"))
-        } catch (e: Exception) {
-            toast("Nothing on this phone can share text")
-        }
     }
 
     private fun openTab(tab: Tab, loadUrl: String? = null) {
@@ -5130,6 +5107,10 @@ class MainActivity : AppCompatActivity() {
     private var chromeQuietUntil = 0L
     /** How far the bottom bar overlaps the page normally, from the layout. */
     private var barOverlap = 0
+    /** Bumped on every change of direction, so a pending start can tell it is stale. */
+    private var chromeSeq = 0
+    /** The page has been made taller and the bars wait for it to be painted. */
+    private var chromeWaiting = false
 
     private fun chromeMayHide(): Boolean {
         val url = tabs.activeTab?.url ?: return false
@@ -5174,9 +5155,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setChrome(hidden: Boolean, animate: Boolean = true) {
-        if (hidden == chromeHidden && (chromeAnim != null || chromeShift == (if (hidden) 1f else 0f))) return
+        if (hidden == chromeHidden &&
+            (chromeAnim != null || chromeWaiting || chromeShift == (if (hidden) 1f else 0f))) return
         chromeHidden = hidden
         chromeTravel = 0
+        chromeSeq++
+        chromeWaiting = false
         chromeAnim?.let { it.removeAllListeners(); it.cancel() }
         chromeAnim = null
         if (hidden) expandForChrome()
@@ -5186,6 +5170,51 @@ class MainActivity : AppCompatActivity() {
             if (!hidden) settleChrome()
             return
         }
+        if (hidden && chromeShift == 0f) {
+            // The page has just been made taller, and Chromium paints the new
+            // strip at the bottom a frame or more later. Sliding the bottom bar
+            // away at once uncovered it unpainted: a white band above the bar,
+            // with the site's own bottom bar still sitting at its old height.
+            // So the bars wait for the page to report the new size painted -
+            // or 350ms, whichever comes first - and only then move.
+            chromeWaiting = true
+            val seq = chromeSeq
+            val start = {
+                if (seq == chromeSeq && chromeWaiting) {
+                    chromeWaiting = false
+                    runChromeAnim(1f)
+                }
+            }
+            afterPagePaints(start)
+            uiHandler.postDelayed({ start() }, 350L)
+            chromeQuietUntil = android.os.SystemClock.uptimeMillis() + 350 + 240 + 150
+            return
+        }
+        runChromeAnim(to)
+    }
+
+    /**
+     * Calls [then] once the active page has painted a frame at its current
+     * size. The new size only reaches Chromium in the next layout pass, so the
+     * request for a painted frame is made just before that pass draws.
+     */
+    private fun afterPagePaints(then: () -> Unit) {
+        val web = activeWeb() ?: return then()
+        val area = binding.webArea
+        area.viewTreeObserver.addOnPreDrawListener(object : android.view.ViewTreeObserver.OnPreDrawListener {
+            override fun onPreDraw(): Boolean {
+                area.viewTreeObserver.removeOnPreDrawListener(this)
+                if (isLiveWeb(web)) {
+                    web.postVisualStateCallback(0L, object : WebView.VisualStateCallback() {
+                        override fun onComplete(requestId: Long) = then()
+                    })
+                } else then()
+                return true
+            }
+        })
+    }
+
+    private fun runChromeAnim(to: Float) {
         val dur = (240 * kotlin.math.abs(to - chromeShift)).toLong().coerceAtLeast(1L)
         chromeQuietUntil = android.os.SystemClock.uptimeMillis() + dur + 150
         chromeAnim = android.animation.ValueAnimator.ofFloat(chromeShift, to).apply {
@@ -5292,10 +5321,8 @@ class MainActivity : AppCompatActivity() {
         binding.menuHistory.setOnClickListener {
             closeMenuNow(); openDeck(); showHistory()
         }
-        if (DebugLog.enabled) {
-            binding.menuDebugLog.visibility = View.VISIBLE
-            binding.menuDebugLog.setOnClickListener { closeMenuNow(); shareDebugLog() }
-        }
+        // Debug builds add "Share debug log" here; release builds have none.
+        DebugTools.install(this, binding.menuRows, { tabs.maxLiveTabs }) { closeMenuNow() }
         binding.menuDownloads.setOnClickListener {
             closeMenuNow()
             openDownloads()

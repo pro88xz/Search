@@ -646,15 +646,7 @@
                     android:text="Play games" android:textSize="16sp"
                     android:textColor="?android:attr/textColorPrimary" />
             </LinearLayout>
-            <!-- Debug builds only: shown from setupToolbar. -->
-            <LinearLayout android:id="@+id/menuDebugLog" style="@style/MenuRow"
-                android:visibility="gone">
-                <ImageView android:layout_width="22dp" android:layout_height="22dp"
-                    android:src="@drawable/menu_find" android:layout_marginEnd="18dp" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:text="Share debug log" android:textSize="16sp"
-                    android:textColor="?android:attr/textColorPrimary" />
-            </LinearLayout>
+            <!-- Debug builds append "Share debug log" here (src/debug). -->
             </LinearLayout>
             </ScrollView>
         </LinearLayout>

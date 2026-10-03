@@ -3,9 +3,13 @@ package com.search.browser
 import android.net.Uri
 
 /**
- * What the browser did, kept in debug builds only, for the problems that only
- * happen on a real phone on a real site - a sign-in that stalls, a page that
- * hangs. The menu's "Share debug log" row sends it.
+ * What the browser did, for the problems that only happen on a real phone on a
+ * real site - a sign-in that stalls, a page that hangs. The menu's "Share
+ * debug log" row (DebugTools) sends it.
+ *
+ * Debug builds only. This file lives in src/debug; release builds compile
+ * src/release/DebugLog.kt instead, whose add() is an empty inline function,
+ * so no message is even built there and nothing of this ships.
  *
  * Addresses are written without their query values or fragment: a sign-in
  * callback carries one-time codes and tokens there, and none of that belongs
@@ -19,12 +23,16 @@ object DebugLog {
     private val lines = ArrayDeque<String>()
     private val clock = java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.US)
 
-    val enabled: Boolean get() = BuildConfig.DEBUG
+    const val enabled = true
 
-    /** Records one event. Safe from any thread; a no-op in release builds. */
+    /** Records one event. Safe from any thread. */
+    inline fun add(event: () -> String) {
+        record(event())
+    }
+
+    @PublishedApi
     @Synchronized
-    fun add(event: String) {
-        if (!enabled) return
+    internal fun record(event: String) {
         lines.addLast(clock.format(java.util.Date()) + "  " + event)
         while (lines.size > MAX_LINES) lines.removeFirst()
     }

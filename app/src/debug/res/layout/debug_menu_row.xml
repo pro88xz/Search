@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The menu's "Share debug log" row. In src/debug, so it exists in debug
+     builds only. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    style="@style/MenuRow">
+    <ImageView android:layout_width="22dp" android:layout_height="22dp"
+        android:src="@drawable/menu_find" android:layout_marginEnd="18dp"
+        android:importantForAccessibility="no" />
+    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:text="Share debug log" android:textSize="16sp"
+        android:textColor="?android:attr/textColorPrimary" />
+</LinearLayout>

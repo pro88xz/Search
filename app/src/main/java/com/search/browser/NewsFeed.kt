@@ -455,7 +455,7 @@ object NewsFeed {
         // feed from an hour ago is better than it. Keep the old one and try
         // again shortly - unless the old one is itself stale or absent.
         if (fresh.size < MIN_FRESH && warm != null && now - cachedAt < STALE_MS) {
-            DebugLog.add("feed  thin refresh (" + fresh.size + " items), kept the cached feed")
+            DebugLog.add { "feed  thin refresh (" + fresh.size + " items), kept the cached feed" }
             retryAt = now + THIN_RETRY_MS
             return warm
         }
@@ -700,11 +700,10 @@ object NewsFeed {
             val k = gate(r.items, r.source, now)
             kept.addAll(k)
             parsedTotal += r.items.size
-            DebugLog.add(
+            DebugLog.add {
                 "feed  " + r.source.name + "  " +
                 (if (r.log.isEmpty()) "no request" else r.log) +
-                "  parsed " + r.items.size + "  kept " + k.size
-            )
+                "  parsed " + r.items.size + "  kept " + k.size }
         }
         kept.addAll(youtube)
 
@@ -713,12 +712,11 @@ object NewsFeed {
         val out = arrange(stories, now, last)
         if (out.isNotEmpty()) writeLead(mem, out[0], last, now)
 
-        DebugLog.add(
+        DebugLog.add {
             "feed  refresh: " + results.count { it.items.isNotEmpty() } + "/" + results.size +
             " sources, parsed " + parsedTotal + ", kept " + kept.size +
             ", stories " + stories.size + ", shown " + out.size +
-            (if (out.isEmpty()) "" else ", lead [" + out[0].category + "] " + out[0].source + ": " + out[0].title.take(60))
-        )
+            (if (out.isEmpty()) "" else ", lead [" + out[0].category + "] " + out[0].source + ": " + out[0].title.take(60)) }
         return out
     }
 
@@ -1898,7 +1896,7 @@ object NewsFeed {
     private fun fetchYouTube(context: Context, mem: Memory, now: Long): List<Item> {
         val key = BuildConfig.YOUTUBE_API_KEY.trim()
         if (key.isEmpty()) {
-            DebugLog.add("feed  YouTube  no API key in this build, not requested")
+            DebugLog.add { "feed  YouTube  no API key in this build, not requested" }
             return emptyList()
         }
 
@@ -1906,7 +1904,7 @@ object NewsFeed {
         val cachedBody = mem.get("yt_body")
         if (cachedBody != null && now - cachedAt < YT_TTL_MS) {
             val items = mapYouTube(cachedBody)
-            DebugLog.add("feed  YouTube  cached  parsed " + items.size)
+            DebugLog.add { "feed  YouTube  cached  parsed " + items.size }
             return items
         }
         // When YouTube cannot be asked, the last answer stands in for up to a
@@ -1916,7 +1914,7 @@ object NewsFeed {
 
         val backoff = mem.get("yt_backoff")?.toLongOrNull() ?: 0L
         if (now < backoff) {
-            DebugLog.add("feed  YouTube  backing off after a refusal")
+            DebugLog.add { "feed  YouTube  backing off after a refusal" }
             return lastGood()
         }
 
@@ -1936,7 +1934,7 @@ object NewsFeed {
             val code = conn.responseCode
             if (code != 200) {
                 if (code == 400 || code == 403 || code == 429) mem.put("yt_backoff", (now + YT_BACKOFF_MS).toString())
-                DebugLog.add("feed  YouTube  " + DebugLog.url(url) + "  " + code + "  parsed 0  kept 0")
+                DebugLog.add { "feed  YouTube  " + DebugLog.url(url) + "  " + code + "  parsed 0  kept 0" }
                 return lastGood()
             }
             var raw: InputStream = conn.inputStream
@@ -1947,10 +1945,10 @@ object NewsFeed {
                 mem.put("yt_body", body)
                 mem.put("yt_at", now.toString())
             }
-            DebugLog.add("feed  YouTube  " + DebugLog.url(url) + "  200  parsed " + items.size + "  kept " + items.size)
+            DebugLog.add { "feed  YouTube  " + DebugLog.url(url) + "  200  parsed " + items.size + "  kept " + items.size }
             return items
         } catch (e: Exception) {
-            DebugLog.add("feed  YouTube  " + DebugLog.url(url) + "  error " + e.javaClass.simpleName + "  parsed 0  kept 0")
+            DebugLog.add { "feed  YouTube  " + DebugLog.url(url) + "  error " + e.javaClass.simpleName + "  parsed 0  kept 0" }
             return lastGood()
         } finally {
             try { conn?.disconnect() } catch (e: Exception) { }
