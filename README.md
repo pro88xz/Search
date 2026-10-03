@@ -27,6 +27,7 @@ Search is a lightweight WebView-based browser focused on a clean home page, buil
 - **Multiple search engines** — Google, DuckDuckGo, Bing, Yahoo, Ecosia, Brave, Startpage, Yandex (with icons).
 - **Media controls** — background media detection and playback controls.
 - **Games** — a one-time welcome, then opens the web games section.
+- **Ads and consent** — one native AdMob card at the end of the home feed, never over a site, never in Night Owl, and none for supporters. At launch Google's User Messaging Platform (`AdConsent.kt`) shows the AdMob privacy message wherever one applies (GDPR for the EEA, UK and Switzerland; the US states message), and no ad is requested until it says ads may be. Users in those regions get Settings → Ad privacy choices, Google's form to change or withdraw consent or opt out of sale or sharing; everyone else never sees the row. Debug builds request Google's native test unit, never the live one.
 - **Support/Plus** — in-app purchase to support development (Play Billing).
 - **In-app updates** — via Play App Update.
 - **Material 3 settings** — grouped, card-based settings.
@@ -37,7 +38,7 @@ Search is a lightweight WebView-based browser focused on a clean home page, buil
 - **UI:** Android Views + XML layouts (native shell) + HTML/CSS/JS (`home.html`)
 - **Rendering:** Android WebView (`androidx.webkit`)
 - **Build:** Gradle (Kotlin DSL), AGP, R8 minification for release
-- **Key libraries:** AppCompat, Material, ConstraintLayout, RecyclerView, Activity-KTX 1.10.1, Play Billing 8.0.0, Play App Update 2.1.0, Play Services Code Scanner (QR), Media, Core Splashscreen.
+- **Key libraries:** AppCompat, Material, ConstraintLayout, RecyclerView, Activity-KTX 1.10.1, Play Billing 8.0.0, Play App Update 2.1.0, Google Mobile Ads 25.4.0, User Messaging Platform 3.1.0, Play Services Code Scanner (QR), Media, Core Splashscreen.
 
 ## Design tokens
 

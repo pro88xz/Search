@@ -3600,7 +3600,11 @@ class MainActivity : AppCompatActivity() {
 
     // ---------- Native feed ad ----------
 
-    private val feedAdUnit = "ca-app-pub-9121922395304175/6184493298"
+    // Debug builds ask for Google's native test unit. Live ads in a build
+    // being tested, and taps on them, are invalid traffic - the most common
+    // way an AdMob account gets suspended.
+    private val feedAdUnit = if (BuildConfig.DEBUG) "ca-app-pub-3940256099942544/2247696110"
+        else "ca-app-pub-9121922395304175/6184493298"
 
     private var nativeAd: com.google.android.gms.ads.nativead.NativeAd? = null
 
@@ -3624,13 +3628,22 @@ class MainActivity : AppCompatActivity() {
         binding.adSlot.blocked = {
             android.os.SystemClock.uptimeMillis() - lastWebScroll < 300L
         }
-        // Initialization does disk work and can take a moment, so it runs off the
-        // main thread per the SDK guide - otherwise it lands squarely in cold
-        // start. Loading is bounced back to the main thread, where it must run.
         // Supporters paid for the ads to be gone, so the SDK is never started
-        // rather than started and never asked. Initialisation makes network
-        // calls of its own; "gone" should mean gone.
+        // rather than started and never asked - and with no ads there is no
+        // consent to ask for. Initialisation makes network calls of its own;
+        // "gone" should mean gone.
         if (Settings.getBool(this, Settings.IS_SUPPORTER, false)) return
+        // Consent comes first: where the law requires an answer, the AdMob
+        // message is shown and the SDK is not even started until there is one.
+        AdConsent.gather(this) { allowed ->
+            if (allowed && !isFinishing && !isDestroyed) startAdsSdk()
+        }
+    }
+
+    // Initialization does disk work and can take a moment, so it runs off the
+    // main thread per the SDK guide - otherwise it lands squarely in cold
+    // start. Loading is bounced back to the main thread, where it must run.
+    private fun startAdsSdk() {
         Thread {
             com.google.android.gms.ads.MobileAds.initialize(this) {
                 runOnUiThread {
@@ -3661,6 +3674,10 @@ class MainActivity : AppCompatActivity() {
         // whether or not the card is ever shown.
         if (Settings.getBool(this, Settings.IS_SUPPORTER, false)) return
         if (!adsReady || adLoading) return
+        // Never without consent where it is required. Checked here as well as
+        // at startup because this is reached from other paths - leaving Night
+        // Owl - and the answer can change in Settings, Ad privacy choices.
+        if (!AdConsent.canRequestAds(this)) return
         // One ad per session. Without this, leaving Night Owl a second time
         // would ask again for a card that is already on screen.
         if (nativeAd != null) return
@@ -5352,8 +5369,9 @@ class MainActivity : AppCompatActivity() {
      */
     private fun maybeAskForReview() {
         if (isFinishing || isDestroyed) return
-        // Never during a private session, and never over something else.
-        if (nightOwl || searchMode || deckVisible) return
+        // Never during a private session, and never over something else -
+        // the ad consent message included.
+        if (nightOwl || searchMode || deckVisible || AdConsent.formShowing) return
         val current = tabs.activeTab?.url
         if (!(current == null || current == homePage)) return
         if (!Reviews.eligible(this)) return

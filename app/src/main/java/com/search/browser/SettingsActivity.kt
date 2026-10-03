@@ -263,6 +263,19 @@ class SettingsActivity : AppCompatActivity() {
             }
         findViewById<android.widget.TextView>(R.id.rowTerms)
             .setOnClickListener { openPage("file:///android_asset/terms.html") }
+
+        // Google's form to change or withdraw ad consent, or to opt out of the
+        // sale or sharing of personal information. Offered only to users UMP
+        // says need it, and not to supporters, who are shown no ads at all.
+        val adChoices = findViewById<android.widget.TextView>(R.id.rowAdChoices)
+        val offer = AdConsent.privacyChoicesRequired(this) &&
+            !Settings.getBool(this, Settings.IS_SUPPORTER, false)
+        adChoices.visibility = if (offer) android.view.View.VISIBLE else android.view.View.GONE
+        adChoices.setOnClickListener {
+            AdConsent.showPrivacyChoices(this) { error ->
+                if (error != null) toast("Couldn't open ad privacy choices. Check your connection and try again.")
+            }
+        }
     }
 
     private fun openPage(url: String, fallback: String? = null) {

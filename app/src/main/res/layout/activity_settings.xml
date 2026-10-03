@@ -117,6 +117,12 @@
                     android:text="Rate Search" android:drawableStart="@drawable/set_rate" />
                 <TextView android:id="@+id/rowPrivacy" style="@style/SettingsRow"
                     android:text="Privacy Policy" android:drawableStart="@drawable/set_privacy" />
+                <!-- Only where the law requires a way to change or withdraw ad
+                     consent: the EEA, the UK, Switzerland and the US states in
+                     the AdMob message. Shown from code; see AdConsent. -->
+                <TextView android:id="@+id/rowAdChoices" style="@style/SettingsRow"
+                    android:text="Ad privacy choices" android:drawableStart="@drawable/set_privacy"
+                    android:visibility="gone" />
                 <TextView android:id="@+id/rowTerms" style="@style/SettingsRow"
                     android:text="Terms of Use" android:drawableStart="@drawable/set_terms" />
             </LinearLayout>

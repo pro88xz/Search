@@ -97,6 +97,9 @@ dependencies {
     implementation("androidx.activity:activity-ktx:1.10.1")
     implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
     implementation("com.google.android.gms:play-services-ads:25.4.0")
+    // Google's consent SDK: the AdMob privacy messages, and the privacy
+    // options form behind Settings > Ad privacy choices.
+    implementation("com.google.android.ump:user-messaging-platform:3.1.0")
     implementation("androidx.core:core-splashscreen:1.0.1")
     implementation("androidx.media:media:1.7.0")
     implementation("com.google.android.play:app-update:2.1.0")
