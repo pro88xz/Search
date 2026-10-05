@@ -64,6 +64,23 @@ class TabManager(
      */
     fun trimLive(keep: Int) = enforceCap(keep.coerceAtLeast(1))
 
+    /**
+     * Freezes the background tabs [which] picks, and no others - for memory
+     * that is getting short but is not short yet, where freezing the heaviest
+     * pages first may be all it takes. The active tab is never frozen, nor a
+     * tab the Activity says must stay live.
+     */
+    fun freezeBackground(which: (Tab) -> Boolean) {
+        for (id in liveOrder.toList()) {
+            if (id == activeTab?.id) continue
+            val tab = tabs.find { it.id == id } ?: continue
+            if (!tab.isLive || !which(tab)) continue
+            if (canFreeze?.invoke(tab) == false) continue
+            liveOrder.remove(id)
+            onNeedFreeze?.invoke(tab)
+        }
+    }
+
     private fun enforceCap(limit: Int = maxLiveTabs) {
         // Least recently used first. The active tab is never frozen, and nor
         // is a tab the Activity says must stay live. Both keep their place in

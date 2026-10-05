@@ -436,6 +436,36 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // ---------- Load measurement ----------
+
+    /**
+     * Times the page that just finished loading in [tab] (PageMetrics): DNS,
+     * connection, TLS, time to first byte, first and largest paint, long
+     * tasks, bytes and page size, and from those its weight. The watchers
+     * start now; the reading is taken a little later, so a large picture or
+     * script arriving after the load event still counts. A newer load in the
+     * tab, or the tab losing its WebView, calls it off.
+     */
+    private fun measurePage(web: WebView, tab: Tab) {
+        val token = tab.loadToken
+        if (tab.measuredToken == token) return
+        tab.measuredToken = token
+        tab.metrics = null
+        web.evaluateJavascript(PageMetrics.observeJs, null)
+        uiHandler.postDelayed({
+            if (!isLiveWeb(web) || tab.webView !== web || tab.loadToken != token) {
+                return@postDelayed
+            }
+            web.evaluateJavascript(PageMetrics.collectJs) { result ->
+                val m = PageMetrics.parse(result)
+                if (m != null && tab.loadToken == token) {
+                    tab.metrics = m
+                    DebugLog.add { "tab#" + tab.id + " metrics " + m.summary() }
+                }
+            }
+        }, 2500L)
+    }
+
     /** Whether the page on screen is still loading. */
     private fun pageLoading(): Boolean = (activeWeb()?.progress ?: 100) in 1..99
 
@@ -2098,6 +2128,10 @@ class MainActivity : AppCompatActivity() {
                         t.failedUrl = null
                         if (shown == networkRetryUrl) networkRetryUrl = null
                     }
+                    // And how it loaded, measured from the page's own timing.
+                    if (view != null && shown != null &&
+                        (shown.startsWith("https://") || shown.startsWith("http://"))
+                    ) measurePage(view, t)
                     DebugLog.add { "tab#" + t.id + " finish " + DebugLog.url(url) }
                     if (t.openerId != null) watchReturnedPopup(t, url)
                     scheduleSessionSave()
@@ -3319,6 +3353,14 @@ class MainActivity : AppCompatActivity() {
         val low = level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW &&
             level < android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN
         val background = level >= android.content.ComponentCallbacks2.TRIM_MEMORY_BACKGROUND
+        // Memory getting short, but not short yet: only the background tabs
+        // holding heavy pages (PageMetrics) give theirs up. They cost the
+        // most to keep and are the likeliest to tip the renderer over.
+        if (level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_MODERATE) {
+            DebugLog.add { "memory trim level " + level + ": freezing heavy background tabs" }
+            tabs.freezeBackground { it.metrics?.weight == PageMetrics.Weight.HEAVY }
+            return
+        }
         if (!low && !background) return
         DebugLog.add { "memory trim level " + level + ": freezing background tabs" }
         tabs.trimLive(1)

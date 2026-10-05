@@ -67,6 +67,15 @@ class Tab(
      */
     var failedUrl: String? = null
 
+    /**
+     * How the page now in this tab loaded (PageMetrics), once measured; null
+     * before that, and for the app's own pages.
+     */
+    var metrics: PageMetrics? = null
+
+    /** The load ([loadToken]) the metrics were last taken for. */
+    var measuredToken = -1
+
     /** Names this tab's history file in the saved session; fixed for its life. */
     var diskKey: String = java.util.UUID.randomUUID().toString()
 
