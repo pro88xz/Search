@@ -306,11 +306,26 @@ class MainActivity : AppCompatActivity() {
                             web.evaluateJavascript(
                                 "window.__reloadFeedOnline && window.__reloadFeedOnline();", null)
                         }
+                        // And the page that could not load, or stopped loading,
+                        // goes again by itself - after a moment, so the new
+                        // network has settled before it is asked.
+                        uiHandler.removeCallbacks(recoverAfterReconnect)
+                        uiHandler.postDelayed(recoverAfterReconnect, 700L)
                     }
                 }
             }
             override fun onLost(network: android.net.Network) {
-                runOnUiThread { if (!hasNetwork()) wasOffline = true }
+                runOnUiThread {
+                    if (!hasNetwork()) {
+                        wasOffline = true
+                        // A page part-way in keeps what it has; say the rest
+                        // is not coming, and offer to try again.
+                        if (loadWatchTab != null && loadCommitted) {
+                            loadInterrupted = true
+                            updateLoadStatus()
+                        }
+                    }
+                }
             }
         }
         try {
@@ -326,6 +341,131 @@ class MainActivity : AppCompatActivity() {
                 as android.net.ConnectivityManager).unregisterNetworkCallback(cb)
         } catch (_: Exception) {}
         netCallback = null
+    }
+
+    // ---------- Connection states ----------
+    //
+    // A page that is slow to arrive says what it is waiting on, in a small
+    // pill over the top of the page, instead of leaving only the ring to turn:
+    // "Connecting to example.com..." while no answer has come, "Waiting for
+    // example.com..." once that has gone on for a few seconds, and "Loading
+    // content..." from the moment the page starts to arrive
+    // (onPageCommitVisible). Loads that finish within a second show nothing.
+    // If the network goes while a page is part-way in, the pill says so and
+    // offers Retry, and the page reloads by itself when the network is back.
+    // Only the tab on screen is watched.
+
+    private var loadWatchTab: Tab? = null
+    private var loadWatchHost = ""
+    private var loadStartedAt = 0L
+    private var loadCommitted = false
+    private var loadInterrupted = false
+    private val loadStatusTick = Runnable { updateLoadStatus() }
+
+    /** The address a load broken by a network change was last retried at. */
+    private var networkRetryUrl: String? = null
+
+    private fun beginLoadWatch(tab: Tab, url: String?) {
+        loadInterrupted = false
+        loadCommitted = false
+        loadStartedAt = android.os.SystemClock.uptimeMillis()
+        val web = url != null && (url.startsWith("http://") || url.startsWith("https://"))
+        loadWatchTab = if (web) tab else null
+        loadWatchHost = if (web) {
+            try { android.net.Uri.parse(url).host?.removePrefix("www.") } catch (e: Exception) { null }
+                ?: ""
+        } else ""
+        updateLoadStatus()
+    }
+
+    private fun commitLoadWatch(tab: Tab?) {
+        if (tab == null || tab !== loadWatchTab || loadCommitted) return
+        loadCommitted = true
+        updateLoadStatus()
+    }
+
+    /** The load is over. An interruption stays on show until it is retried. */
+    private fun endLoadWatch(tab: Tab?) {
+        if (tab == null || tab !== loadWatchTab || loadInterrupted) return
+        loadWatchTab = null
+        updateLoadStatus()
+    }
+
+    private fun updateLoadStatus() {
+        if (!::binding.isInitialized) return
+        uiHandler.removeCallbacks(loadStatusTick)
+        val pill = binding.loadStatus
+        val tab = loadWatchTab
+        if (tab == null || tab !== tabs.activeTab || pullRefreshing) {
+            pill.visibility = View.GONE
+            return
+        }
+        if (loadInterrupted) {
+            val accent = currentAccent()
+            val text = android.text.SpannableStringBuilder("Connection lost \u00B7 ")
+            val start = text.length
+            text.append("Retry")
+            text.setSpan(android.text.style.ForegroundColorSpan(accent),
+                start, text.length, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+            text.setSpan(android.text.style.StyleSpan(android.graphics.Typeface.BOLD),
+                start, text.length, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+            pill.text = text
+            pill.contentDescription = "Connection lost. Retry"
+            pill.setOnClickListener { retryInterruptedLoad() }
+            pill.visibility = View.VISIBLE
+            return
+        }
+        pill.setOnClickListener(null)
+        pill.isClickable = false
+        val elapsed = android.os.SystemClock.uptimeMillis() - loadStartedAt
+        if (elapsed < 1200L) {
+            pill.visibility = View.GONE
+            uiHandler.postDelayed(loadStatusTick, 1200L - elapsed)
+            return
+        }
+        val host = loadWatchHost.ifBlank { "the site" }
+        pill.text = when {
+            loadCommitted -> "Loading content\u2026"
+            elapsed < 4000L -> "Connecting to " + host + "\u2026"
+            else -> "Waiting for " + host + "\u2026"
+        }
+        pill.contentDescription = pill.text
+        pill.visibility = View.VISIBLE
+        if (!loadCommitted && elapsed < 4000L) {
+            uiHandler.postDelayed(loadStatusTick, 4000L - elapsed)
+        }
+    }
+
+    /** Whether the page on screen is still loading. */
+    private fun pageLoading(): Boolean = (activeWeb()?.progress ?: 100) in 1..99
+
+    private fun retryInterruptedLoad() {
+        loadInterrupted = false
+        val tab = loadWatchTab
+        loadWatchTab = null
+        updateLoadStatus()
+        val web = activeWeb() ?: return
+        if (tab === tabs.activeTab) web.reload()
+    }
+
+    private fun isErrorPage(url: String?): Boolean =
+        url != null && (url.startsWith("file:///android_asset/offline.html") ||
+            url.startsWith("file:///android_asset/error.html"))
+
+    /**
+     * Back online: the tab on screen tries again if it is showing the offline
+     * or "can't reach" page in place of a page, or had a load cut short.
+     */
+    private val recoverAfterReconnect = Runnable {
+        val tab = tabs.activeTab
+        val web = activeWeb()
+        if (tab != null && web != null && hasNetwork()) {
+            val failed = tab.failedUrl
+            when {
+                failed != null && isErrorPage(web.url) -> loadInto(web, failed)
+                loadInterrupted && loadWatchTab === tab -> retryInterruptedLoad()
+            }
+        }
     }
 
     private fun siteSettingsSignature(): String {
@@ -965,8 +1105,12 @@ class MainActivity : AppCompatActivity() {
         val keep = tabs.tabs.filter { !it.isPrivate && it.url != "about:blank" }
         val active = tabs.activeTab
         val entries = keep.map { t ->
+            // Standing in for a page that failed: saved as that page, without
+            // a history that would only lead back to the error page.
+            val failed = t.failedUrl?.takeIf { isErrorPage(t.url) }
+            if (failed != null) t.diskStateHash = 0
             var bytes: ByteArray? = null
-            if (full || t === active || t.diskStateHash == 0) {
+            if (failed == null && (full || t === active || t.diskStateHash == 0)) {
                 val bundle = t.webView?.let { w ->
                     try { Bundle().also { b -> w.saveState(b) } } catch (e: Exception) { null }
                 } ?: t.savedState
@@ -981,7 +1125,7 @@ class MainActivity : AppCompatActivity() {
             }
             SessionStore.Entry(
                 key = t.diskKey,
-                url = t.url,
+                url = failed ?: t.url,
                 title = t.title,
                 openerIndex = keep.indexOfFirst { it.id == t.openerId },
                 signIn = t.signIn,
@@ -1331,7 +1475,7 @@ class MainActivity : AppCompatActivity() {
         fun retry() {
             if (!privileged) return
             runOnUiThread {
-                val target = lastFailedUrl
+                val target = tabs.activeTab?.failedUrl ?: lastFailedUrl
                 if (target != null) loadInto(activeWeb(), target)
                 else activeWeb()?.reload()
             }
@@ -1769,6 +1913,26 @@ class MainActivity : AppCompatActivity() {
                     DebugLog.add { "tab#" + tabOf(view)?.id + " load error " +
                         error?.errorCode + " " + error?.description + " at " +
                         DebugLog.url(request.url?.toString()) }
+                    endLoadWatch(tabOf(view))
+                    // Wi-Fi to mobile data, or back, mid-load: Chromium drops the
+                    // request with ERR_NETWORK_CHANGED. That is not the site
+                    // failing, so it is tried once more on the new network
+                    // before any error page is shown.
+                    val failedNow = request.url?.toString()
+                    val desc = error?.description?.toString() ?: ""
+                    if (view != null && failedNow != null &&
+                        desc.contains("ERR_NETWORK_CHANGED") && networkRetryUrl != failedNow
+                    ) {
+                        networkRetryUrl = failedNow
+                        val w: WebView = view
+                        uiHandler.postDelayed({
+                            if (isLiveWeb(w) && hasNetwork()) loadInto(w, failedNow)
+                        }, 700L)
+                        return
+                    }
+                    // The real page, kept on the tab while an error page stands
+                    // in for it.
+                    tabOf(view)?.failedUrl = failedNow
                     // If this was our own https attempt, the site may simply
                     // not offer https. Say that, rather than reporting it as
                     // unreachable - which was both wrong and a dead end.
@@ -1818,6 +1982,13 @@ class MainActivity : AppCompatActivity() {
                 return true
             }
 
+            // The page has started to arrive: from here it is loading content,
+            // not waiting on the server.
+            override fun onPageCommitVisible(view: WebView?, url: String?) {
+                super.onPageCommitVisible(view, url)
+                commitLoadWatch(tabOf(view))
+            }
+
             override fun onReceivedHttpError(
                 view: WebView?,
                 request: android.webkit.WebResourceRequest?,
@@ -1864,6 +2035,7 @@ class MainActivity : AppCompatActivity() {
                 if (view == tabs.activeTab?.webView) {
                     if (!binding.urlBar.hasFocus()) binding.urlBar.setText(displayUrl(url))
                     refreshOmniboxVisibility(url)
+                    tabs.activeTab?.let { beginLoadWatch(it, url) }
                 }
                 // The tab this page is loading in, which is not necessarily
                 // the one on screen. This used to write to the active tab
@@ -1920,6 +2092,12 @@ class MainActivity : AppCompatActivity() {
                 tabOf(view)?.let { t ->
                     t.title = view?.title ?: t.title
                     t.url = shown ?: t.url
+                    endLoadWatch(t)
+                    // A real page made it, so there is no failure left to retry.
+                    if (shown != null && !shown.startsWith("file:///android_asset/")) {
+                        t.failedUrl = null
+                        if (shown == networkRetryUrl) networkRetryUrl = null
+                    }
                     DebugLog.add { "tab#" + t.id + " finish " + DebugLog.url(url) }
                     if (t.openerId != null) watchReturnedPopup(t, url)
                     scheduleSessionSave()
@@ -2080,6 +2258,7 @@ class MainActivity : AppCompatActivity() {
                     if (newProgress >= 100) endPullRefresh()
                     // The ring around the New tab button, not a line over the page.
                     binding.loadRing.setProgress(newProgress)
+                    if (newProgress >= 100) endLoadWatch(tabs.activeTab)
                 }
             }
             // Popups / window.open (e.g. "Sign in with Google" flows). Create a
@@ -3185,8 +3364,16 @@ class MainActivity : AppCompatActivity() {
         if (!shown) binding.webContainer.addView(tab.webView)
         tabs.setActive(tab)
         tabs.markLive(tab)
-        // The loading ring shows this tab's load, not the one just left.
+        // The loading ring shows this tab's load, not the one just left, and
+        // so does the connection pill.
         binding.loadRing.jumpTo(tab.webView?.progress ?: 0)
+        updateLoadStatus()
+        // A tab left on the offline page tries again when opened, if the
+        // network has come back since.
+        val failed = tab.failedUrl
+        if (failed != null && loadUrl == null && isErrorPage(tab.webView?.url) && hasNetwork()) {
+            uiHandler.post { if (tabs.activeTab === tab) loadInto(tab.webView, failed) }
+        }
         binding.urlBar.setText(displayUrl(tab.url))
         updateTabCount()
         refreshStar()
@@ -3637,6 +3824,14 @@ class MainActivity : AppCompatActivity() {
         // Reflect current Night Owl state in the menu label.
         (binding.menuNightOwl.getChildAt(1) as? android.widget.TextView)?.text =
             if (nightOwl) "Exit Night Owl" else "Night Owl"
+        // While the page is still loading, Reload is Stop, so a slow page can
+        // always be called off.
+        val stop = pageLoading()
+        binding.menuRefresh.setImageResource(
+            if (stop) R.drawable.menu_close else R.drawable.menu_refresh)
+        binding.menuRefresh.contentDescription = if (stop) "Stop" else "Reload"
+        androidx.core.view.ViewCompat.setTooltipText(
+            binding.menuRefresh, binding.menuRefresh.contentDescription)
         menuDragSpring.cancel()
         menuSpring.cancel()
         val panel = binding.menuPanel
@@ -5260,7 +5455,14 @@ class MainActivity : AppCompatActivity() {
         binding.menuForward.setOnClickListener {
             closeMenuNow(); activeWeb()?.takeIf { it.canGoForward() }?.goForward()
         }
-        binding.menuRefresh.setOnClickListener { closeMenuNow(); activeWeb()?.reload() }
+        binding.menuRefresh.setOnClickListener {
+            closeMenuNow()
+            val web = activeWeb()
+            // What the button showed when the menu opened, not what is true a
+            // moment later: a tap on Stop never turns into a reload.
+            if (binding.menuRefresh.contentDescription == "Stop") web?.stopLoading()
+            else web?.reload()
+        }
         listOf(binding.navHome, binding.navBookmarks, binding.navNewTab, binding.navMenu,
             binding.settingsBtn, binding.menuBack, binding.menuForward, binding.menuRefresh
         ).forEach { b ->

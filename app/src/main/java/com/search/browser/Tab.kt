@@ -60,6 +60,13 @@ class Tab(
      */
     var isPrivate = false
 
+    /**
+     * The address this tab failed to load, while it shows the offline or
+     * "can't reach" page in its place - so Try again, coming back online and
+     * the saved session all aim at the real page, not the error page.
+     */
+    var failedUrl: String? = null
+
     /** Names this tab's history file in the saved session; fixed for its life. */
     var diskKey: String = java.util.UUID.randomUUID().toString()
 

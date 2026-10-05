@@ -193,6 +193,30 @@
                 android:visibility="gone"
                 android:importantForAccessibility="no" />
 
+            <!-- How a slow load is going: "Connecting to example.com...",
+                 "Waiting for example.com...", "Loading content...", or
+                 "Connection lost" with Retry. Only for a web page taking over
+                 a second; placed and worded from code (MainActivity,
+                 updateLoadStatus). At the top of the page, clear of the ad
+                 card at the bottom. -->
+            <TextView
+                android:id="@+id/loadStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:layout_gravity="top|center_horizontal"
+                android:layout_marginTop="12dp"
+                android:maxWidth="300dp"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp"
+                android:gravity="center"
+                android:maxLines="1"
+                android:ellipsize="middle"
+                android:textSize="13sp"
+                android:textColor="?android:attr/textColorPrimary"
+                android:background="@drawable/load_status_bg"
+                android:elevation="4dp"
+                android:visibility="gone" />
+
             <!-- ===== Native feed ad. 14dp gutters match .wrap in home.html,
                  so the card lines up with the feed cards above it. Hidden
                  until one loads. Inside the page's own frame, so it is
