@@ -53,4 +53,25 @@ class Tab(
     var loadToken = 0
 
     val isLive: Boolean get() = webView != null
+
+    /**
+     * Opened in Night Owl. Such a tab is never written to disk with the
+     * session (SessionStore), even after Night Owl is turned off.
+     */
+    var isPrivate = false
+
+    /** Names this tab's history file in the saved session; fixed for its life. */
+    var diskKey: String = java.util.UUID.randomUUID().toString()
+
+    /**
+     * The hash of the history last written for this tab, so an unchanged one
+     * is not written again; 0 when none is on disk.
+     */
+    var diskStateHash = 0
+
+    /**
+     * A restored tab's history, still on disk. Read when the tab is first
+     * opened, so a launch only reads the history of the tab it shows.
+     */
+    var diskStateFile: java.io.File? = null
 }

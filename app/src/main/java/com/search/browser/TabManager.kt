@@ -28,10 +28,13 @@ class TabManager(
     var onNeedFreeze: ((Tab) -> Unit)? = null
     // canFreeze: false for a tab that has to stay live over the cap for now
     var canFreeze: ((Tab) -> Boolean)? = null
+    // newTabsPrivate: true while Night Owl is on, so the tab is marked private
+    var newTabsPrivate: (() -> Boolean)? = null
 
     fun createTab(url: String? = null): Tab {
         val tab = Tab(id = nextId++)
         url?.let { tab.url = it }
+        tab.isPrivate = newTabsPrivate?.invoke() == true
         tabs.add(tab)
         return tab
     }

@@ -796,6 +796,10 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         unregisterNetworkWatch()
+        // Being left - possibly for good, by a swipe from Recents. The tabs go
+        // to disk now, every live one's history included.
+        SessionStore.restoreSettled(this)
+        saveSession(full = true)
         // Persist cookies to disk so logins survive the app being killed
         // (common on low-RAM devices). Without this, sessions can be lost.
         //
@@ -845,7 +849,11 @@ class MainActivity : AppCompatActivity() {
             // What the sign-in recovery knows about a pop-up (Tab.kt).
             val openerSite: String? = null,
             val leftOpenerSite: Boolean = false,
-            val signIn: Boolean = false
+            val signIn: Boolean = false,
+            // The on-disk session's view of the tab (SessionStore, Tab.kt).
+            val isPrivate: Boolean = false,
+            val diskKey: String? = null,
+            val diskStateHash: Int = 0
         )
         var snapshot: List<Snap>? = null
         var activeIndex: Int = 0
@@ -866,7 +874,10 @@ class MainActivity : AppCompatActivity() {
                 openerIndex = list.indexOfFirst { it.id == t.openerId },
                 openerSite = t.openerSite,
                 leftOpenerSite = t.leftOpenerSite,
-                signIn = t.signIn
+                signIn = t.signIn,
+                isPrivate = t.isPrivate,
+                diskKey = t.diskKey,
+                diskStateHash = t.diskStateHash
             )
         }
         tabStore.activeIndex = list.indexOf(tabs.activeTab).coerceAtLeast(0)
@@ -886,6 +897,9 @@ class MainActivity : AppCompatActivity() {
                 t.openerSite = s.openerSite
                 t.leftOpenerSite = s.leftOpenerSite
                 t.signIn = s.signIn
+                t.isPrivate = s.isPrivate
+                s.diskKey?.let { t.diskKey = it }
+                t.diskStateHash = s.diskStateHash
                 // The opener counts its own restore as a load, so whether it
                 // moves on afterwards can no longer be told by counting.
                 t.openerLoadsAtOpen = -1
@@ -923,6 +937,98 @@ class MainActivity : AppCompatActivity() {
         outState.putStringArrayList("tab_urls", ArrayList(tabs.tabs.map { it.url }))
         outState.putStringArrayList("tab_titles", ArrayList(tabs.tabs.map { it.title }))
         outState.putInt("tab_active", tabStore.activeIndex)
+    }
+
+    // ---------- The session on disk ----------
+    //
+    // Tabs written to disk (SessionStore) shortly after every navigation and
+    // tab change, and at once whenever the app is left, so a crash or a swipe
+    // from Recents brings them back. Private tabs are never written.
+
+    private val sessionSave = Runnable { saveSession(full = false) }
+
+    /** A save a moment from now, so a burst of navigations is one write. */
+    private fun scheduleSessionSave() {
+        uiHandler.removeCallbacks(sessionSave)
+        uiHandler.postDelayed(sessionSave, 1500L)
+    }
+
+    /**
+     * Collects the session on the main thread, which WebView.saveState needs,
+     * and hands it to SessionStore to write. [full] refreshes every live tab's
+     * history - for when the app is being left. Otherwise only the tab on
+     * screen, which is the one that moved, plus any tab with none on disk yet.
+     */
+    private fun saveSession(full: Boolean) {
+        uiHandler.removeCallbacks(sessionSave)
+        if (!::binding.isInitialized) return
+        val keep = tabs.tabs.filter { !it.isPrivate && it.url != "about:blank" }
+        val active = tabs.activeTab
+        val entries = keep.map { t ->
+            var bytes: ByteArray? = null
+            if (full || t === active || t.diskStateHash == 0) {
+                val bundle = t.webView?.let { w ->
+                    try { Bundle().also { b -> w.saveState(b) } } catch (e: Exception) { null }
+                } ?: t.savedState
+                val b = bundle?.let { SessionStore.marshall(it) }
+                if (b != null && b.size <= SessionStore.MAX_STATE_BYTES) {
+                    val hash = b.contentHashCode()
+                    if (hash != t.diskStateHash) {
+                        bytes = b
+                        t.diskStateHash = hash
+                    }
+                }
+            }
+            SessionStore.Entry(
+                key = t.diskKey,
+                url = t.url,
+                title = t.title,
+                openerIndex = keep.indexOfFirst { it.id == t.openerId },
+                signIn = t.signIn,
+                hasState = t.diskStateHash != 0,
+                state = bytes
+            )
+        }
+        val activeIndex = keep.indexOf(active).let { if (it >= 0) it else keep.size - 1 }
+        SessionStore.save(this, entries, activeIndex.coerceAtLeast(0))
+    }
+
+    /**
+     * Brings back the tabs saved on disk, for a launch with nothing in memory
+     * or instance state. The tab that was on screen opens; the others wait,
+     * frozen, with their history still on disk until they are opened.
+     */
+    private fun restoreSessionFromDisk(): Boolean {
+        val session = SessionStore.load(this) ?: return false
+        val failed = SessionStore.beginRestore(this)
+        if (failed >= 2) {
+            // Two launches in a row died restoring this session. Start fresh.
+            SessionStore.clear(this)
+            SessionStore.restoreSettled(this)
+            return false
+        }
+        // One did: bring back the addresses, but not the saved histories.
+        val useState = session.stateUsable && failed == 0
+        session.tabs.forEach { s ->
+            val t = tabs.createTab(s.url)
+            t.title = s.title
+            t.signIn = s.signIn
+            t.diskKey = s.key
+            if (useState && s.hasState) {
+                t.diskStateFile = SessionStore.stateFile(this, s.key)
+                t.diskStateHash = 1
+            }
+            t.openerLoadsAtOpen = -1
+        }
+        session.tabs.forEachIndexed { i, s ->
+            if (s.openerIndex >= 0) {
+                tabs.tabs[i].openerId = tabs.tabs.getOrNull(s.openerIndex)?.id
+            }
+        }
+        openTab(tabs.tabs.getOrNull(session.active) ?: tabs.tabs.first())
+        // Settled once the app is up; onPause settles it sooner.
+        uiHandler.postDelayed({ SessionStore.restoreSettled(this) }, 8000L)
+        return true
     }
 
     private lateinit var binding: ActivityMainBinding
@@ -1063,6 +1169,8 @@ class MainActivity : AppCompatActivity() {
         tabs.maxLiveTabs = liveTabBudget()
         tabs.onNeedFreeze = { tab -> freezeTab(tab) }
         tabs.canFreeze = { tab -> canFreezeTab(tab) }
+        // Tabs opened in Night Owl are marked private, and never saved to disk.
+        tabs.newTabsPrivate = { nightOwl }
 
         setupUrlBar()
         setupToolbar()
@@ -1094,7 +1202,17 @@ class MainActivity : AppCompatActivity() {
         // A recreation must not re-handle the intent that launched the app, or
         // every rotation would reopen the link it was started with.
         val fresh = savedInstanceState == null && tabStore.snapshot == null
-        if (!restoreTabs(savedInstanceState)) {
+        if (!tabStore.snapshot.isNullOrEmpty() && restoreTabs(savedInstanceState)) {
+            // A recreation: the tabs came back from memory, history and all.
+        } else if (restoreSessionFromDisk()) {
+            // From disk: a cold start after a crash or a swipe from Recents,
+            // or Android having reclaimed the app - where the disk copy beats
+            // instance state, which holds addresses only. A link the app was
+            // launched with opens beside the tabs, as it would were it open.
+            if (fresh) urlFromIntent(intent)?.let { addNewTab(resolveInput(it)) }
+        } else if (restoreTabs(savedInstanceState)) {
+            // Instance state's addresses, when there is nothing on disk.
+        } else {
             // If launched by a tapped/shared link, open that; otherwise home.
             val startUrl = (if (fresh) urlFromIntent(intent) else null) ?: homePage
             val first = tabs.createTab(startUrl)
@@ -1731,6 +1849,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 if (view != null && view === activeWeb()) refreshNav()
+                scheduleSessionSave()
             }
 
             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
@@ -1803,6 +1922,7 @@ class MainActivity : AppCompatActivity() {
                     t.url = shown ?: t.url
                     DebugLog.add { "tab#" + t.id + " finish " + DebugLog.url(url) }
                     if (t.openerId != null) watchReturnedPopup(t, url)
+                    scheduleSessionSave()
                 }
                 // Record the visited page in history (never in Night Owl mode).
                 if (url != null && !nightOwl) {
@@ -3047,6 +3167,11 @@ class MainActivity : AppCompatActivity() {
             binding.webContainer.getChildAt(0) === tab.webView
         if (!shown) binding.webContainer.removeAllViews()
         if (tab.webView == null) {
+            // A tab restored from disk reads its history now, when first shown.
+            tab.diskStateFile?.let { f ->
+                if (tab.savedState == null) tab.savedState = SessionStore.readState(f)
+                tab.diskStateFile = null
+            }
             val web = newWebView()
             tab.webView = web
             val restored = tab.savedState?.let { web.restoreState(it) != null } ?: false
@@ -3069,6 +3194,7 @@ class MainActivity : AppCompatActivity() {
         // A sign-in pop-up that came back while another tab was showing is
         // only judged while on screen, so the watch starts again here.
         if (tab.openerId != null && returnedFromSignIn(tab)) watchReturnedPopup(tab, tab.url)
+        scheduleSessionSave()
     }
 
     /**
@@ -4208,6 +4334,7 @@ class MainActivity : AppCompatActivity() {
         }
         tabAdapter.notifyDataSetChanged()
         updateTabCount()
+        scheduleSessionSave()
     }
 
     // ---------- History ----------
