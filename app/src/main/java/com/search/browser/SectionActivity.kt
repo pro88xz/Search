@@ -258,6 +258,123 @@ class SectionActivity : AppCompatActivity() {
             Settings.SITE_BLOCK_IMAGES, false
         )
         addNote("Reload open pages for changes to take effect.")
+        addDivider()
+        val head = TextView(this)
+        head.text = "Permissions by site"
+        head.textSize = 16f
+        head.setTextColor(resolveTextColor())
+        head.setPadding(dp(20), dp(12), dp(20), dp(2))
+        content.addView(head)
+        addNote("What each site may use. Tap a site to change it.")
+        sitePermList = LinearLayout(this).also {
+            it.orientation = LinearLayout.VERTICAL
+            content.addView(it)
+        }
+        fillSitePermissions()
+    }
+
+    // ---- Permissions by site ----
+    //
+    // The permission center: every site that has asked for the camera and
+    // microphone or for location, with the answer it got, changeable here -
+    // Allow, Block, or Ask every time (forget the answer) - instead of only
+    // being able to reset every site at once.
+
+    private var sitePermList: LinearLayout? = null
+
+    private val permKinds = listOf(
+        SitePermissions.CAMERA_MIC to "Camera & microphone",
+        SitePermissions.LOCATION to "Location"
+    )
+
+    private fun answerLabel(a: Int?): String = when (a) {
+        SitePermissions.ALLOW -> "Allowed"
+        SitePermissions.DENY -> "Blocked"
+        else -> "Ask"
+    }
+
+    private fun fillSitePermissions() {
+        val list = sitePermList ?: return
+        list.removeAllViews()
+        val sites = SitePermissions.bySite(this)
+        if (sites.isEmpty()) {
+            val t = TextView(this)
+            t.text = "No site has asked yet."
+            t.textSize = 14f
+            t.setTextColor(0xFF8A8A8F.toInt())
+            t.setPadding(dp(20), dp(4), dp(20), dp(16))
+            list.addView(t)
+            return
+        }
+        sites.forEach { (origin, answers) ->
+            val row = LinearLayout(this)
+            row.orientation = LinearLayout.VERTICAL
+            row.setPadding(dp(20), dp(12), dp(20), dp(12))
+            row.isClickable = true
+            val outValue = android.util.TypedValue()
+            theme.resolveAttribute(android.R.attr.selectableItemBackground, outValue, true)
+            row.setBackgroundResource(outValue.resourceId)
+            row.setOnClickListener { editSite(origin) }
+
+            val t = TextView(this)
+            t.text = SitePermissions.hostOf(origin)
+            t.textSize = 16f
+            t.setTextColor(resolveTextColor())
+            val d = TextView(this)
+            d.text = permKinds.joinToString("   ") { (kind, name) ->
+                name + ": " + answerLabel(answers[kind])
+            }
+            d.textSize = 13f
+            d.setTextColor(0xFF8A8A8F.toInt())
+            d.setPadding(0, dp(2), 0, 0)
+            row.addView(t)
+            row.addView(d)
+            list.addView(row)
+        }
+    }
+
+    /** One site: pick a permission, then Allow, Block or Ask; or forget the site. */
+    private fun editSite(origin: String) {
+        val answers = SitePermissions.bySite(this)[origin] ?: emptyMap()
+        val items = permKinds.map { (kind, name) -> name + ": " + answerLabel(answers[kind]) } +
+            "Forget this site"
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(
+            this, R.style.Theme_Search_Dialog)
+            .setTitle(SitePermissions.hostOf(origin))
+            .setItems(items.toTypedArray()) { _, which ->
+                if (which >= permKinds.size) {
+                    permKinds.forEach { (kind, _) -> SitePermissions.forget(this, origin, kind) }
+                    fillSitePermissions()
+                } else {
+                    val (kind, name) = permKinds[which]
+                    chooseAnswer(origin, kind, name, answers[kind])
+                }
+            }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
+    private fun chooseAnswer(origin: String, kind: String, name: String, current: Int?) {
+        val choices = arrayOf("Allow", "Block", "Ask every time")
+        val checked = when (current) {
+            SitePermissions.ALLOW -> 0
+            SitePermissions.DENY -> 1
+            else -> 2
+        }
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(
+            this, R.style.Theme_Search_Dialog)
+            .setTitle(name + " \u00B7 " + SitePermissions.hostOf(origin))
+            .setSingleChoiceItems(choices, checked) { d, which ->
+                when (which) {
+                    0 -> SitePermissions.set(this, origin, kind, SitePermissions.ALLOW)
+                    1 -> SitePermissions.set(this, origin, kind, SitePermissions.DENY)
+                    else -> SitePermissions.forget(this, origin, kind)
+                }
+                d.dismiss()
+                fillSitePermissions()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     // ---- Browsing data section ----
