@@ -533,16 +533,36 @@ class MainActivity : AppCompatActivity() {
             val kind = item.optString("kind")
             val title = item.optString("title")
             val url = item.optString("url")
-            exitSearchMode()
-            if (kind == "web" || url.isBlank()) go(title) else loadInto(activeWeb(), url)
+            when (kind) {
+                // An open tab: go to it rather than loading the page again.
+                "tab" -> {
+                    exitSearchMode()
+                    val id = item.optLong("tabId", -1L)
+                    tabs.tabs.firstOrNull { it.id == id }?.let { openTab(it) }
+                }
+                // The copied link, read now if it was not read to offer it.
+                "clip" -> {
+                    val link = url.ifBlank { readClipboardText() ?: "" }
+                    exitSearchMode()
+                    if (link.isNotBlank()) go(link)
+                }
+                else -> {
+                    exitSearchMode()
+                    if (kind == "web" || url.isBlank()) go(title) else loadInto(activeWeb(), url)
+                }
+            }
         }, { item ->
             // The arrow loads a suggestion into the box instead of running it, so
             // a near-miss can be edited rather than retyped. The box's own text
             // watcher refreshes the list, so nothing is fetched twice here.
             if (suggestListMoving()) return@SuggestAdapter
-            val fill = item.optString("fill")
-                .ifBlank { item.optString("url") }
-                .ifBlank { item.optString("title") }
+            val fill = if (item.optString("kind") == "clip" && item.optString("url").isBlank()) {
+                readClipboardText() ?: ""
+            } else {
+                item.optString("fill")
+                    .ifBlank { item.optString("url") }
+                    .ifBlank { item.optString("title") }
+            }
             binding.urlBar.setText(fill)
             binding.urlBar.setSelection(fill.length)
         })
@@ -593,13 +613,89 @@ class MainActivity : AppCompatActivity() {
 
     private fun fetchSuggests(query: String) {
         val id = ++suggestSeq
+        val q = query.trim()
+        // Gathered here, on the main thread, where the tab list and the
+        // clipboard live: the link just copied, then open tabs that match.
+        val first = mutableListOf<JSONObject>()
+        copiedLinkSuggestion(q)?.let { first += it }
+        first += openTabSuggestions(q)
+        val firstUrls = first.map { it.optString("url") }.filter { it.isNotBlank() }.toSet()
         Thread {
-            val items = buildSuggestions(query.trim())
+            val items = first + buildSuggestions(q).filter { it.optString("url") !in firstUrls }
             runOnUiThread {
-                if (id == suggestSeq && searchMode) suggestAdapter?.submit(items, query.trim())
+                if (id == suggestSeq && searchMode) suggestAdapter?.submit(items, q)
             }
         }.start()
     }
+
+    /**
+     * Open tabs matching what is typed, offered as "Switch to tab" - so typing
+     * the name of a site already open goes to it instead of opening it twice.
+     * Night Owl's tabs and the others are never offered across the line.
+     */
+    private fun openTabSuggestions(q: String): List<JSONObject> {
+        if (q.length < 2) return emptyList()
+        val active = tabs.activeTab
+        return tabs.tabs.asSequence()
+            .filter { it !== active && it.isPrivate == nightOwl }
+            .filter { it.url.startsWith("http://") || it.url.startsWith("https://") }
+            .filter { matchesQuery(it.title, it.url, q) }
+            .take(2)
+            .map { t ->
+                JSONObject()
+                    .put("kind", "tab")
+                    .put("title", t.title.ifBlank { siteNameOf(t.url) })
+                    .put("url", t.url)
+                    .put("sub", "Switch to tab \u00B7 " + siteNameOf(t.url))
+                    .put("tabId", t.id)
+            }
+            .toList()
+    }
+
+    /**
+     * A link copied in the last ten minutes, offered when the box is empty.
+     *
+     * From Android 12 reading the clipboard shows a "pasted from your
+     * clipboard" notice, so there it is not read just to make the offer: the
+     * system's own description says whether it holds a link, and the link is
+     * only read when the suggestion is picked. Before Android 12 there is no
+     * notice, and the link itself is shown.
+     */
+    private fun copiedLinkSuggestion(q: String): JSONObject? {
+        if (q.isNotEmpty()) return null
+        return try {
+            val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            val desc = cm.primaryClipDescription ?: return null
+            if (!desc.hasMimeType("text/*")) return null
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val age = System.currentTimeMillis() - desc.timestamp
+                if (age < 0 || age > 10 * 60 * 1000L) return null
+            }
+            val offer = JSONObject().put("kind", "clip").put("title", "Link you copied")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val isLink = desc.classificationStatus ==
+                    android.content.ClipDescription.CLASSIFICATION_COMPLETE &&
+                    desc.getConfidenceScore(android.view.textclassifier.TextClassifier.TYPE_URL) >= 0.5f
+                if (!isLink) return null
+                offer.put("url", "").put("sub", "Tap to open it")
+            } else {
+                val text = readClipboardText() ?: return null
+                if (!looksLikeLink(text)) return null
+                offer.put("url", text).put("sub", text)
+            }
+        } catch (e: Exception) { null }
+    }
+
+    /** The clipboard's text, or null. */
+    private fun readClipboardText(): String? = try {
+        val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        cm.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)
+            ?.coerceToText(this)?.toString()?.trim()?.takeIf { it.isNotEmpty() && it.length < 2048 }
+    } catch (e: Exception) { null }
+
+    private fun looksLikeLink(text: String): Boolean =
+        !text.contains(' ') && !text.contains('\n') &&
+            android.util.Patterns.WEB_URL.matcher(text).matches()
 
     /**
      * While searching, the field becomes a card sitting above a stack of cards

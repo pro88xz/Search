@@ -147,6 +147,8 @@ class SuggestAdapter(
         h.icon.setImageResource(when (item.optString("kind")) {
             "history" -> R.drawable.ic_sug_history
             "bookmark" -> R.drawable.ic_sug_bookmark
+            // An open tab: picking it switches to that tab.
+            "tab" -> R.drawable.nav_tabs
             else -> R.drawable.ic_sug_web
         })
 
