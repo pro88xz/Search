@@ -58,6 +58,7 @@ Internal working notes. Not user-facing. Keep updated as state changes.
 
 ## Build & ship checklist
 
+0. Work through `QUALITY_GATE.md` (test matrix, compatibility, performance, reliability, staged rollout).
 1. Bump `versionCode` in `app/build.gradle.kts` (must exceed last uploaded).
 2. `./gradlew assembleRelease` — R8 smoke test (catches minification breaks).
 3. Install & smoke-test JS-bridge features (feed, share, games, QR scanner, downloads).
