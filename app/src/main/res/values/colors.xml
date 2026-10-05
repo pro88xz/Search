@@ -5,6 +5,9 @@
          so the rows had nothing to sit on and the whole sheet read as one
          flat plane. -->
     <color name="searchPageBg">#F5F5F5</color>
+    <!-- Search mode: the band across the top, status bar to field, which the
+         grey sheet of suggestions curves up into. -->
+    <color name="searchTopBg">#FFFFFF</color>
     <color name="appBackground">#F5F5F5</color>
     <!-- Search suggestions -->
     <color name="sugMuted">#8A8A8A</color>

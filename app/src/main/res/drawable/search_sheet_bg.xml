@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Search mode's curve: the sheet of suggestions rises under the top band
+     with rounded top corners and a soft shade along its top edge.
+
+     The corners are filled here, by the first layer, in the band's colour,
+     rather than left see-through. Behind them is the page, which can be any
+     colour, so leaving them open is what made the curve come and go. Night
+     Owl recolours that layer to its wash (MainActivity.applySearchBand). -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/sheetBand"
+        android:gravity="top"
+        android:height="@dimen/radius_lg">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/searchTopBg" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/searchPageBg" />
+            <corners
+                android:topLeftRadius="@dimen/radius_lg"
+                android:topRightRadius="@dimen/radius_lg"
+                android:bottomLeftRadius="0dp"
+                android:bottomRightRadius="0dp" />
+        </shape>
+    </item>
+    <item
+        android:gravity="top"
+        android:height="28dp">
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="270"
+                android:startColor="#0D000000"
+                android:endColor="#00000000" />
+            <corners
+                android:topLeftRadius="@dimen/radius_lg"
+                android:topRightRadius="@dimen/radius_lg"
+                android:bottomLeftRadius="0dp"
+                android:bottomRightRadius="0dp" />
+        </shape>
+    </item>
+</layer-list>

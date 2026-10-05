@@ -176,19 +176,6 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent" />
 
-            <!-- Over the top edge of the page rather than above it, so a load
-                 starting or finishing never moves the page by its height, and
-                 it stays at the top of the page while the bars are away. -->
-            <ProgressBar
-                android:id="@+id/progressBar"
-                style="?android:attr/progressBarStyleHorizontal"
-                android:layout_width="match_parent"
-                android:layout_height="3dp"
-                android:layout_gravity="top"
-                android:max="100"
-                android:progress="0"
-                android:visibility="gone" />
-
             <!-- Pull to refresh: comes down from the top of the page with the
                  pull, placed and turned from code (MainActivity, pullBy). -->
             <ImageView
@@ -352,6 +339,20 @@
                     android:tint="#FFFFFF"
                     android:importantForAccessibility="no" />
             </FrameLayout>
+
+            <!-- Page loading: a ring in the owl's purples around the New tab
+                 button, in place of the line that ran across the top of the
+                 page. Centred on the button (22dp + 29dp = 15dp + 36dp down),
+                 and a step above it so the button's shadow never covers it.
+                 It takes no touches; taps go through to the button. -->
+            <com.search.browser.LoadRingView
+                android:id="@+id/loadRing"
+                android:layout_width="72dp"
+                android:layout_height="72dp"
+                android:layout_gravity="top|center_horizontal"
+                android:layout_marginTop="15dp"
+                android:elevation="7dp"
+                android:importantForAccessibility="no" />
         </com.search.browser.SwipeBar>
     </LinearLayout>
 
@@ -483,7 +484,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_marginTop="58dp"
-        android:background="@color/searchPageBg"
+        android:background="@drawable/search_sheet_bg"
         android:clickable="true"
         android:focusable="false"
         android:visibility="gone">

@@ -462,6 +462,11 @@ class MainActivity : AppCompatActivity() {
         val bottom = binding.urlBar.paddingBottom
         binding.urlBar.setBackgroundResource(
             if (pill) R.drawable.urlbar_search_bg else R.drawable.urlbar_bg)
+        // The pill's edge is drawn over the whole frame, after the mic, scan
+        // and clear buttons, so nothing inside the pill can cut its curve.
+        binding.urlBarContainer.foreground =
+            if (pill) androidx.core.content.ContextCompat.getDrawable(
+                this, R.drawable.urlbar_search_outline) else null
         binding.urlBar.setTextSize(
             android.util.TypedValue.COMPLEX_UNIT_SP,
             when (mode) {
@@ -611,6 +616,106 @@ class MainActivity : AppCompatActivity() {
             }.start()
     }
 
+    // ---- Search mode's curve ----
+    //
+    // While searching, the top of the screen - status bar to field - turns to
+    // a band of searchTopBg, and the grey sheet of suggestions curves up into
+    // it (search_sheet_bg). The band is the top bar's and the root's own
+    // background, so it reaches up behind the status bar; what they were
+    // painted before is kept and put back exactly when search closes. Night
+    // Owl keeps its wash: that is the band then, and nothing is repainted.
+
+    private var searchBandAnim: android.animation.ValueAnimator? = null
+    private var searchBandNow = 0
+    // The top bar's and the root's colours from before search; null while
+    // search has not taken them over.
+    private var bandSavedTop: Int? = null
+    private var bandSavedRoot: Int? = null
+    private var bandRootWasBare = false
+
+    private fun baseBackground(): Int {
+        val tv = android.util.TypedValue()
+        theme.resolveAttribute(android.R.attr.colorBackground, tv, true)
+        return tv.data
+    }
+
+    private fun paintSearchBand(color: Int) {
+        searchBandNow = color
+        binding.topBar.setBackgroundColor(color)
+        binding.rootView.setBackgroundColor(color)
+    }
+
+    /** The sheet's curved corners are filled in the band's colour. */
+    private fun setSheetCornerColor(color: Int) {
+        val layers = binding.suggestBackdrop.background?.mutate() as?
+            android.graphics.drawable.LayerDrawable ?: return
+        (layers.findDrawableByLayerId(R.id.sheetBand) as?
+            android.graphics.drawable.GradientDrawable)?.setColor(color)
+    }
+
+    private fun applySearchBand(on: Boolean) {
+        searchBandAnim?.cancel()
+        searchBandAnim = null
+        val topBg = binding.topBar.background
+        val rootBg = binding.rootView.background
+        if (on) {
+            if (nightOwl) {
+                (topBg as? android.graphics.drawable.ColorDrawable)?.let {
+                    setSheetCornerColor(it.color)
+                }
+                return
+            }
+            val band = getColor(R.color.searchTopBg)
+            setSheetCornerColor(band)
+            if (bandSavedTop == null) {
+                // Only plain colours are taken over; anything else is left be.
+                val top = topBg as? android.graphics.drawable.ColorDrawable ?: return
+                if (rootBg != null && rootBg !is android.graphics.drawable.ColorDrawable) return
+                bandSavedTop = top.color
+                bandRootWasBare = rootBg == null
+                bandSavedRoot = rootBg?.color
+                searchBandNow = baseBackground()
+            }
+            animateSearchBand(searchBandNow, band, 220L, null)
+        } else {
+            val savedTop = bandSavedTop ?: return
+            val restore: () -> Unit = {
+                bandSavedTop = null
+                if (nightOwl) {
+                    // Night Owl came on meanwhile: its wash, not the old colours.
+                    applyNightOwlChrome(true)
+                } else {
+                    binding.topBar.setBackgroundColor(savedTop)
+                    val savedRoot = bandSavedRoot
+                    if (bandRootWasBare || savedRoot == null) {
+                        binding.rootView.background = null
+                    } else {
+                        binding.rootView.setBackgroundColor(savedRoot)
+                    }
+                }
+            }
+            if (nightOwl) { restore(); return }
+            animateSearchBand(searchBandNow, baseBackground(), 200L, restore)
+        }
+    }
+
+    private fun animateSearchBand(from: Int, to: Int, duration: Long, end: (() -> Unit)?) {
+        val anim = android.animation.ValueAnimator.ofArgb(from, to)
+        anim.duration = duration
+        anim.interpolator = searchEase
+        anim.addUpdateListener { paintSearchBand(it.animatedValue as Int) }
+        anim.addListener(object : android.animation.AnimatorListenerAdapter() {
+            private var cancelled = false
+            override fun onAnimationCancel(a: android.animation.Animator) { cancelled = true }
+            override fun onAnimationEnd(a: android.animation.Animator) {
+                if (searchBandAnim === a) searchBandAnim = null
+                if (!cancelled) end?.invoke()
+            }
+        })
+        searchBandAnim = anim
+        anim.start()
+    }
+
     private fun enterSearchMode() {
         if (searchMode) return
         searchMode = true
@@ -651,6 +756,7 @@ class MainActivity : AppCompatActivity() {
         imm.showSoftInput(binding.urlBar, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
         binding.suggestBackdrop.visibility = View.VISIBLE
         androidx.core.view.ViewCompat.requestApplyInsets(binding.root)
+        applySearchBand(true)
         animateSearchIn(fieldWasShowing)
         fetchSuggests(binding.urlBar.text.toString())
     }
@@ -660,6 +766,7 @@ class MainActivity : AppCompatActivity() {
         searchMode = false
         styleUrlBarForSearch(false)
         animateSearchOut()
+        applySearchBand(false)
         // Nothing transient left on the field: applyHomeCompact below may
         // animate it, and it should start from rest rather than from whatever
         // the entrance left behind.
@@ -1943,9 +2050,8 @@ class MainActivity : AppCompatActivity() {
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
                 if (view == tabs.activeTab?.webView) {
                     if (newProgress >= 100) endPullRefresh()
-                    binding.progressBar.progress = newProgress
-                    binding.progressBar.visibility =
-                        if (newProgress in 1..99) View.VISIBLE else View.GONE
+                    // The ring around the New tab button, not a line over the page.
+                    binding.loadRing.setProgress(newProgress)
                 }
             }
             // Popups / window.open (e.g. "Sign in with Google" flows). Create a
@@ -3046,6 +3152,8 @@ class MainActivity : AppCompatActivity() {
         if (!shown) binding.webContainer.addView(tab.webView)
         tabs.setActive(tab)
         tabs.markLive(tab)
+        // The loading ring shows this tab's load, not the one just left.
+        binding.loadRing.jumpTo(tab.webView?.progress ?: 0)
         binding.urlBar.setText(displayUrl(tab.url))
         updateTabCount()
         refreshStar()
@@ -3497,12 +3605,31 @@ class MainActivity : AppCompatActivity() {
         (binding.menuNightOwl.getChildAt(1) as? android.widget.TextView)?.text =
             if (nightOwl) "Exit Night Owl" else "Night Owl"
         menuDragSpring.cancel()
-        binding.menuPanel.translationY = 0f
+        menuSpring.cancel()
+        val panel = binding.menuPanel
+        panel.translationY = 0f
         binding.menuScrim.background?.mutate()?.alpha = 255
-        binding.menuScrim.visibility = View.VISIBLE
         placeMenu(0f)
+        binding.menuScrim.visibility = View.VISIBLE
+        // Drawn once into a layer while it grows, so each frame only scales
+        // and fades that picture of the menu rather than redrawing its rows.
+        panel.setLayerType(View.LAYER_TYPE_HARDWARE, null)
         // Once laid out, so it grows from the corner where the Menu button is.
-        binding.menuPanel.post { menuSpring.animate(0f, 1f) }
+        // Before the first draw rather than on a post: a post can run ahead
+        // of the layout, when the panel has no size to take its corner from.
+        val seq = ++menuOpenSeq
+        androidx.core.view.OneShotPreDrawListener.add(panel) {
+            if (seq == menuOpenSeq && binding.menuScrim.visibility == View.VISIBLE) {
+                placeMenu(0f)
+                menuSpring.animate(0f, 1f) { endMenuLayer() }
+            }
+        }
+    }
+
+    private var menuOpenSeq = 0
+
+    private fun endMenuLayer() {
+        binding.menuPanel.setLayerType(View.LAYER_TYPE_NONE, null)
     }
 
     // ---------- Menu motion ----------
@@ -3526,7 +3653,12 @@ class MainActivity : AppCompatActivity() {
         val scale = 0.86f + 0.14f * p
         panel.scaleX = scale
         panel.scaleY = scale
-        binding.menuScrim.alpha = p.coerceIn(0f, 1f)
+        // The panel and the dimming fade separately. Fading the whole scrim
+        // made every frame redraw the screen-sized dimming with the menu in it
+        // off screen first; this way each is one cheap step.
+        val a = p.coerceIn(0f, 1f)
+        panel.alpha = a
+        binding.menuScrim.background?.alpha = (255f * a).toInt()
     }
 
     private fun dragMenu(y: Float) {
@@ -3560,6 +3692,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun closeMenu() {
         menuDragSpring.cancel()
+        // An open still waiting for its first frame must not start after this.
+        menuOpenSeq++
         menuSpring.animate(menuSpring.value, 0f) { closeMenuNow() }
     }
 
@@ -3568,6 +3702,8 @@ class MainActivity : AppCompatActivity() {
     private fun closeMenuNow() {
         menuSpring.cancel()
         menuDragSpring.cancel()
+        menuOpenSeq++
+        endMenuLayer()
         binding.menuScrim.visibility = View.GONE
         binding.menuScrim.alpha = 1f
         binding.menuScrim.background?.alpha = 255
@@ -4085,10 +4221,30 @@ class MainActivity : AppCompatActivity() {
         deckVisible = true
         androidx.core.view.ViewCompat.requestApplyInsets(binding.root)
         tabAdapter.notifyDataSetChanged()
-        binding.tabDeck.visibility = View.VISIBLE
+        val deck = binding.tabDeck
         // It rises into place on a spring rather than appearing.
+        deckSpring.cancel()
         placeDeck(0f)
-        deckSpring.animate(0f, 1f)
+        deck.visibility = View.VISIBLE
+        // Smooth from the first frame. The deck - tabs, bookmarks, history or
+        // downloads - is drawn once into a layer, and each frame of the rise
+        // only fades and moves that layer instead of redrawing every card.
+        deck.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+        // And the spring waits until the list is laid out and bound. Started
+        // in the same frame, that work landed on the spring's first step,
+        // which then jumped ahead to catch up - the stutter at the start.
+        val seq = ++deckOpenSeq
+        androidx.core.view.OneShotPreDrawListener.add(deck) {
+            if (seq == deckOpenSeq && deckVisible) {
+                deckSpring.animate(0f, 1f) { endDeckLayer() }
+            }
+        }
+    }
+
+    private var deckOpenSeq = 0
+
+    private fun endDeckLayer() {
+        binding.tabDeck.setLayerType(View.LAYER_TYPE_NONE, null)
     }
 
     private val deckSpring by lazy {
@@ -4107,6 +4263,8 @@ class MainActivity : AppCompatActivity() {
     private fun closeDeck() {
         hideKeyboard()
         deckSpring.cancel()
+        deckOpenSeq++
+        endDeckLayer()
         placeDeck(1f)
         binding.tabDeck.visibility = View.GONE
         deckVisible = false
