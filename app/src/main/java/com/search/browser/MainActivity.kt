@@ -4836,6 +4836,7 @@ class MainActivity : AppCompatActivity() {
      * PDF in a PDF reader and an mp4 in a video player.
      */
     private fun openDownloadedFile(d: Downloads.Item) {
+        if (d.canRetry) { confirmRetryDownload(d); return }
         if (!d.isComplete) {
             toast(if (d.isRunning) "Still downloading\u2026" else "File not available")
             return
@@ -4852,6 +4853,65 @@ class MainActivity : AppCompatActivity() {
         if (startViewer(uri, mime)) return
         if (!mime.equals("*/*", true) && startViewer(uri, "*/*")) return
         toast("No app on this phone opens this kind of file")
+    }
+
+    /** A failed download: offer to fetch it again. */
+    private fun confirmRetryDownload(d: Downloads.Item) {
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(
+            this, R.style.Theme_Search_Dialog)
+            .setTitle("Download failed")
+            .setMessage(d.title.ifBlank { "This file" } + " didn't finish. Try it again?")
+            .setPositiveButton("Retry") { _, _ -> retryDownload(d) }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    /**
+     * Fetches a failed download again from where it came from, under the same
+     * name and type, through the same free-space check as a new one and with
+     * the site's cookies, so a file behind a sign-in still arrives. The failed
+     * record goes once the new one is queued; it holds no file.
+     */
+    private fun retryDownload(d: Downloads.Item) {
+        val url = d.remoteUri ?: return
+        val free = freeDownloadSpace()
+        if (downloadRoom(d.bytesTotal, free) == ROOM_NONE) {
+            showNoRoomForDownload(d.title, d.bytesTotal, free)
+            return
+        }
+        try {
+            val request = android.app.DownloadManager.Request(android.net.Uri.parse(url))
+            val name = d.title.ifBlank { "download" }
+            request.setMimeType(downloadMime(name, d.mimeType))
+            request.addRequestHeader("User-Agent",
+                android.webkit.WebSettings.getDefaultUserAgent(this))
+            request.setTitle(name)
+            request.setDescription("Downloading\u2026")
+            request.setNotificationVisibility(
+                android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+            request.setDestinationInExternalPublicDir(
+                android.os.Environment.DIRECTORY_DOWNLOADS, name)
+            val dm = getSystemService(DOWNLOAD_SERVICE) as android.app.DownloadManager
+            cookieIo.execute {
+                val ok = try {
+                    android.webkit.CookieManager.getInstance().getCookie(url)?.let {
+                        if (it.isNotBlank()) request.addRequestHeader("Cookie", it)
+                    }
+                    dm.enqueue(request)
+                    try { dm.remove(d.id) } catch (e: Exception) {}
+                    true
+                } catch (e: Exception) { false }
+                runOnUiThread {
+                    HealthStats.count(this,
+                        if (ok) HealthStats.DOWNLOADS else HealthStats.DOWNLOAD_FAILURES)
+                    toast(if (ok) "Downloading " + name else "Download failed")
+                    if (ok) refreshDownloads()
+                }
+            }
+        } catch (e: Exception) {
+            HealthStats.count(this, HealthStats.DOWNLOAD_FAILURES)
+            toast("Download failed")
+        }
     }
 
     private fun startViewer(uri: android.net.Uri, mime: String): Boolean = try {

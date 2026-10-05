@@ -33,7 +33,22 @@ class DownloadsAdapter(
         holder.title.text = d.title
         holder.sub.text = when {
             d.isComplete -> Downloads.formatSize(d.bytesTotal).ifEmpty { "Completed" }
-            d.isFailed -> "Failed"
+            d.isFailed -> if (d.canRetry) "Failed \u00B7 tap to retry" else "Failed"
+            // Paused is DownloadManager waiting on something, and resuming by
+            // itself once it has it; saying what reads better than a stuck %.
+            d.isPaused -> {
+                val pct = if (d.bytesTotal > 0)
+                    (d.bytesSoFar * 100 / d.bytesTotal).toInt() else 0
+                when (d.reason) {
+                    android.app.DownloadManager.PAUSED_WAITING_FOR_NETWORK ->
+                        "Waiting for network\u2026 $pct%"
+                    android.app.DownloadManager.PAUSED_QUEUED_FOR_WIFI ->
+                        "Waiting for Wi-Fi\u2026 $pct%"
+                    android.app.DownloadManager.PAUSED_WAITING_TO_RETRY ->
+                        "Retrying soon\u2026 $pct%"
+                    else -> "Paused $pct%"
+                }
+            }
             d.isRunning -> {
                 val pct = if (d.bytesTotal > 0)
                     (d.bytesSoFar * 100 / d.bytesTotal).toInt() else 0

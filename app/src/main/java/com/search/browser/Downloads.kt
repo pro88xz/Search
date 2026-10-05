@@ -21,13 +21,22 @@ object Downloads {
          * False for a file this app wrote itself. DownloadManager holds no
          * record of those, so neither its uri nor its removal go through it.
          */
-        val managed: Boolean = true
+        val managed: Boolean = true,
+        /** Where it was fetched from, so a failed one can be tried again. */
+        val remoteUri: String? = null,
+        /** DownloadManager.COLUMN_REASON: why it is paused, or why it failed. */
+        val reason: Int = 0
     ) {
         val isComplete get() = status == DownloadManager.STATUS_SUCCESSFUL
         val isFailed get() = status == DownloadManager.STATUS_FAILED
         val isRunning get() = status == DownloadManager.STATUS_RUNNING ||
                               status == DownloadManager.STATUS_PENDING ||
                               status == DownloadManager.STATUS_PAUSED
+        val isPaused get() = status == DownloadManager.STATUS_PAUSED
+
+        /** A failed DownloadManager download with an address to fetch again. */
+        val canRetry get() = isFailed && managed &&
+            (remoteUri?.startsWith("http://") == true || remoteUri?.startsWith("https://") == true)
     }
 
     fun load(c: Context): List<Item> {
@@ -47,6 +56,8 @@ object Downloads {
                 val mimeI = cur.getColumnIndex(DownloadManager.COLUMN_MEDIA_TYPE)
                 val timeI = cur.getColumnIndex(
                     DownloadManager.COLUMN_LAST_MODIFIED_TIMESTAMP)
+                val remoteI = cur.getColumnIndex(DownloadManager.COLUMN_URI)
+                val reasonI = cur.getColumnIndex(DownloadManager.COLUMN_REASON)
                 while (cur.moveToNext()) {
                     out.add(
                         Item(
@@ -57,7 +68,9 @@ object Downloads {
                             bytesSoFar = if (soFarI >= 0) cur.getLong(soFarI) else 0,
                             localUri = if (uriI >= 0) cur.getString(uriI) else null,
                             mimeType = if (mimeI >= 0) cur.getString(mimeI) else null,
-                            time = if (timeI >= 0) cur.getLong(timeI) else 0L
+                            time = if (timeI >= 0) cur.getLong(timeI) else 0L,
+                            remoteUri = if (remoteI >= 0) cur.getString(remoteI) else null,
+                            reason = if (reasonI >= 0) cur.getInt(reasonI) else 0
                         )
                     )
                 }
