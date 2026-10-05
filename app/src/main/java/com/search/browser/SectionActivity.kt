@@ -18,6 +18,7 @@ class SectionActivity : AppCompatActivity() {
         const val SEC_ACCESSIBILITY = "accessibility"
         const val SEC_CUSTOMIZE = "customize"
         const val SEC_SITE = "site"
+        const val SEC_DATA = "data"
     }
 
     private lateinit var content: LinearLayout
@@ -45,6 +46,7 @@ class SectionActivity : AppCompatActivity() {
             SEC_ACCESSIBILITY -> { title.text = "Accessibility"; buildAccessibility() }
             SEC_CUSTOMIZE -> { title.text = "Customize your Search"; buildCustomize() }
             SEC_SITE -> { title.text = "Site settings"; buildSite() }
+            SEC_DATA -> { title.text = "Browsing data"; buildData() }
             else -> { title.text = "Coming soon"; addNote("This section is coming soon.") }
         }
     }
@@ -254,6 +256,170 @@ class SectionActivity : AppCompatActivity() {
             Settings.SITE_BLOCK_IMAGES, false
         )
         addNote("Reload open pages for changes to take effect.")
+    }
+
+    // ---- Browsing data section ----
+    //
+    // Each kind of stored data with its size, cleared on its own, so freeing
+    // space does not have to mean signing out of every site. Clearing it all
+    // at once is still the last row.
+
+    private val dataIo = java.util.concurrent.Executors.newSingleThreadExecutor()
+    private val sizeViews = mutableMapOf<String, TextView>()
+
+    private fun buildData() {
+        addNote("What Search keeps on this phone. Tap one to clear just that.")
+        addDataRow("cache", "Cached files",
+            "Copies of pages and pictures, so sites open faster. Safe to clear; " +
+                "sites just load a little slower the first time.") {
+            confirmClear("Clear cached files?",
+                "Pages and pictures will be fetched again when you next visit.") {
+                BrowsingData.clearCache(this)
+            }
+        }
+        addDataRow("cookies", "Cookies",
+            "What sites remember about you, including that you're signed in.") {
+            confirmClear("Clear cookies?",
+                "You'll be signed out of websites.") {
+                BrowsingData.clearCookies()
+            }
+        }
+        addDataRow("site", "Site storage",
+            "Data sites save on your phone: offline copies, settings, app data.") {
+            confirmClear("Clear site storage?",
+                "Sites lose what they saved here, such as offline data and settings.") {
+                BrowsingData.clearSiteStorage()
+            }
+        }
+        addDataRow("history", "History",
+            "The pages you've visited, and their icons.") {
+            confirmClear("Clear history?",
+                "Your list of visited pages will be emptied. Bookmarks are kept.") {
+                BrowsingData.clearHistory(this)
+            }
+        }
+        addDataRow("downloads", "Downloads",
+            "Files you've downloaded. Open Downloads to choose which to remove.") {
+            // Never deleted from here: downloads are the user's files, so this
+            // opens the Downloads screen, where each one is removed by choice.
+            startActivity(android.content.Intent(this, MainActivity::class.java)
+                .putExtra(BrowsingData.EXTRA_OPEN, BrowsingData.OPEN_DOWNLOADS)
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP))
+            finish()
+        }
+        addDivider()
+        addAction("Clear all browsing data",
+            "History, cookies, cached files and site data. Bookmarks and " +
+                "downloads are kept.") {
+            com.google.android.material.dialog.MaterialAlertDialogBuilder(
+                this, R.style.Theme_Search_Dialog)
+                .setTitle("Clear browsing data")
+                .setMessage(
+                    "This clears your history, cookies, cached files and site " +
+                    "data. You'll be signed out of websites.\n\nBookmarks are kept."
+                )
+                .setPositiveButton("Clear") { _, _ ->
+                    BrowsingData.clearAll(this)
+                    android.widget.Toast.makeText(this, "Browsing data cleared",
+                        android.widget.Toast.LENGTH_SHORT).show()
+                    refreshSizes(600L)
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
+        refreshSizes(0L)
+    }
+
+    private fun confirmClear(title: String, message: String, clear: () -> Unit) {
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(
+            this, R.style.Theme_Search_Dialog)
+            .setTitle(title)
+            .setMessage(message)
+            .setPositiveButton("Clear") { _, _ ->
+                clear()
+                android.widget.Toast.makeText(this, "Cleared",
+                    android.widget.Toast.LENGTH_SHORT).show()
+                // WebView clears on its own threads; measure once it has.
+                refreshSizes(600L)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    /** Re-reads every size off the main thread, after [delayMs]. */
+    private fun refreshSizes(delayMs: Long) {
+        sizeViews.values.forEach { if (delayMs > 0) it.text = "\u2026" }
+        content.postDelayed({
+            dataIo.execute {
+                val sizes = BrowsingData.measure(this)
+                runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+                    fun show(key: String, bytes: Long) {
+                        sizeViews[key]?.text =
+                            android.text.format.Formatter.formatShortFileSize(this, bytes)
+                    }
+                    show("cache", sizes.cache)
+                    show("cookies", sizes.cookies)
+                    show("site", sizes.siteStorage)
+                    show("history", sizes.history)
+                    show("downloads", sizes.downloads)
+                }
+            }
+        }, delayMs)
+    }
+
+    override fun onDestroy() {
+        dataIo.shutdown()
+        super.onDestroy()
+    }
+
+    /** A tappable row with its size on the right, read in later. */
+    private fun addDataRow(key: String, title: String, desc: String, onTap: () -> Unit) {
+        val row = LinearLayout(this)
+        row.orientation = LinearLayout.HORIZONTAL
+        row.gravity = Gravity.CENTER_VERTICAL
+        row.setPadding(dp(20), dp(14), dp(20), dp(14))
+        row.isClickable = true
+        row.setOnClickListener { onTap() }
+        val outValue = android.util.TypedValue()
+        theme.resolveAttribute(android.R.attr.selectableItemBackground, outValue, true)
+        row.setBackgroundResource(outValue.resourceId)
+
+        val textCol = LinearLayout(this)
+        textCol.orientation = LinearLayout.VERTICAL
+        textCol.layoutParams = LinearLayout.LayoutParams(
+            0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+
+        val t = TextView(this)
+        t.text = title
+        t.textSize = 16f
+        t.setTextColor(resolveTextColor())
+
+        val d = TextView(this)
+        d.text = desc
+        d.textSize = 13f
+        d.setTextColor(0xFF8A8A8F.toInt())
+        d.setPadding(0, dp(2), dp(12), 0)
+
+        textCol.addView(t)
+        textCol.addView(d)
+
+        val size = TextView(this)
+        size.text = "\u2026"
+        size.textSize = 14f
+        size.setTextColor(resolveTextColor())
+        sizeViews[key] = size
+
+        row.addView(textCol)
+        row.addView(size)
+        content.addView(row)
+
+        val div = TextView(this)
+        div.layoutParams = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(1))
+        div.setBackgroundColor(0x22808080)
+        content.addView(div)
     }
 
     // ---- UI builders ----

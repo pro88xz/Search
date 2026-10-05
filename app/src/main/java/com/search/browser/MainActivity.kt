@@ -1402,6 +1402,12 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        // Settings > Browsing data > Downloads.
+        if (intent.getStringExtra(BrowsingData.EXTRA_OPEN) == BrowsingData.OPEN_DOWNLOADS) {
+            leaveTransientUi()
+            openDownloads()
+            return
+        }
         val incoming = urlFromIntent(intent)
         if (incoming != null) {
             // Straight into the new tab. This used to open home and then

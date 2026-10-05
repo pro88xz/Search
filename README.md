@@ -26,6 +26,7 @@ Search is a lightweight WebView-based browser focused on a clean home page, buil
 - **Pull to refresh** — pulling a web page past its top brings a refresh disc down with rubber-band resistance; past the trigger it spins and reloads. Driven by the page's own overscroll (`BrowserWebView`), so a list scrolling inside a page never triggers it.
 - **Menu** — opens on a spring from the Menu button, drawn from a layer while it grows, and can be dragged down to close (`DragPanel`).
 - **History & Bookmarks** — with friendly empty states.
+- **Browsing data** — Settings → Clear browsing data opens a screen listing what Search keeps on the phone with its size: cached files, cookies, site storage (local storage, IndexedDB, service workers), history, and downloads (`BrowsingData`). Each is cleared on its own, so freeing space does not have to sign you out of every site; "Clear all browsing data" is still the last row and does exactly what the old button did. Downloads are never deleted from there: the row opens the Downloads screen.
 - **In-app Downloads** — view, open, and remove downloads without leaving the app.
 - **Ad blocking** — built-in.
 - **Night Owl** — private browsing mode with a dedicated empty state.

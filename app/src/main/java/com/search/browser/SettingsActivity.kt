@@ -123,56 +123,15 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Opens Browsing data, where each kind of stored data is shown with its
+     * size and cleared on its own; clearing everything at once is still there,
+     * at the bottom (BrowsingData.clearAll, the same job this row used to do).
+     */
     private fun setupClearData() {
         findViewById<TextView>(R.id.clearData).setOnClickListener {
-            com.google.android.material.dialog.MaterialAlertDialogBuilder(
-                this, R.style.Theme_Search_Dialog)
-                .setTitle("Clear browsing data")
-                // The row said "Clear browsing data" and the code cleared the
-                // history list and nothing else - cookies, cached files and
-                // site data all stayed. Anyone handing the phone on, or
-                // clearing up after themselves, was told a job had been done
-                // that had not been. Now it does the whole job, and says which
-                // job it is doing before it starts.
-                .setMessage(
-                    "This clears your history, cookies, cached files and site " +
-                    "data. You'll be signed out of websites.\n\nBookmarks are kept."
-                )
-                .setPositiveButton("Clear") { _, _ ->
-                    clearBrowsingData()
-                    Toast.makeText(this, "Browsing data cleared", Toast.LENGTH_SHORT).show()
-                }
-                .setNegativeButton("Cancel", null)
-                .show()
+            openSection(SectionActivity.SEC_DATA)
         }
-    }
-
-    /** Everything a browser accumulates about where you have been. */
-    private fun clearBrowsingData() {
-        History.clear(this)
-        getSharedPreferences("favicon_cache", MODE_PRIVATE).edit().clear().apply()
-        try {
-            val cookies = android.webkit.CookieManager.getInstance()
-            cookies.removeAllCookies(null)
-            cookies.flush()
-        } catch (e: Exception) { /* nothing stored */ }
-        try {
-            android.webkit.WebStorage.getInstance().deleteAllData()
-        } catch (e: Exception) { /* nothing stored */ }
-        try {
-            // clearFormData is deprecated and does nothing: WebView stopped
-            // storing form data in API 26. Saved http-auth credentials are
-            // still real, so that one stays.
-            android.webkit.WebViewDatabase.getInstance(this)
-                .clearHttpAuthUsernamePassword()
-        } catch (e: Exception) { /* nothing stored */ }
-        try {
-            // clearCache empties the cache shared by the whole app, so a
-            // throwaway instance reaches it from here, where no page is open.
-            val w = android.webkit.WebView(this)
-            w.clearCache(true)
-            w.destroy()
-        } catch (e: Exception) { /* WebView unavailable */ }
     }
 
     private fun setupAbout() {
