@@ -95,6 +95,9 @@
                 <TextView android:id="@+id/clearData" style="@style/SettingsRow"
                     android:text="Clear browsing data" android:textColor="#E53935"
                     android:drawableStart="@drawable/set_clear" />
+                <TextView android:id="@+id/rowHealth" style="@style/SettingsRow"
+                    android:text="Performance &amp; health"
+                    android:drawableStart="@drawable/set_health" />
             </LinearLayout>
 
             <!-- About -->

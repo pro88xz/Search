@@ -365,6 +365,9 @@ class MainActivity : AppCompatActivity() {
     /** The address a load broken by a network change was last retried at. */
     private var networkRetryUrl: String? = null
 
+    /** When a renderer was last lost; one loss reaches every tab it served. */
+    private var lastRendererLoss = 0L
+
     private fun beginLoadWatch(tab: Tab, url: String?) {
         loadInterrupted = false
         loadCommitted = false
@@ -461,6 +464,7 @@ class MainActivity : AppCompatActivity() {
                 if (m != null && tab.loadToken == token) {
                     tab.metrics = m
                     DebugLog.add { "tab#" + tab.id + " metrics " + m.summary() }
+                    HealthStats.page(this, m)
                 }
             }
         }, 2500L)
@@ -912,6 +916,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        HealthStats.sessionStarted(this)
         registerNetworkWatch()
         // If a flexible update finished downloading while away, offer to install it.
         appUpdateManager.appUpdateInfo.addOnSuccessListener { info ->
@@ -970,6 +975,7 @@ class MainActivity : AppCompatActivity() {
         // to disk now, every live one's history included.
         SessionStore.restoreSettled(this)
         saveSession(full = true)
+        HealthStats.sessionEnded(this)
         // Persist cookies to disk so logins survive the app being killed
         // (common on low-RAM devices). Without this, sessions can be lost.
         //
@@ -1249,6 +1255,22 @@ class MainActivity : AppCompatActivity() {
         }
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        // Health numbers (HealthStats): the last session's ending, Android's
+        // exit records, the crash counter; and how long until the browser is
+        // ready to draw - from the process starting on a cold start, from
+        // here on a recreation.
+        HealthStats.onLaunch(this)
+        val createdAt = android.os.SystemClock.uptimeMillis()
+        val coldStart = HealthStats.claimColdStart()
+        androidx.core.view.OneShotPreDrawListener.add(binding.root) {
+            val now = android.os.SystemClock.uptimeMillis()
+            val sinceProcess = now - android.os.Process.getStartUptimeMillis()
+            if (coldStart && sinceProcess < 30_000L) {
+                HealthStats.time(this, HealthStats.COLD_START, sinceProcess.toDouble())
+            } else {
+                HealthStats.time(this, HealthStats.WARM_START, (now - createdAt).toDouble())
+            }
+        }
         // Edge-to-edge (mandatory on Android 16 / SDK 36): pad the root by the
         // system-bar insets so the top bar sits below the status bar and content
         // stays above the navigation bar.
@@ -1969,6 +1991,7 @@ class MainActivity : AppCompatActivity() {
                     // The real page, kept on the tab while an error page stands
                     // in for it.
                     tabOf(view)?.failedUrl = failedNow
+                    HealthStats.count(this@MainActivity, HealthStats.PAGE_ERRORS)
                     // If this was our own https attempt, the site may simply
                     // not offer https. Say that, rather than reporting it as
                     // unreachable - which was both wrong and a dead end.
@@ -2014,6 +2037,13 @@ class MainActivity : AppCompatActivity() {
             ): Boolean {
                 DebugLog.add { "renderer gone for tab#" + tabOf(view)?.id +
                     " crashed=" + (detail?.didCrash() ?: "?") }
+                val now = android.os.SystemClock.uptimeMillis()
+                if (now - lastRendererLoss > 2000L) {
+                    lastRendererLoss = now
+                    HealthStats.count(this@MainActivity,
+                        if (detail?.didCrash() == true) HealthStats.RENDERER_CRASH
+                        else HealthStats.RENDERER_KILLED)
+                }
                 if (view != null) replaceDeadWebView(view)
                 return true
             }
@@ -2034,6 +2064,9 @@ class MainActivity : AppCompatActivity() {
                 if (request?.isForMainFrame == true) {
                     DebugLog.add { "tab#" + tabOf(view)?.id + " HTTP " +
                         errorResponse?.statusCode + " at " + DebugLog.url(request.url?.toString()) }
+                    if ((errorResponse?.statusCode ?: 0) >= 400) {
+                        HealthStats.count(this@MainActivity, HealthStats.HTTP_ERRORS)
+                    }
                 }
             }
 
@@ -2137,7 +2170,10 @@ class MainActivity : AppCompatActivity() {
                     // And how it loaded, measured from the page's own timing.
                     if (view != null && shown != null &&
                         (shown.startsWith("https://") || shown.startsWith("http://"))
-                    ) measurePage(view, t)
+                    ) {
+                        HealthStats.count(this@MainActivity, HealthStats.PAGE_LOADS)
+                        measurePage(view, t)
+                    }
                     DebugLog.add { "tab#" + t.id + " finish " + DebugLog.url(url) }
                     if (t.openerId != null) watchReturnedPopup(t, url)
                     scheduleSessionSave()
@@ -3301,6 +3337,7 @@ class MainActivity : AppCompatActivity() {
         DebugLog.add { "page not responding in tab#" + tabOf(view)?.id }
         if (view !== activeWeb() || waitingOnHang || unresponsiveDialog != null) return
         if (isFinishing || isDestroyed) return
+        HealthStats.count(this, HealthStats.PAGE_UNRESPONSIVE)
         unresponsiveDialog = android.app.AlertDialog.Builder(this)
             .setTitle("This page isn't responding")
             .setMessage("You can wait for it, or close it and reload. Reloading restarts every open page.")
@@ -3363,11 +3400,13 @@ class MainActivity : AppCompatActivity() {
         // holding heavy pages (PageMetrics) give theirs up. They cost the
         // most to keep and are the likeliest to tip the renderer over.
         if (level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_MODERATE) {
+            HealthStats.count(this, HealthStats.MEMORY_MODERATE)
             DebugLog.add { "memory trim level " + level + ": freezing heavy background tabs" }
             tabs.freezeBackground { it.metrics?.weight == PageMetrics.Weight.HEAVY }
             return
         }
         if (!low && !background) return
+        if (low) HealthStats.count(this, HealthStats.MEMORY_LOW)
         DebugLog.add { "memory trim level " + level + ": freezing background tabs" }
         tabs.trimLive(1)
     }
@@ -5146,6 +5185,8 @@ class MainActivity : AppCompatActivity() {
                     true
                 } catch (e: Exception) { false }
                 runOnUiThread {
+                    HealthStats.count(this,
+                        if (ok) HealthStats.DOWNLOADS else HealthStats.DOWNLOAD_FAILURES)
                     android.widget.Toast.makeText(
                         this,
                         if (ok) "Downloading $fileName" else "Download failed",
@@ -5154,6 +5195,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         } catch (e: Exception) {
+            HealthStats.count(this, HealthStats.DOWNLOAD_FAILURES)
             android.widget.Toast.makeText(
                 this, "Download failed", android.widget.Toast.LENGTH_SHORT
             ).show()
@@ -5161,7 +5203,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun downloadFailed() {
-        runOnUiThread { toast("Couldn't save the file") }
+        runOnUiThread {
+            HealthStats.count(this, HealthStats.DOWNLOAD_FAILURES)
+            toast("Couldn't save the file")
+        }
     }
 
     /**

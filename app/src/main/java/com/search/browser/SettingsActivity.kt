@@ -132,6 +132,9 @@ class SettingsActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.clearData).setOnClickListener {
             openSection(SectionActivity.SEC_DATA)
         }
+        findViewById<TextView>(R.id.rowHealth).setOnClickListener {
+            openSection(SectionActivity.SEC_HEALTH)
+        }
     }
 
     private fun setupAbout() {

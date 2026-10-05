@@ -19,6 +19,7 @@ class SectionActivity : AppCompatActivity() {
         const val SEC_CUSTOMIZE = "customize"
         const val SEC_SITE = "site"
         const val SEC_DATA = "data"
+        const val SEC_HEALTH = "health"
     }
 
     private lateinit var content: LinearLayout
@@ -47,6 +48,7 @@ class SectionActivity : AppCompatActivity() {
             SEC_CUSTOMIZE -> { title.text = "Customize your Search"; buildCustomize() }
             SEC_SITE -> { title.text = "Site settings"; buildSite() }
             SEC_DATA -> { title.text = "Browsing data"; buildData() }
+            SEC_HEALTH -> { title.text = "Performance & health"; buildHealth() }
             else -> { title.text = "Coming soon"; addNote("This section is coming soon.") }
         }
     }
@@ -420,6 +422,48 @@ class SectionActivity : AppCompatActivity() {
             ViewGroup.LayoutParams.MATCH_PARENT, dp(1))
         div.setBackgroundColor(0x22808080)
         content.addView(div)
+    }
+
+    // ---- Performance & health section ----
+
+    /**
+     * How this version is doing next to the one before it (HealthStats).
+     * Counted on this phone only; Share is the one way it leaves.
+     */
+    private fun buildHealth() {
+        addNote("How Search is running on this phone, version by version. Only " +
+            "counts and timings are kept - never the sites you visit - and " +
+            "nothing is sent anywhere unless you share it.")
+        val versions = HealthStats.versions(this)
+        if (versions.isEmpty()) addNote("Nothing measured yet.")
+        versions.forEachIndexed { i, v ->
+            addDivider()
+            val head = TextView(this)
+            head.text = "Version " + v.name + (if (i == 0) " (this version)" else "")
+            head.textSize = 16f
+            head.setTextColor(resolveTextColor())
+            head.setPadding(dp(20), dp(12), dp(20), dp(6))
+            content.addView(head)
+            HealthStats.lines(v).forEach { line ->
+                val t = TextView(this)
+                t.text = line
+                t.textSize = 13f
+                t.setTextColor(0xFF8A8A8F.toInt())
+                t.setPadding(dp(20), dp(2), dp(20), dp(2))
+                content.addView(t)
+            }
+        }
+        addDivider()
+        addAction("Share report",
+            "Send these numbers, with your Android version and phone model.") {
+            val send = android.content.Intent(android.content.Intent.ACTION_SEND)
+                .setType("text/plain")
+                .putExtra(android.content.Intent.EXTRA_SUBJECT, "Search performance & health")
+                .putExtra(android.content.Intent.EXTRA_TEXT, HealthStats.report(this))
+            try {
+                startActivity(android.content.Intent.createChooser(send, "Share report"))
+            } catch (e: Exception) { /* nothing can share text */ }
+        }
     }
 
     // ---- UI builders ----
