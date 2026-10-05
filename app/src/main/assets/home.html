@@ -92,13 +92,13 @@
     display:flex; align-items:center;
     padding:0 6px 0 18px;
     background:var(--surface); border-radius:28px; cursor:text;
-    box-shadow:0 0 0 1px var(--hair), 0 2px 6px rgba(22,20,40,0.04),
+    box-shadow:0 2px 6px rgba(22,20,40,0.04),
                0 14px 30px -12px rgba(var(--accent-rgb),0.34);
     transition:transform .55s var(--ease-spring);
     -webkit-user-select:none; user-select:none;
   }
   @media (prefers-color-scheme: dark) {
-    .field { box-shadow:0 0 0 1px var(--hair), 0 14px 30px -14px rgba(var(--accent-rgb),0.45); }
+    .field { box-shadow:0 14px 30px -14px rgba(var(--accent-rgb),0.45); }
   }
   /* The ring is its own layer so pressing animates opacity and scale only. */
   .field::before {

@@ -2,7 +2,9 @@
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/rootView"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:clipChildren="false"
+    android:clipToPadding="false">
 
     <!-- ===== Browser layer. clipChildren off so the bottom bar's raised
          New tab button can draw over the bottom of the page. ===== -->
@@ -13,7 +15,7 @@
         android:clipChildren="false">
 
         <!-- ===== TOP navigation bar ===== -->
-        <LinearLayout
+        <com.search.browser.TopSheetBar
             android:id="@+id/topBar"
             android:layout_width="match_parent"
             android:layout_height="58dp"
@@ -22,7 +24,8 @@
             android:clipChildren="false"
             android:paddingStart="@dimen/space_xxs"
             android:paddingEnd="@dimen/space_xxs"
-            android:background="?android:attr/colorBackground">
+            android:elevation="1dp"
+            android:outlineProvider="none">
 
             <FrameLayout
                 android:id="@+id/owlWrap"
@@ -152,7 +155,7 @@
                 android:scaleType="center"
                 android:contentDescription="Settings" />
 
-        </LinearLayout>
+        </com.search.browser.TopSheetBar>
 
         <FrameLayout
             android:id="@+id/webArea"

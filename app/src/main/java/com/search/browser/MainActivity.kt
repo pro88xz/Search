@@ -1087,6 +1087,9 @@ class MainActivity : AppCompatActivity() {
             // own menus and players - for every tap on the address bar.
             val pageTyping = typing && !searchMode && !deckVisible
             v.setPadding(bars.left, bars.top, bars.right, if (pageTyping) ime else bars.bottom)
+            // How far the top sheet paints above itself to fill the status bar
+            // strip. Layout is untouched - only the surface goes up.
+            binding.topBar.topInset = bars.top
             // And the bottom bar steps out of the way while typing into the
             // page, as it does in Chrome, so the keyboard does not cost the
             // page its height twice.
@@ -3559,7 +3562,6 @@ class MainActivity : AppCompatActivity() {
         // FrameLayout so its tab badge can be positioned against it, and the
         // old expression would quietly resolve to that 48dp wrapper - putting
         // Night Owl's wash on a box behind the owl instead of on the bar.
-        val topBar: View = binding.topBar
         val controller = androidx.core.view.WindowInsetsControllerCompat(window, window.decorView)
 
         // Detect dark mode.
@@ -3570,13 +3572,13 @@ class MainActivity : AppCompatActivity() {
         if (on) {
             // Subtle purple wash matched to the theme.
             val tint = if (isDark) "#231A3A" else "#ECE7F5"
-            topBar.setBackgroundColor(android.graphics.Color.parseColor(tint))
+            binding.topBar.surfaceColor = android.graphics.Color.parseColor(tint)
             binding.navSheet.surfaceColor = android.graphics.Color.parseColor(tint)
             binding.rootView.setBackgroundColor(android.graphics.Color.parseColor(tint))
             // Icons: light icons on dark tint, dark icons on light tint.
             controller.isAppearanceLightStatusBars = !isDark
         } else {
-            topBar.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            binding.topBar.surfaceColor = getColor(R.color.barSurface)
             val tv = android.util.TypedValue()
             theme.resolveAttribute(android.R.attr.colorBackground, tv, true)
             binding.rootView.setBackgroundColor(tv.data)
