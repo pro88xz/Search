@@ -351,6 +351,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupSuggestOverlay() {
         if (suggestBasePad < 0) suggestBasePad = binding.suggestBackdrop.paddingBottom
+        // The grey sheet under the search field takes up the top bar's curve,
+        // which it would otherwise cover - see SearchSheetDrawable.
+        binding.suggestBackdrop.background = SearchSheetDrawable(this)
         suggestAdapter = SuggestAdapter(emptyList(), { item ->
             if (suggestListMoving()) return@SuggestAdapter
             val kind = item.optString("kind")
@@ -616,106 +619,6 @@ class MainActivity : AppCompatActivity() {
             }.start()
     }
 
-    // ---- Search mode's curve ----
-    //
-    // While searching, the top of the screen - status bar to field - turns to
-    // a band of searchTopBg, and the grey sheet of suggestions curves up into
-    // it (search_sheet_bg). The band is the top bar's and the root's own
-    // background, so it reaches up behind the status bar; what they were
-    // painted before is kept and put back exactly when search closes. Night
-    // Owl keeps its wash: that is the band then, and nothing is repainted.
-
-    private var searchBandAnim: android.animation.ValueAnimator? = null
-    private var searchBandNow = 0
-    // The top bar's and the root's colours from before search; null while
-    // search has not taken them over.
-    private var bandSavedTop: Int? = null
-    private var bandSavedRoot: Int? = null
-    private var bandRootWasBare = false
-
-    private fun baseBackground(): Int {
-        val tv = android.util.TypedValue()
-        theme.resolveAttribute(android.R.attr.colorBackground, tv, true)
-        return tv.data
-    }
-
-    private fun paintSearchBand(color: Int) {
-        searchBandNow = color
-        binding.topBar.setBackgroundColor(color)
-        binding.rootView.setBackgroundColor(color)
-    }
-
-    /** The sheet's curved corners are filled in the band's colour. */
-    private fun setSheetCornerColor(color: Int) {
-        val layers = binding.suggestBackdrop.background?.mutate() as?
-            android.graphics.drawable.LayerDrawable ?: return
-        (layers.findDrawableByLayerId(R.id.sheetBand) as?
-            android.graphics.drawable.GradientDrawable)?.setColor(color)
-    }
-
-    private fun applySearchBand(on: Boolean) {
-        searchBandAnim?.cancel()
-        searchBandAnim = null
-        val topBg = binding.topBar.background
-        val rootBg = binding.rootView.background
-        if (on) {
-            if (nightOwl) {
-                (topBg as? android.graphics.drawable.ColorDrawable)?.let {
-                    setSheetCornerColor(it.color)
-                }
-                return
-            }
-            val band = getColor(R.color.searchTopBg)
-            setSheetCornerColor(band)
-            if (bandSavedTop == null) {
-                // Only plain colours are taken over; anything else is left be.
-                val top = topBg as? android.graphics.drawable.ColorDrawable ?: return
-                if (rootBg != null && rootBg !is android.graphics.drawable.ColorDrawable) return
-                bandSavedTop = top.color
-                bandRootWasBare = rootBg == null
-                bandSavedRoot = rootBg?.color
-                searchBandNow = baseBackground()
-            }
-            animateSearchBand(searchBandNow, band, 220L, null)
-        } else {
-            val savedTop = bandSavedTop ?: return
-            val restore: () -> Unit = {
-                bandSavedTop = null
-                if (nightOwl) {
-                    // Night Owl came on meanwhile: its wash, not the old colours.
-                    applyNightOwlChrome(true)
-                } else {
-                    binding.topBar.setBackgroundColor(savedTop)
-                    val savedRoot = bandSavedRoot
-                    if (bandRootWasBare || savedRoot == null) {
-                        binding.rootView.background = null
-                    } else {
-                        binding.rootView.setBackgroundColor(savedRoot)
-                    }
-                }
-            }
-            if (nightOwl) { restore(); return }
-            animateSearchBand(searchBandNow, baseBackground(), 200L, restore)
-        }
-    }
-
-    private fun animateSearchBand(from: Int, to: Int, duration: Long, end: (() -> Unit)?) {
-        val anim = android.animation.ValueAnimator.ofArgb(from, to)
-        anim.duration = duration
-        anim.interpolator = searchEase
-        anim.addUpdateListener { paintSearchBand(it.animatedValue as Int) }
-        anim.addListener(object : android.animation.AnimatorListenerAdapter() {
-            private var cancelled = false
-            override fun onAnimationCancel(a: android.animation.Animator) { cancelled = true }
-            override fun onAnimationEnd(a: android.animation.Animator) {
-                if (searchBandAnim === a) searchBandAnim = null
-                if (!cancelled) end?.invoke()
-            }
-        })
-        searchBandAnim = anim
-        anim.start()
-    }
-
     private fun enterSearchMode() {
         if (searchMode) return
         searchMode = true
@@ -756,7 +659,10 @@ class MainActivity : AppCompatActivity() {
         imm.showSoftInput(binding.urlBar, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
         binding.suggestBackdrop.visibility = View.VISIBLE
         androidx.core.view.ViewCompat.requestApplyInsets(binding.root)
-        applySearchBand(true)
+        // The sheet carries the top bar's curve, in the bar's colour of the
+        // moment - Night Owl's wash included.
+        (binding.suggestBackdrop.background as? SearchSheetDrawable)
+            ?.surfaceColor = binding.topBar.surfaceColor
         animateSearchIn(fieldWasShowing)
         fetchSuggests(binding.urlBar.text.toString())
     }
@@ -766,7 +672,6 @@ class MainActivity : AppCompatActivity() {
         searchMode = false
         styleUrlBarForSearch(false)
         animateSearchOut()
-        applySearchBand(false)
         // Nothing transient left on the field: applyHomeCompact below may
         // animate it, and it should start from rest rather than from whatever
         // the entrance left behind.
