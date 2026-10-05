@@ -27,7 +27,7 @@ Search is a lightweight WebView-based browser focused on a clean home page, buil
 - **Menu** — opens on a spring from the Menu button, drawn from a layer while it grows, and can be dragged down to close (`DragPanel`).
 - **History & Bookmarks** — with friendly empty states.
 - **Browsing data** — Settings → Clear browsing data opens a screen listing what Search keeps on the phone with its size: cached files, cookies, site storage (local storage, IndexedDB, service workers), history, and downloads (`BrowsingData`). Each is cleared on its own, so freeing space does not have to sign you out of every site; "Clear all browsing data" is still the last row and does exactly what the old button did. Downloads are never deleted from there: the row opens the Downloads screen.
-- **In-app Downloads** — view, open, and remove downloads without leaving the app.
+- **In-app Downloads** — view, open, and remove downloads without leaving the app. Before a download starts, its size is checked against the free space: a file that would leave under 200MB is stopped with a "Not enough storage" message and a shortcut to storage settings; one that would take half the free space or leave under 1GB is confirmed with a warning, even when download confirmation is off. The confirmation shows the size, where it goes and the space free.
 - **Ad blocking** — built-in.
 - **Night Owl** — private browsing mode with a dedicated empty state.
 - **Multiple search engines** — Google, DuckDuckGo, Bing, Yahoo, Ecosia, Brave, Startpage, Yandex (with icons).

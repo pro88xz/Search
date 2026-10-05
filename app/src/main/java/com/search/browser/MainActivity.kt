@@ -2421,7 +2421,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         // Handle file downloads via Android's DownloadManager.
-        web.setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
+        web.setDownloadListener { url, userAgent, contentDisposition, mimeType, contentLength ->
             // A download usually begins life as an ordinary navigation, so
             // onPageStarted has already written this address into the tab and
             // the address bar before the server's Content-Disposition turns it
@@ -2429,7 +2429,7 @@ class MainActivity : AppCompatActivity() {
             // back where it was - otherwise a download address is left sitting
             // in the bar over the home page, belonging to nothing on screen.
             restoreAfterDownload(web)
-            startDownload(url, userAgent, contentDisposition, mimeType)
+            startDownload(url, userAgent, contentDisposition, mimeType, contentLength)
         }
 
         web.setFindListener { activeIndex, numberOfMatches, isDoneCounting ->
@@ -4957,18 +4957,43 @@ class MainActivity : AppCompatActivity() {
         url: String,
         userAgent: String?,
         contentDisposition: String?,
-        mimeType: String?
+        mimeType: String?,
+        contentLength: Long = -1L
     ) {
-        // If the user disabled download confirmation, download straight away.
-        if (!Settings.getBool(this, Settings.SEC_CONFIRM_DOWNLOADS, true)) {
+        val fileName = downloadName(url, contentDisposition, mimeType)
+        // Space first: a file that cannot fit is stopped here, with the
+        // reason, rather than failing part-way in DownloadManager.
+        val free = freeDownloadSpace()
+        val room = downloadRoom(contentLength, free)
+        if (room == ROOM_NONE) {
+            showNoRoomForDownload(fileName, contentLength, free)
+            return
+        }
+        // If the user disabled download confirmation, download straight away -
+        // unless the file would take most of the space left, which is worth a
+        // word first whatever the setting.
+        if (!Settings.getBool(this, Settings.SEC_CONFIRM_DOWNLOADS, true) && room == ROOM_OK) {
             performDownload(url, userAgent, contentDisposition, mimeType)
             return
         }
-        val fileName = downloadName(url, contentDisposition, mimeType)
 
         val view = layoutInflater.inflate(R.layout.dialog_download, null)
         applyOwlArtIn(view)
         view.findViewById<android.widget.TextView>(R.id.dlFileName).text = fileName
+        val fmt = { b: Long -> android.text.format.Formatter.formatShortFileSize(this, b) }
+        view.findViewById<android.widget.TextView>(R.id.dlSize).text =
+            (if (contentLength > 0) fmt(contentLength) else "Size unknown") +
+                " \u00B7 to Downloads" +
+                (if (free >= 0) " \u00B7 " + fmt(free) + " free" else "")
+        if (room == ROOM_TIGHT) {
+            view.findViewById<android.widget.TextView>(R.id.dlSpaceWarn).apply {
+                text = "This will use most of your free space."
+                visibility = View.VISIBLE
+            }
+            (view.findViewById<android.widget.TextView>(R.id.dlSize).layoutParams
+                as? android.widget.LinearLayout.LayoutParams)?.bottomMargin =
+                (6 * resources.displayMetrics.density).toInt()
+        }
 
         val dialog = android.app.AlertDialog.Builder(this)
             .setView(view)
@@ -4996,6 +5021,54 @@ class MainActivity : AppCompatActivity() {
             val width = (dm.widthPixels * 0.86f).toInt()
             w.setLayout(width, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
         }
+    }
+
+    // ---------- Space for downloads ----------
+
+    private val ROOM_OK = 0
+    private val ROOM_TIGHT = 1
+    private val ROOM_NONE = 2
+
+    /**
+     * Free space where downloads go (the phone's shared storage), or -1 if it
+     * cannot be read. A statfs call: cheap enough for the main thread.
+     */
+    private fun freeDownloadSpace(): Long = try {
+        @Suppress("DEPRECATION")
+        android.os.StatFs(android.os.Environment.getExternalStorageDirectory().path).availableBytes
+    } catch (e: Exception) {
+        try { android.os.StatFs(filesDir.path).availableBytes } catch (e2: Exception) { -1L }
+    }
+
+    /**
+     * Whether a [size]-byte file fits in [free] bytes. It does not if it would
+     * leave less than 200MB, which Android needs to keep running smoothly; it
+     * is tight if it takes half the space or leaves under 1GB. An unknown size
+     * or free space is taken as fitting - nothing is stopped on a guess.
+     */
+    private fun downloadRoom(size: Long, free: Long): Int {
+        if (size <= 0L || free < 0L) return ROOM_OK
+        val reserve = 200L * 1024 * 1024
+        if (size > free - reserve) return ROOM_NONE
+        if (size * 2 >= free || free - size < 1024L * 1024 * 1024) return ROOM_TIGHT
+        return ROOM_OK
+    }
+
+    private fun showNoRoomForDownload(fileName: String, size: Long, free: Long) {
+        val fmt = { b: Long -> android.text.format.Formatter.formatShortFileSize(this, b) }
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(
+            this, R.style.Theme_Search_Dialog)
+            .setTitle("Not enough storage")
+            .setMessage(fileName + " is " + fmt(size) + ", and this phone has " +
+                fmt(free.coerceAtLeast(0L)) + " free. Free up some space, then try again.")
+            .setPositiveButton("OK", null)
+            .setNeutralButton("Storage settings") { _, _ ->
+                try {
+                    startActivity(android.content.Intent(
+                        android.provider.Settings.ACTION_INTERNAL_STORAGE_SETTINGS))
+                } catch (e: Exception) { /* no such screen on this phone */ }
+            }
+            .show()
     }
 
     private fun performDownload(

@@ -47,7 +47,31 @@
         android:maxLines="2"
         android:ellipsize="middle"
         android:textColor="?android:attr/textColorPrimary"
+        android:layout_marginBottom="4dp" />
+
+    <!-- Size, where it goes, and the space left: "12.4 MB · to Downloads ·
+         3.1 GB free". Filled from code (MainActivity.startDownload). -->
+    <TextView
+        android:id="@+id/dlSize"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text=""
+        android:textSize="12sp"
+        android:gravity="center"
+        android:textColor="#8A8A8F"
         android:layout_marginBottom="18dp" />
+
+    <!-- Shown when the file would take most of the free space. -->
+    <TextView
+        android:id="@+id/dlSpaceWarn"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text=""
+        android:textSize="13sp"
+        android:gravity="center"
+        android:textColor="@color/dangerFg"
+        android:layout_marginBottom="18dp"
+        android:visibility="gone" />
 
     <!-- Buttons row: clean left/right split -->
     <LinearLayout
