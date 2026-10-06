@@ -40,19 +40,24 @@ class NavSheetView @JvmOverloads constructor(
         set(v) { field = v; rebuild() }
 
     /**
-     * Whether the bit outside each rounded corner is painted in the page
-     * background. Over a website the page stops at the sheet's straight edge
+     * Whether the bit outside each rounded corner is painted ([corners]).
+     * Over a website the page stops at the sheet's straight edge
      * (MainActivity.applyBarOverlap), so nothing of it is behind the corners,
-     * and they show the page background as the top bar's do. Over the home
-     * page, which runs on under the corners, they are left open onto it.
+     * and they are painted in the website's own colour at that edge, as the
+     * top bar's are, so the page seems to run on behind the curve. Over the
+     * home page, which runs on under the corners, they are left open onto it.
      *
      * The corners are rounded either way: the bar is one shape on every page.
      */
     var fillCorners = false
         set(v) { if (field != v) { field = v; invalidate() } }
 
-    /** The page background, for [fillCorners]. */
-    private val backdrop = Paint().apply { color = context.getColor(R.color.appBackground) }
+    /** The page background: the corners' colour until a website's is known. */
+    val pageBackground = context.getColor(R.color.appBackground)
+
+    /** What [fillCorners] paints outside each rounded corner. */
+    val corners = CornerColors(this, pageBackground)
+    private val cornerPaint = Paint()
 
     /**
      * The navigation bar's height. The sheet paints on down behind it, so the
@@ -175,8 +180,10 @@ class NavSheetView @JvmOverloads constructor(
         if (fillCorners) {
             // First, so the sheet's edge and shadow fall over them.
             val w = width.toFloat()
-            canvas.drawRect(0f, edgeTop, corner, edgeTop + corner, backdrop)
-            canvas.drawRect(w - corner, edgeTop, w, edgeTop + corner, backdrop)
+            cornerPaint.color = corners.left
+            canvas.drawRect(0f, edgeTop, corner, edgeTop + corner, cornerPaint)
+            cornerPaint.color = corners.right
+            canvas.drawRect(w - corner, edgeTop, w, edgeTop + corner, cornerPaint)
         }
         canvas.drawPath(sheet, fill)
         canvas.drawCircle(cx, cy, bump, ringPaint)

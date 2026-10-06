@@ -23,9 +23,11 @@ import android.widget.LinearLayout
  * 28dp below the bar over the top of the page - which cut into every website:
  * Amazon's logo lost its first letter, and a site's header looked broken at
  * both edges. Now the page starts below the bar and nothing of it is covered.
- * The bit outside each curve is painted in the page background ([backdrop]),
- * the colour the home page and the search sheet have, rather than left to
- * whatever is behind the bar, which Night Owl tints the same as the bar.
+ * The bit outside each curve is painted ([corners]): on a website in the
+ * website's own colour at that edge, so the page seems to run on behind the
+ * curve; on the home page and in search in the page background, the colour
+ * both have. Never left to whatever is behind the bar, which Night Owl tints
+ * the same as the bar.
  *
  * The surface also runs up behind the status bar ([topInset]). Stopping below
  * it made the bar read as a white tongue laid on the page.
@@ -70,8 +72,12 @@ class TopSheetBar @JvmOverloads constructor(
 
     private val accent = Color.parseColor("#8B6BD8")
 
-    /** The page background, in the corners outside the curve. */
-    private val backdrop = Paint().apply { color = context.getColor(R.color.appBackground) }
+    /** The page background: the corners' colour when no website is showing. */
+    val pageBackground = context.getColor(R.color.appBackground)
+
+    /** What is painted outside each rounded corner (see the class notes). */
+    val corners = CornerColors(this, pageBackground)
+    private val cornerPaint = Paint()
 
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val line = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -147,8 +153,10 @@ class TopSheetBar @JvmOverloads constructor(
         // The corners first, so the sheet's edge and shadow fall over them.
         val w = width.toFloat()
         val h = height.toFloat()
-        canvas.drawRect(0f, h - corner, corner, h, backdrop)
-        canvas.drawRect(w - corner, h - corner, w, h, backdrop)
+        cornerPaint.color = corners.left
+        canvas.drawRect(0f, h - corner, corner, h, cornerPaint)
+        cornerPaint.color = corners.right
+        canvas.drawRect(w - corner, h - corner, w, h, cornerPaint)
         canvas.drawPath(sheet, fill)
         canvas.drawPath(edge, line)
     }

@@ -40,6 +40,18 @@ class BrowserWebView(context: Context) : WebView(context) {
      */
     @Volatile var pageHost: String? = null
 
+    /**
+     * The page scrolled. Separate from the scroll listener MainActivity sets,
+     * which places the feed's ad card and is left to that alone.
+     */
+    var onScrolled: (() -> Unit)? = null
+
+    override fun onScrollChanged(l: Int, t: Int, oldl: Int, oldt: Int) {
+        // super first: it is what calls the scroll listener.
+        super.onScrollChanged(l, t, oldl, oldt)
+        onScrolled?.invoke()
+    }
+
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
         if (ev.actionMasked == MotionEvent.ACTION_DOWN) touching = true
         val handled = super.dispatchTouchEvent(ev)

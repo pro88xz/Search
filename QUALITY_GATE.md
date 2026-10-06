@@ -144,7 +144,10 @@ These were built without a phone to run them on. Check each once:
 - [ ] Both bars are the same shape on home and on websites: the top bar's
       bottom corners and the bottom bar's top corners rounded, in light, dark
       and Night Owl. On amazon.com nothing at the top of the page is cut (the
-      logo and the cart are whole).
+      logo and the cart are whole), and the bit outside each bar corner is
+      Amazon's navy beside its header, not grey; scrolling, it follows the
+      page's colour at that edge within a moment. No stutter while scrolling
+      on a low-end phone.
 - [ ] Change the accent (Settings → Customize): the loading ring takes it.
 - [ ] Dark mode, with three-button navigation and with gestures: the bottom
       bar and the strip under Android's buttons are one colour (also with

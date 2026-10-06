@@ -980,6 +980,10 @@ class MainActivity : AppCompatActivity() {
         // of the moment - Night Owl's wash included.
         (binding.suggestBackdrop.background as? SearchSheetDrawable)
             ?.surfaceColor = binding.topBar.surfaceColor
+        // Under the top bar's corners now is the search sheet, not the
+        // website: they take the sheet's colour until search closes.
+        val sheetBg = binding.topBar.pageBackground
+        binding.topBar.corners.set(sheetBg, sheetBg, animate = true)
         animateSearchIn(fieldWasShowing)
         fetchSuggests(binding.urlBar.text.toString())
     }
@@ -989,6 +993,8 @@ class MainActivity : AppCompatActivity() {
         searchMode = false
         styleUrlBarForSearch(false)
         animateSearchOut()
+        // The website's colours back in the bar corners once the sheet is gone.
+        scheduleBarCorners(260L)
         // Nothing transient left on the field: applyHomeCompact below may
         // animate it, and it should start from rest rather than from whatever
         // the entrance left behind.
@@ -1060,6 +1066,7 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         HealthStats.sessionStarted(this)
+        scheduleBarCorners(200L)
         registerNetworkWatch()
         // If a flexible update finished downloading while away, offer to install it.
         appUpdateManager.appUpdateInfo.addOnSuccessListener { info ->
@@ -1970,6 +1977,8 @@ class MainActivity : AppCompatActivity() {
         // Letting go of the page: a pull at the top either refreshes or springs back.
         web.onTouchEnd = { if (web === activeWeb()) releasePull() }
         web.onTopOverscroll = { px -> if (web === activeWeb()) pullBy(px) }
+        // The bar corners follow the colour of the page scrolling under them.
+        web.onScrolled = { if (web === activeWeb()) scheduleBarCorners(BAR_CORNER_SCROLL_MS) }
         web.layoutParams = FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT
@@ -2222,6 +2231,7 @@ class MainActivity : AppCompatActivity() {
             override fun onPageCommitVisible(view: WebView?, url: String?) {
                 super.onPageCommitVisible(view, url)
                 commitLoadWatch(tabOf(view))
+                if (view != null && view === activeWeb()) scheduleBarCorners(100L)
             }
 
             override fun onReceivedHttpError(
@@ -2378,6 +2388,9 @@ class MainActivity : AppCompatActivity() {
                 if (view == tabs.activeTab?.webView) {
                     refreshStar(); refreshOmniboxVisibility(shown)
                     pushAccentToPage(view)
+                    scheduleBarCorners(300L)
+                    uiHandler.removeCallbacks(barCornersLate)
+                    uiHandler.postDelayed(barCornersLate, 1500L)
                 }
             }
         }
@@ -2763,6 +2776,8 @@ class MainActivity : AppCompatActivity() {
         // that before the view is detached leaves a black frame on some devices.
         fullscreenCallback?.onCustomViewHidden()
         fullscreenCallback = null
+        // Rotated back, maybe: the page's edges are read again once it settles.
+        scheduleBarCorners(400L)
     }
 
     // ---------- Picture in picture ----------
@@ -3812,6 +3827,7 @@ class MainActivity : AppCompatActivity() {
         // only judged while on screen, so the watch starts again here.
         if (tab.openerId != null && returnedFromSignIn(tab)) watchReturnedPopup(tab, tab.url)
         scheduleSessionSave()
+        scheduleBarCorners(200L)
     }
 
     /**
@@ -4066,7 +4082,115 @@ class MainActivity : AppCompatActivity() {
             binding.bottomBar.layoutParams = lp
         }
         binding.navSheet.fillCorners = !onHome
+        if (onHome) {
+            // Home's own background, outside the top bar's corners; the
+            // bottom bar's are open onto the page.
+            val bg = binding.topBar.pageBackground
+            binding.topBar.corners.set(bg, bg, animate = false)
+            binding.navSheet.corners.set(bg, bg, animate = false)
+        } else {
+            scheduleBarCorners()
+        }
     }
+
+    // ---------- Bar corners on websites ----------
+    //
+    // On a website both bars paint the bit outside their rounded corners in
+    // the website's own colour at that edge (CornerColors), so the page seems
+    // to run on behind each curve rather than a grey wedge showing beside it.
+    // The colour is read off the screen: a one-pixel strip just inside the
+    // page below the top bar, and one above the bottom bar, copied from what
+    // the display already shows (PixelCopy, as the tab pictures are) - the
+    // page is asked for nothing. Read again as the page loads, as it scrolls
+    // (at most four times a second), on a tab switch, and when something
+    // that covered the page closes.
+
+    private var barCornersPending = false
+    private var barCornersBusy = false
+    private var barCornersBusySince = 0L
+    private var cornerStrips: Array<Bitmap>? = null
+    private val barCornersRun = Runnable {
+        barCornersPending = false
+        sampleBarCorners()
+    }
+    /** Once more a while after a page finishes, for what it draws late. */
+    private val barCornersLate = Runnable { scheduleBarCorners(0L) }
+    private val BAR_CORNER_SCROLL_MS = 250L
+    // Each strip is copied into this many pixels; the first and last are
+    // read. Across a phone's width that puts them about 6dp in from either
+    // edge: beside the corners, and clear of the page's scroll bar.
+    private val CORNER_STRIP_PX = 32
+
+    /** Reads the page's edge colours [delayMs] from now, unless already asked to. */
+    private fun scheduleBarCorners(delayMs: Long = 150L) {
+        if (barCornersPending) return
+        barCornersPending = true
+        uiHandler.postDelayed(barCornersRun, delayMs)
+    }
+
+    private fun sampleBarCorners() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        if (barOverlapHome != false || isFinishing || isDestroyed) return
+        // Covered by the app's own screens: no page to read. Each of these
+        // asks again when it closes.
+        if (searchMode || deckVisible || fullscreenView != null ||
+            binding.menuScrim.visibility == View.VISIBLE
+        ) return
+        val web = activeWeb() ?: return
+        if (!web.isAttachedToWindow || web.width <= 0 || web.height <= 0) return
+        // A read whose answer never came does not hold up the rest for good.
+        val now = android.os.SystemClock.uptimeMillis()
+        if (barCornersBusy && now - barCornersBusySince > 2000L) barCornersBusy = false
+        // Moving or covered for a moment - a tab swipe, the search sheet on
+        // its way out, a read still running: shortly, then.
+        if (barCornersBusy || binding.webContainer.translationX != 0f ||
+            binding.suggestBackdrop.visibility == View.VISIBLE
+        ) {
+            scheduleBarCorners(BAR_CORNER_SCROLL_MS)
+            return
+        }
+        val at = IntArray(2)
+        web.getLocationInWindow(at)
+        // 16dp in from the page's edge, clear of the shadow each bar casts on it.
+        val depth = (16 * resources.displayMetrics.density).toInt()
+        val top = at[1] + depth
+        val bottom = at[1] + web.height - depth
+        if (bottom <= top) return
+        val strips = cornerStrips ?: Array(2) {
+            Bitmap.createBitmap(CORNER_STRIP_PX, 1, Bitmap.Config.ARGB_8888)
+        }.also { cornerStrips = it }
+        val rows = intArrayOf(top, bottom)
+        val ok = BooleanArray(2)
+        var waiting = 2
+        barCornersBusy = true
+        barCornersBusySince = now
+        val finish = {
+            barCornersBusy = false
+            if (barOverlapHome == false && activeWeb() === web && !searchMode && !deckVisible) {
+                val last = CORNER_STRIP_PX - 1
+                if (ok[0]) binding.topBar.corners.set(
+                    opaque(strips[0].getPixel(0, 0)), opaque(strips[0].getPixel(last, 0)),
+                    animate = true)
+                if (ok[1]) binding.navSheet.corners.set(
+                    opaque(strips[1].getPixel(0, 0)), opaque(strips[1].getPixel(last, 0)),
+                    animate = true)
+            }
+        }
+        for (i in 0..1) {
+            val rect = android.graphics.Rect(at[0], rows[i], at[0] + web.width, rows[i] + 1)
+            try {
+                PixelCopy.request(window, rect, strips[i], { result ->
+                    ok[i] = result == PixelCopy.SUCCESS
+                    if (--waiting == 0) finish()
+                }, uiHandler)
+            } catch (e: Exception) {
+                // No surface to read just now; the next scroll or load reads again.
+                if (--waiting == 0) finish()
+            }
+        }
+    }
+
+    private fun opaque(c: Int): Int = c or (0xFF shl 24)
 
     /**
      * Whether a tab may be frozen to stay under the live-tab cap.
@@ -4415,6 +4539,7 @@ class MainActivity : AppCompatActivity() {
         binding.menuPanel.scaleY = 1f
         binding.menuPanel.alpha = 1f
         binding.menuPanel.translationY = 0f
+        scheduleBarCorners()
     }
 
     private fun addNewTab(loadUrl: String = homePage) {
@@ -4974,6 +5099,7 @@ class MainActivity : AppCompatActivity() {
         binding.tabDeck.visibility = View.GONE
         deckVisible = false
         androidx.core.view.ViewCompat.requestApplyInsets(binding.root)
+        scheduleBarCorners()
         // refreshAdSlot() refuses to show the card while the deck is up, and
         // closing the deck is the moment that condition clears. Without this,
         // any refresh that lands while the deck is open leaves the card hidden
