@@ -14,17 +14,20 @@ import android.os.Build
 
 /**
  * The search sheet's background: the grey page of suggestions, with the top
- * bar's curve carried on over it.
+ * bar's shadow carried on over it.
  *
- * [TopSheetBar] curves its bottom edge inward, the two deep ends falling 28dp
- * below the bar over the page. The search sheet starts right at the bar's
- * bottom and is drawn above the whole browser layer, so in search mode it
- * covered those ends and the curve went flat. Lifting the bar above the sheet
- * means moving it out of its layout, which is what broke it before.
+ * The search sheet starts right at the bottom of [TopSheetBar] and is drawn
+ * above the whole browser layer, so in search mode it covers the soft shadow
+ * the bar casts down - and the hairline along its bottom edge, which runs
+ * half below it - and the bar would sit flat on the sheet. Lifting the bar
+ * above the sheet means moving it out of its layout, which is what broke it
+ * before.
  *
- * So the sheet draws the curve itself instead, exactly where the bar's lies
- * underneath it: the same 28dp ends in the bar's colour, the same hairline
- * and the same soft shadow. The bar stays where it is, untouched.
+ * So the sheet draws them itself, exactly where the bar's lie under it: the
+ * bar's outline, rounded corners and all, just above this sheet's top, with
+ * the bar's shadow and hairline; only what falls inside the sheet shows.
+ * The bar's rounded corners themselves are inside the bar, in the page
+ * background, which is this sheet's colour too.
  *
  * The line and shadow follow TopSheetBar's own values; a change to one wants
  * the same change here.
@@ -52,7 +55,7 @@ class SearchSheetDrawable(context: Context) : Drawable() {
         strokeWidth = 1f * dp
     }
 
-    /** The top bar's colour, which the curve's ends are painted in. */
+    /** The top bar's colour, which casts the shadow. */
     var surfaceColor: Int = context.getColor(R.color.barSurface)
         set(v) {
             if (field == v) return
@@ -106,15 +109,15 @@ class SearchSheetDrawable(context: Context) : Drawable() {
         val l = b.left.toFloat()
         val t = b.top.toFloat()
         val r = b.right.toFloat()
-        // TopSheetBar's edge, with its bottom at this sheet's top.
-        edge.moveTo(l, t + corner)
-        box.set(l, t, l + 2f * corner, t + 2f * corner)
-        edge.arcTo(box, 180f, 90f, false)
+        // TopSheetBar's outline, with its bottom at this sheet's top.
+        edge.moveTo(l, t - corner)
+        box.set(l, t - 2f * corner, l + 2f * corner, t)
+        edge.arcTo(box, 180f, -90f, false)
         edge.lineTo(r - corner, t)
-        box.set(r - 2f * corner, t, r, t + 2f * corner)
-        edge.arcTo(box, 270f, 90f, false)
-        // Closed well above the top, which is clipped away, so only the ends
-        // and the shadow under the edge are drawn.
+        box.set(r - 2f * corner, t - 2f * corner, r, t)
+        edge.arcTo(box, 90f, -90f, false)
+        // Closed well above the top, which is clipped away, so only the
+        // shadow under the edge, and the lower half of its line, are drawn.
         sheet.addPath(edge)
         sheet.lineTo(r, t - 3f * corner)
         sheet.lineTo(l, t - 3f * corner)

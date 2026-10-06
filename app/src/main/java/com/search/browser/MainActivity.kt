@@ -572,8 +572,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupSuggestOverlay() {
         if (suggestBasePad < 0) suggestBasePad = binding.suggestBackdrop.paddingBottom
-        // The grey sheet under the search field takes up the top bar's curve,
-        // which it would otherwise cover - see SearchSheetDrawable.
+        // The grey sheet under the search field carries on the top bar's
+        // shadow, which it would otherwise cover - see SearchSheetDrawable.
         binding.suggestBackdrop.background = SearchSheetDrawable(this)
         suggestAdapter = SuggestAdapter(emptyList(), { item ->
             if (suggestListMoving()) return@SuggestAdapter
@@ -976,8 +976,8 @@ class MainActivity : AppCompatActivity() {
         imm.showSoftInput(binding.urlBar, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
         binding.suggestBackdrop.visibility = View.VISIBLE
         androidx.core.view.ViewCompat.requestApplyInsets(binding.root)
-        // The sheet carries the top bar's curve, in the bar's colour of the
-        // moment - Night Owl's wash included.
+        // The sheet carries the top bar's shadow, cast by the bar's colour
+        // of the moment - Night Owl's wash included.
         (binding.suggestBackdrop.background as? SearchSheetDrawable)
             ?.surfaceColor = binding.topBar.surfaceColor
         animateSearchIn(fieldWasShowing)
@@ -4050,8 +4050,9 @@ class MainActivity : AppCompatActivity() {
      * of its window - a toolbar, a cookie banner, a player's controls, a
      * "Download our app" strip - against the bottom of the WebView, and with
      * the page running under the bar's solid part that was hidden behind it.
-     * The bar's corners are drawn square there (NavSheetView.squareCorners),
-     * since a rounded one would open onto the app behind the page.
+     * The bar keeps its rounded corners there too - one shape on every page -
+     * with the page background painted outside each curve
+     * (NavSheetView.fillCorners), as the top bar's corners are.
      */
     private fun applyBarOverlap(onHome: Boolean) {
         if (barOverlapHome == onHome) return
@@ -4064,7 +4065,7 @@ class MainActivity : AppCompatActivity() {
             lp.topMargin = -overlap
             binding.bottomBar.layoutParams = lp
         }
-        binding.navSheet.squareCorners = !onHome
+        binding.navSheet.fillCorners = !onHome
     }
 
     /**

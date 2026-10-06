@@ -18,14 +18,14 @@ import android.widget.LinearLayout
  * because it showed the window background through a transparent background.
  * This gives it the same surface and the same hairline.
  *
- * Its edge turns inward rather than being cut away at the corners. Rounded
- * corners leave a hole at each screen edge onto whatever sits behind, which is
- * the root's grey: invisible on the home page and two grey wedges on every
- * white site. Curving inward gives up a scoop of the bar's own surface
- * instead, so the far corners stay solid and there is nothing behind them to
- * show through. The two deep ends fall below this view's bounds, over the top
- * of the page - the same liberty the bottom bar takes when its arc rises above
- * its straight edge.
+ * Its bottom corners are rounded, mirroring the bottom bar's top ones, on
+ * every page. They used to curve inward instead, the two deep ends falling
+ * 28dp below the bar over the top of the page - which cut into every website:
+ * Amazon's logo lost its first letter, and a site's header looked broken at
+ * both edges. Now the page starts below the bar and nothing of it is covered.
+ * The bit outside each curve is painted in the page background ([backdrop]),
+ * the colour the home page and the search sheet have, rather than left to
+ * whatever is behind the bar, which Night Owl tints the same as the bar.
  *
  * The surface also runs up behind the status bar ([topInset]). Stopping below
  * it made the bar read as a white tongue laid on the page.
@@ -70,6 +70,9 @@ class TopSheetBar @JvmOverloads constructor(
 
     private val accent = Color.parseColor("#8B6BD8")
 
+    /** The page background, in the corners outside the curve. */
+    private val backdrop = Paint().apply { color = context.getColor(R.color.appBackground) }
+
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val line = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
@@ -97,13 +100,14 @@ class TopSheetBar @JvmOverloads constructor(
         sheet.reset()
         edge.reset()
         if (w <= 0f || h <= 0f) return
-        // Full depth at both screen edges, scooping up between them.
-        edge.moveTo(0f, h + corner)
-        box.set(0f, h, 2f * corner, h + 2f * corner)
-        edge.arcTo(box, 180f, 90f, false)
+        // Round the left corner, along the bottom, round the right corner:
+        // all inside this view, so none of it lies over the page.
+        edge.moveTo(0f, h - corner)
+        box.set(0f, h - 2f * corner, 2f * corner, h)
+        edge.arcTo(box, 180f, -90f, false)
         edge.lineTo(w - corner, h)
-        box.set(w - 2f * corner, h, w, h + 2f * corner)
-        edge.arcTo(box, 270f, 90f, false)
+        box.set(w - 2f * corner, h - 2f * corner, w, h)
+        edge.arcTo(box, 90f, -90f, false)
         // Closed over the top of the status bar strip rather than the top of
         // this view, so the surface reaches the top of the screen.
         val top = -topInset.toFloat()
@@ -140,6 +144,11 @@ class TopSheetBar @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         if (sheet.isEmpty) return
+        // The corners first, so the sheet's edge and shadow fall over them.
+        val w = width.toFloat()
+        val h = height.toFloat()
+        canvas.drawRect(0f, h - corner, corner, h, backdrop)
+        canvas.drawRect(w - corner, h - corner, w, h, backdrop)
         canvas.drawPath(sheet, fill)
         canvas.drawPath(edge, line)
     }

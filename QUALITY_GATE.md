@@ -107,8 +107,8 @@ debug log, lines with `metrics`).
 
 These were built without a phone to run them on. Check each once:
 
-- [ ] Search mode: the grey suggestion sheet keeps the top bar's curve at both
-      edges; the search pill's outline is unbroken around the mic and scan
+- [ ] Search mode: the top bar keeps its shadow over the grey suggestion
+      sheet; the search pill's outline is unbroken around the mic and scan
       buttons; Night Owl tint matches.
 - [ ] Loading: no line across the top of the page; a purple ring fills around
       the + button while a page loads, then fades.
@@ -140,8 +140,11 @@ These were built without a phone to run them on. Check each once:
       closes and opens again by itself with its tabs, the frozen one as the
       stopped page.
 - [ ] On a site with a bar pinned to the bottom (songsterr.com), nothing of it
-      is hidden under the bottom bar except under the + button; the bar's
-      corners are square on websites and rounded on the home page.
+      is hidden under the bottom bar except under the + button.
+- [ ] Both bars are the same shape on home and on websites: the top bar's
+      bottom corners and the bottom bar's top corners rounded, in light, dark
+      and Night Owl. On amazon.com nothing at the top of the page is cut (the
+      logo and the cart are whole).
 - [ ] Change the accent (Settings → Customize): the loading ring takes it.
 - [ ] Dark mode, with three-button navigation and with gestures: the bottom
       bar and the strip under Android's buttons are one colour (also with

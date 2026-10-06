@@ -40,14 +40,19 @@ class NavSheetView @JvmOverloads constructor(
         set(v) { field = v; rebuild() }
 
     /**
-     * Square top corners instead of rounded ones. Over a website the page
-     * stops at the bar's straight edge (MainActivity.applyBarOverlap), so a
-     * rounded corner would only open onto what is behind the bar; the corner
-     * is filled with the sheet instead. Over the home page, which runs under
-     * the corners, they stay rounded.
+     * Whether the bit outside each rounded corner is painted in the page
+     * background. Over a website the page stops at the sheet's straight edge
+     * (MainActivity.applyBarOverlap), so nothing of it is behind the corners,
+     * and they show the page background as the top bar's do. Over the home
+     * page, which runs on under the corners, they are left open onto it.
+     *
+     * The corners are rounded either way: the bar is one shape on every page.
      */
-    var squareCorners = false
-        set(v) { if (field != v) { field = v; rebuild() } }
+    var fillCorners = false
+        set(v) { if (field != v) { field = v; invalidate() } }
+
+    /** The page background, for [fillCorners]. */
+    private val backdrop = Paint().apply { color = context.getColor(R.color.appBackground) }
 
     /**
      * The navigation bar's height. The sheet paints on down behind it, so the
@@ -126,13 +131,9 @@ class NavSheetView @JvmOverloads constructor(
 
         val top = edgeTop
         // Left side up to the corner, then along to the first blend.
-        if (squareCorners) {
-            edge.moveTo(0f, top)
-        } else {
-            edge.moveTo(0f, top + corner)
-            box.set(0f, top, 2f * corner, top + 2f * corner)
-            edge.arcTo(box, 180f, 90f, false)
-        }
+        edge.moveTo(0f, top + corner)
+        box.set(0f, top, 2f * corner, top + 2f * corner)
+        edge.arcTo(box, 180f, 90f, false)
         edge.lineTo(cx - dx, top)
         // Up the left blend, over the button, down the right blend.
         box.set(cx - dx - blend, top - 2f * blend, cx - dx + blend, top)
@@ -142,13 +143,9 @@ class NavSheetView @JvmOverloads constructor(
         box.set(cx + dx - blend, top - 2f * blend, cx + dx + blend, top)
         edge.arcTo(box, 180f - meet, meet - 90f, false)
         // Along to the right corner and down.
-        if (squareCorners) {
-            edge.lineTo(w, top)
-        } else {
-            edge.lineTo(w - corner, top)
-            box.set(w - 2f * corner, top, w, top + 2f * corner)
-            edge.arcTo(box, 270f, 90f, false)
-        }
+        edge.lineTo(w - corner, top)
+        box.set(w - 2f * corner, top, w, top + 2f * corner)
+        edge.arcTo(box, 270f, 90f, false)
 
         sheet.addPath(edge)
         sheet.lineTo(w, h + bottomInset)
@@ -175,6 +172,12 @@ class NavSheetView @JvmOverloads constructor(
 
     override fun onDraw(canvas: Canvas) {
         if (sheet.isEmpty) return
+        if (fillCorners) {
+            // First, so the sheet's edge and shadow fall over them.
+            val w = width.toFloat()
+            canvas.drawRect(0f, edgeTop, corner, edgeTop + corner, backdrop)
+            canvas.drawRect(w - corner, edgeTop, w, edgeTop + corner, backdrop)
+        }
         canvas.drawPath(sheet, fill)
         canvas.drawCircle(cx, cy, bump, ringPaint)
         // Last, so the hairline also traces the ring where the edge runs over it.
