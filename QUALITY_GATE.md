@@ -110,11 +110,13 @@ These were built without a phone to run them on. Check each once:
 - [ ] Search mode, from home and from a website, light, dark and Night Owl:
       the search field and the suggestion card are two cards of the same
       colour (white in light mode) on the grey search page, the field with no
-      outline; the top bar is flat in that grey, with no curve, shadow or
+      outline, and with a little air between it and the status bar - on a
+      phone with a teardrop or hole camera nothing sits under the camera;
+      the top bar is flat in that grey, with no curve, shadow or
       line; leaving search brings the bar's hairline and shadow back.
 - [ ] Home page, scroll down past its search box: the same box takes the
-      top on its own (same colour and size, no outline, 16dp from either
-      edge); the owl and the gear slide away and the top bar fades into the
+      top on its own (same colour, no outline, 16dp from either edge, centred
+      in the bar with a little air above and below, as in Chrome); the owl and the gear slide away and the top bar fades into the
       page's grey; scrolling back up brings them back. Open a story from the
       scrolled home page: the website has the owl, gear and normal address
       bar. Searching from the scrolled home page keeps the owl.

@@ -763,15 +763,18 @@ class MainActivity : AppCompatActivity() {
     // the when below, because the collapse animation has to travel between two
     // of them instead of jumping.
     private val FIELD_H_NORMAL = 48f
-    // The home page's own search box is 56 tall; pinned, it stays 56.
-    private val FIELD_H_COMPACT = 56f
+    // Pinned to the top of the home page, and searching: 44 in the 58dp bar,
+    // so the box sits centred with 7dp of air above and below, as Chrome's
+    // does, rather than filling the bar and crowding the status bar and any
+    // camera cutout above it. The buttons inside stay centred.
+    private val FIELD_H_COMPACT = 44f
 
     /**
      * How far the search pill travels as it slides up into the bar, in dp.
      * Small on purpose: this is a dock, not an entrance.
      */
     private val SLIDE_DP = 12f
-    private val FIELD_H_SEARCH = 56f
+    private val FIELD_H_SEARCH = 44f
 
     /** The style styleUrlBar last gave the field. */
     private var fieldMode = FIELD_NORMAL
@@ -1457,7 +1460,15 @@ class MainActivity : AppCompatActivity() {
         // system-bar insets so the top bar sits below the status bar and content
         // stays above the navigation bar.
         androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(binding.root) { v, insets ->
-            val bars = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            val systemBars = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            // A camera cut into the top of the screen - a teardrop or a hole -
+            // is normally inside the status bar, but not on every phone. The
+            // top is kept clear of whichever reaches further, so the bar and
+            // the search box never sit under the camera.
+            val cutoutTop = insets.getInsets(
+                androidx.core.view.WindowInsetsCompat.Type.displayCutout()).top
+            val bars = androidx.core.graphics.Insets.of(systemBars.left,
+                maxOf(systemBars.top, cutoutTop), systemBars.right, systemBars.bottom)
             // Under edge-to-edge the keyboard never resizes the window - it
             // just arrives as an inset. Nothing read it for the page, so a
             // field in the lower half of a form - the email or password box of
@@ -3915,8 +3926,8 @@ class MainActivity : AppCompatActivity() {
         // And it arrives rather than appearing. t is 1 for the icon row and 0
         // for the pill, so the pill starts SLIDE_DP below its resting place and
         // reaches it exactly as it reaches full opacity. The bar sets
-        // clipChildren="false" for this: the compact pill is 52dp inside a 58dp
-        // bar, leaving 3dp of room, so the travel would otherwise be sheared
+        // clipChildren="false" for this: the compact pill is 44dp inside a 58dp
+        // bar, leaving 7dp of room, so the travel would otherwise be sheared
         // off at the bar's edge.
         binding.urlBarContainer.translationY =
             SLIDE_DP * t * resources.displayMetrics.density
