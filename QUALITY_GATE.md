@@ -154,6 +154,11 @@ These were built without a phone to run them on. Check each once:
       page is cut (the logo and the cart are whole). The bottom bar sits
       close above Android's buttons, its icons centred in it.
 - [ ] Change the accent (Settings → Customize): the loading ring takes it.
+- [ ] The bottom bar's centre button shows a search glass with a sparkle.
+      Tapping it - from home, a website, search, find in page - opens a new
+      tab straight into search: field focused, keyboard up, the field stays
+      while the home page loads behind. Back leaves that tab on its home
+      page. Long-pressing Tabs still opens a plain new tab.
 - [ ] Dark mode, with three-button navigation and with gestures: the bottom
       bar and the strip under Android's buttons are one colour (also with
       the tabs screen, the search sheet and the menu open, and in Night Owl);

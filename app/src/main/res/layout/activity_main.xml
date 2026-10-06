@@ -356,13 +356,15 @@
                 android:clickable="true"
                 android:focusable="true"
                 android:foreground="@drawable/nav_ripple"
-                android:contentDescription="New tab">
+                android:contentDescription="New search">
 
+                <!-- A search glass with a sparkle: the button opens a new tab
+                     straight into search (MainActivity, newSearchTab). -->
                 <ImageView
                     android:layout_width="26dp"
                     android:layout_height="26dp"
                     android:layout_gravity="center"
-                    android:src="@drawable/nav_plus"
+                    android:src="@drawable/nav_search_spark"
                     android:tint="#FFFFFF"
                     android:importantForAccessibility="no" />
             </FrameLayout>

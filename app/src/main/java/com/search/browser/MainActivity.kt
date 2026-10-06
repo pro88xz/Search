@@ -4073,8 +4073,11 @@ class MainActivity : AppCompatActivity() {
             activeWeb()?.evaluateJavascript(
                 "window.__syncHomeBar && window.__syncHomeBar()", null)
         }
+        // Never while searching: a new tab opened straight into search loads
+        // its home page behind the search sheet, and that load must not take
+        // away the field being typed into.
         binding.urlBarContainer.visibility =
-            if (isHome && !homeCompact) View.INVISIBLE else View.VISIBLE
+            if (isHome && !homeCompact && !searchMode) View.INVISIBLE else View.VISIBLE
         applyBarOverlap(isHome)
         refreshNav()
         refreshAdSlot()
@@ -4470,6 +4473,16 @@ class MainActivity : AppCompatActivity() {
         val tab = tabs.createTab(loadUrl)
         openTab(tab, loadUrl)
         if (loadUrl == homePage) expectPageStart(tab)
+    }
+
+    /**
+     * The bottom bar's centre button: a new tab, straight into search - the
+     * field focused and the keyboard up, the home page loading behind the
+     * search sheet. Back from search leaves the new tab on its home page.
+     */
+    private fun newSearchTab() {
+        addNewTab(homePage)
+        enterSearchMode()
     }
 
     // ---------- Tab deck ----------
@@ -6105,7 +6118,7 @@ class MainActivity : AppCompatActivity() {
         binding.navBookmarks.setOnClickListener {
             leaveTransientUi(); openDeck(); showBookmarks()
         }
-        binding.navNewTab.setOnClickListener { leaveTransientUi(); addNewTab(homePage) }
+        binding.navNewTab.setOnClickListener { leaveTransientUi(); newSearchTab() }
         binding.navTabs.setOnClickListener { leaveTransientUi(); openDeck() }
         // Long-pressing Tabs also opens a new tab, as it does in Chrome.
         binding.navTabs.setOnLongClickListener {
