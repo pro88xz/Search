@@ -2,9 +2,10 @@
 
 Internal working notes. Not user-facing. Keep updated as state changes.
 
-## Current state (as of versionCode 20)
+## Current state (as of versionCode 21)
 
-- **Latest version:** 1.4.0, versionCode 20, on `origin/main`. Since 1.3.1 (19): the launch-crash fix (an ICU-rejected regex in NewsFeed), the home page and bottom bar to the owner's design, curated Top Stories with full picture cards, the feed ad card on home only, Google UMP consent with Ad privacy choices where required, swipe between tabs, flick-to-close tabs, pull to refresh, and the debug log moved out of release builds.
+- **Latest version:** 1.5.0, versionCode 21, on `origin/main`. Since 1.4.0 (20): sessions saved to disk and restored after a crash or swipe-away; connection states and recovery (the loading pill, auto-retry on reconnect, Menu Stop); page timing and weight; Clear browsing data by kind with sizes; a free-space check before downloads and retry of failed ones; local health numbers (Settings > Performance & health); per-site ad blocking exceptions; permissions by site; switch-to-tab and copied-link suggestions; the release quality gate (QUALITY_GATE.md); hang recovery (End it, then Restart via RestartActivity) and the Figma freeze fix (a 1x1 default video poster); square bars on every page, a shorter bottom bar painted under the navigation bar; the Search button (search glass with a sparkle) opening search in the tab on screen; search mode as two cards on the grey page; home's search box pinned to the top on scroll; dark mode fixes; the loading ring in the accent around the Search button; the splash owl alone on white or dark, at about 105dp.
+- **Previous:** 1.4.0, versionCode 20. Since 1.3.1 (19): the launch-crash fix (an ICU-rejected regex in NewsFeed), the home page and bottom bar to the owner's design, curated Top Stories with full picture cards, the feed ad card on home only, Google UMP consent with Ad privacy choices where required, swipe between tabs, flick-to-close tabs, pull to refresh, and the debug log moved out of release builds.
 
 ## What's in versionCode 10 (this batch)
 
