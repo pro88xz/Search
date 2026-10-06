@@ -29,8 +29,9 @@ import android.widget.LinearLayout
  * both have. Never left to whatever is behind the bar, which Night Owl tints
  * the same as the bar.
  *
- * While searching it is [flat]: no curve, no shadow, no line, so the bar,
- * the search field and the suggestions under it read as one surface.
+ * While searching it is [flat]: square, in the search page's colour
+ * ([flatColor]), with no shadow and no line, so the search field and the
+ * card of suggestions sit on one background, as in Chrome.
  *
  * The surface also runs up behind the status bar ([topInset]). Stopping below
  * it made the bar read as a white tongue laid on the page.
@@ -77,6 +78,10 @@ class TopSheetBar @JvmOverloads constructor(
             rebuild()
             repaint()
         }
+
+    /** The colour while [flat]: the search page's, behind its cards. */
+    var flatColor: Int = context.getColor(R.color.searchPageBg)
+        set(v) { field = v; repaint() }
 
     /** The sheet's colour. Night Owl tints it, as it tints the bottom sheet. */
     var surfaceColor: Int = context.getColor(R.color.barSurface)
@@ -142,7 +147,7 @@ class TopSheetBar @JvmOverloads constructor(
     }
 
     private fun repaint() {
-        fill.color = surfaceColor
+        fill.color = if (flat) flatColor else surfaceColor
         // The bottom bar's shadow, mirrored: same blur and colour, cast down.
         // Only from Android 9, where hardware drawing supports a paint shadow
         // on any shape. NavSheetView falls back to a software layer below

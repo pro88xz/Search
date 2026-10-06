@@ -497,9 +497,9 @@
     </LinearLayout>
 
     <!-- The search results. The backdrop is the page, with the card of
-         suggestions on it - both in the card's colour, as is the top bar
-         while searching (MainActivity.enterSearchMode), so the search page
-         is one surface with no line or shadow across it.
+         suggestions on it; the search field above is a card of the same
+         colour, and the top bar goes flat in the page's colour while
+         searching (MainActivity.enterSearchMode) - as Chrome's search page.
 
          clickable on the backdrop is not decoration: it is match_parent over
          the WebView, and without it a tap on the empty area goes straight
@@ -509,7 +509,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_marginTop="58dp"
-        android:background="@color/sugSheet"
+        android:background="@color/searchPageBg"
         android:clickable="true"
         android:focusable="false"
         android:visibility="gone">

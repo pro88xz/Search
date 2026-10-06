@@ -108,9 +108,10 @@ debug log, lines with `metrics`).
 These were built without a phone to run them on. Check each once:
 
 - [ ] Search mode, from home and from a website, light, dark and Night Owl:
-      the top bar, the search field and the suggestions are one colour, the
-      card's, with no curve, shadow or line anywhere, and no outline round
-      the field; leaving search brings the bar's rounded corners back. The
+      the search field and the suggestion card are two cards of the same
+      colour (white in light mode) on the grey search page, the field with no
+      outline; the top bar is flat in that grey, with no curve, shadow or
+      line; leaving search brings the bar's rounded corners back. The
       home page's compact bar (scroll home down) keeps its outlined pill.
 - [ ] Loading: no line across the top of the page; a purple ring fills around
       the + button while a page loads, then fades.

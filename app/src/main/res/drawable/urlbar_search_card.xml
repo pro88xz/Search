@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The field while searching: a card in the suggestion card's colour,
+     fully rounded, with no outline - the field and the suggestions are two
+     cards of the same kind on the search page's background, as in Chrome.
+     No <padding> element, so swapping this in never disturbs the text
+     insets the EditText already carries. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/sugSheet" />
+    <corners android:radius="@dimen/radius_pill" />
+</shape>

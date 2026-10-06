@@ -777,13 +777,12 @@ class MainActivity : AppCompatActivity() {
         val pill = mode != FIELD_NORMAL
         val top = binding.urlBar.paddingTop
         val bottom = binding.urlBar.paddingBottom
-        // Searching, the field is part of the one surface the search page is:
-        // the bar, the field and the suggestions all the suggestion card's
-        // colour, with no line round any of them. The pill and its outline
-        // are the home page's compact bar.
+        // Searching, the field is a card like the one the suggestions are
+        // in: the same colour, no outline. The outlined pill is the home
+        // page's compact bar.
         val searching = mode == FIELD_SEARCH
         when {
-            searching -> binding.urlBar.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            searching -> binding.urlBar.setBackgroundResource(R.drawable.urlbar_search_card)
             pill -> binding.urlBar.setBackgroundResource(R.drawable.urlbar_search_bg)
             else -> binding.urlBar.setBackgroundResource(R.drawable.urlbar_bg)
         }
@@ -981,14 +980,14 @@ class MainActivity : AppCompatActivity() {
         imm.showSoftInput(binding.urlBar, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
         binding.suggestBackdrop.visibility = View.VISIBLE
         androidx.core.view.ViewCompat.requestApplyInsets(binding.root)
-        // One surface, top to bottom: the bar flat - no curve, shadow or
-        // line - and the page of suggestions and their card in its colour,
-        // which is the card's own (Night Owl's wash, while Night Owl is on).
-        val surface = binding.topBar.surfaceColor
+        // The search page, as Chrome's: the field and the suggestions are
+        // two cards of the same colour on a background of their own, and the
+        // top bar goes flat in that background - no curve, shadow or line.
+        // Night Owl's wash for the background while Night Owl is on.
+        val pageBg = if (nightOwl) binding.topBar.surfaceColor else getColor(R.color.searchPageBg)
+        binding.topBar.flatColor = pageBg
         binding.topBar.flat = true
-        binding.suggestBackdrop.setBackgroundColor(surface)
-        binding.suggestCard.backgroundTintList =
-            android.content.res.ColorStateList.valueOf(surface)
+        binding.suggestBackdrop.setBackgroundColor(pageBg)
         animateSearchIn(fieldWasShowing)
         fetchSuggests(binding.urlBar.text.toString())
     }

@@ -4,6 +4,7 @@
          two now. It was #FAFAFA against rows of #F0F0F3, four percent apart,
          so the rows had nothing to sit on and the whole sheet read as one
          flat plane. -->
+    <color name="searchPageBg">#F5F5F5</color>
     <color name="appBackground">#F5F5F5</color>
     <!-- Search suggestions -->
     <color name="sugMuted">#8A8A8A</color>
