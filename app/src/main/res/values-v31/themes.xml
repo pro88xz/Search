@@ -13,6 +13,9 @@
           owl inside its purple gradient - so it sat in a box. splash_owl is
           the same artwork (the launcher icon's foreground), so the two cannot
           drift apart, sized to match the owl the old splash showed.
+
+          values-night-v31 repeats this style for dark mode, which would
+          otherwise take values-night's and lose the icon. Keep the two in step.
         -->
         <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_owl</item>
         <item name="android:windowNoTitle">true</item>
