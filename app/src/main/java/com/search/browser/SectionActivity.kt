@@ -117,6 +117,62 @@ class SectionActivity : AppCompatActivity() {
             Settings.ADBLOCK_ENABLED, false
         )
         addNote("Reload open pages after changing this for it to take full effect.")
+        addDivider()
+        val head = TextView(this)
+        head.text = "Sites where ads are allowed"
+        head.textSize = 16f
+        head.setTextColor(resolveTextColor())
+        head.setPadding(dp(20), dp(12), dp(20), dp(2))
+        content.addView(head)
+        addNote("Turn blocking off for one site from the menu while you're on it: " +
+            "\u201CAllow ads on this site\u201D. Tap a site here to block its ads again.")
+        allowedSitesList = LinearLayout(this).also {
+            it.orientation = LinearLayout.VERTICAL
+            content.addView(it)
+        }
+        fillAllowedSites()
+    }
+
+    // ---- Ad blocking: sites allowed ----
+
+    private var allowedSitesList: LinearLayout? = null
+
+    private fun fillAllowedSites() {
+        val list = allowedSitesList ?: return
+        list.removeAllViews()
+        val sites = AdBlockSites.all(this).sorted()
+        if (sites.isEmpty()) {
+            val t = TextView(this)
+            t.text = "None. Ads are blocked on every site while blocking is on."
+            t.textSize = 14f
+            t.setTextColor(0xFF8A8A8F.toInt())
+            t.setPadding(dp(20), dp(4), dp(20), dp(16))
+            list.addView(t)
+            return
+        }
+        sites.forEach { site ->
+            val t = TextView(this)
+            t.text = site
+            t.textSize = 16f
+            t.setTextColor(resolveTextColor())
+            t.setPadding(dp(20), dp(14), dp(20), dp(14))
+            val outValue = android.util.TypedValue()
+            theme.resolveAttribute(android.R.attr.selectableItemBackground, outValue, true)
+            t.setBackgroundResource(outValue.resourceId)
+            t.setOnClickListener {
+                com.google.android.material.dialog.MaterialAlertDialogBuilder(
+                    this, R.style.Theme_Search_Dialog)
+                    .setTitle(site)
+                    .setMessage("Block ads on this site again?")
+                    .setPositiveButton("Block ads") { _, _ ->
+                        AdBlockSites.remove(this, site)
+                        fillAllowedSites()
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+            }
+            list.addView(t)
+        }
     }
 
     private fun buildAccessibility() {

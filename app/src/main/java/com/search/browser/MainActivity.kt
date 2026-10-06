@@ -470,6 +470,17 @@ class MainActivity : AppCompatActivity() {
         }, 2500L)
     }
 
+    /**
+     * The host of the website on screen, for the menu's per-site ad blocking
+     * row - or null when ad blocking is off or no website is showing.
+     */
+    private fun siteForAds(): String? {
+        if (!AdBlocker.isEnabled(this)) return null
+        val url = tabs.activeTab?.url ?: return null
+        if (!url.startsWith("http://") && !url.startsWith("https://")) return null
+        return try { android.net.Uri.parse(url).host?.ifBlank { null } } catch (e: Exception) { null }
+    }
+
     /** Whether the page on screen is still loading. */
     private fun pageLoading(): Boolean = (activeWeb()?.progress ?: 100) in 1..99
 
@@ -2051,8 +2062,15 @@ class MainActivity : AppCompatActivity() {
                 view: WebView?,
                 request: android.webkit.WebResourceRequest?
             ): android.webkit.WebResourceResponse? {
-                // Ad/tracker blocking (when enabled in settings).
-                return AdBlocker.check(this@MainActivity, request)
+                // Ad/tracker blocking (when enabled in settings), unless the
+                // user has allowed ads on the site this page is on. The page's
+                // own request names that site before anything it pulls in is
+                // asked for, which onPageStarted, on the main thread, may not.
+                val page = view as? BrowserWebView
+                if (request?.isForMainFrame == true) {
+                    request.url?.host?.let { page?.pageHost = it }
+                }
+                return AdBlocker.check(this@MainActivity, request, page?.pageHost)
                     ?: super.shouldInterceptRequest(view, request)
             }
 
@@ -2176,6 +2194,10 @@ class MainActivity : AppCompatActivity() {
                 // of the first page it loaded on that site - wrong in the bar,
                 // and wrong for everything that decides by the tab's address.
                 val t = tabOf(view)
+                if (url != null) {
+                    (view as? BrowserWebView)?.pageHost =
+                        try { android.net.Uri.parse(url).host } catch (e: Exception) { null }
+                }
                 if (t != null && url != null && url != t.url) {
                     t.url = url
                     if (view === activeWeb()) {
@@ -2210,6 +2232,9 @@ class MainActivity : AppCompatActivity() {
                 // address - the one it would be rebuilt from if its WebView
                 // were frozen or lost.
                 url?.let { u -> tabOf(view)?.url = u }
+                // The site the ad blocker judges this page's requests by.
+                (view as? BrowserWebView)?.pageHost =
+                    try { android.net.Uri.parse(url ?: "").host } catch (e: Exception) { null }
                 tabOf(view)?.let { t ->
                     t.loadsStarted++
                     t.loadToken++
@@ -2237,8 +2262,12 @@ class MainActivity : AppCompatActivity() {
                 // Media detection: report HTML5 playback to the app for the
                 // media-control notification (skipped in Night Owl).
                 if (!nightOwl) view?.evaluateJavascript(MediaDetect.js(), null)
-                // Cosmetic ad-hiding: hide common ad containers when blocking is on.
-                if (AdBlocker.isEnabled(this@MainActivity)) {
+                // Cosmetic ad-hiding: hide common ad containers when blocking is
+                // on - and not on a site the user has allowed ads on.
+                val shownHost = try { android.net.Uri.parse(shown ?: "").host } catch (e: Exception) { null }
+                if (AdBlocker.isEnabled(this@MainActivity) &&
+                    !AdBlockSites.isAllowed(this@MainActivity, shownHost)
+                ) {
                     view?.evaluateJavascript(AdBlocker.hideCss(), null)
                 }
                 // Desktop mode: force a desktop-width viewport so responsive
@@ -4007,6 +4036,15 @@ class MainActivity : AppCompatActivity() {
         // Reflect current Night Owl state in the menu label.
         (binding.menuNightOwl.getChildAt(1) as? android.widget.TextView)?.text =
             if (nightOwl) "Exit Night Owl" else "Night Owl"
+        // Ads on this site: only while ad blocking is on and a website is on
+        // screen, labelled with what tapping it will do.
+        val adsHost = siteForAds()
+        binding.menuSiteAds.visibility = if (adsHost != null) View.VISIBLE else View.GONE
+        if (adsHost != null) {
+            (binding.menuSiteAds.getChildAt(1) as? android.widget.TextView)?.text =
+                if (AdBlockSites.isAllowed(this, adsHost)) "Block ads on this site"
+                else "Allow ads on this site"
+        }
         // While the page is still loading, Reload is Stop, so a slow page can
         // always be called off.
         val stop = pageLoading()
@@ -5137,6 +5175,8 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) { null }
         val real = committed ?: web.url ?: homePage
         tab.url = real
+        (web as? BrowserWebView)?.pageHost =
+            try { android.net.Uri.parse(real).host } catch (e: Exception) { null }
         if (web === activeWeb()) {
             if (!binding.urlBar.hasFocus()) binding.urlBar.setText(displayUrl(real))
             refreshOmniboxVisibility(real)
@@ -6134,6 +6174,17 @@ class MainActivity : AppCompatActivity() {
         binding.menuFind.setOnClickListener {
             closeMenuNow()
             openFindBar()
+        }
+        binding.menuSiteAds.setOnClickListener {
+            closeMenuNow()
+            val host = siteForAds() ?: return@setOnClickListener
+            val allowed = AdBlockSites.isAllowed(this, host)
+            if (allowed) AdBlockSites.block(this, host) else AdBlockSites.allow(this, host)
+            val name = AdBlockSites.normalize(host) ?: host
+            toast(if (allowed) "Ads blocked on $name" else "Ads allowed on $name")
+            // Blocking acts on requests, so the page is fetched again under
+            // the new rule.
+            activeWeb()?.reload()
         }
         binding.menuSupport.setOnClickListener {
             closeMenuNow()

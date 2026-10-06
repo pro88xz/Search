@@ -127,3 +127,7 @@ These were built without a phone to run them on. Check each once:
 - [ ] Address bar: typing an open tab's site offers "Switch to tab"; copying a
       link elsewhere then opening search offers "Link you copied".
 - [ ] Downloads: a failed download retries; a paused one says why.
+- [ ] Ad blocking on (Settings → Ad blocking): on a site with ads, Menu →
+      "Allow ads on this site" reloads it with its ads; the site appears in
+      Settings → Ad blocking; "Block ads on this site" or removing it there
+      blocks them again. The home-feed AdMob card is unchanged either way.

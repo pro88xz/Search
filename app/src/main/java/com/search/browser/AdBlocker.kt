@@ -149,9 +149,14 @@ object AdBlocker {
         return BLOCKED.any { h == it || h.endsWith("." + it) }
     }
 
-    /** Returns a stand-in response if the request is an ad/tracker, else null. */
-    fun check(c: Context, request: WebResourceRequest?): WebResourceResponse? {
+    /**
+     * Returns a stand-in response if the request is an ad/tracker, else null.
+     * [pageHost] is the site of the page making the request; on a site the
+     * user has allowed ads on (AdBlockSites), nothing is blocked.
+     */
+    fun check(c: Context, request: WebResourceRequest?, pageHost: String? = null): WebResourceResponse? {
         if (!isEnabled(c)) return null
+        if (pageHost != null && AdBlockSites.isAllowed(c, pageHost)) return null
         // Never the page itself. A top-level navigation is somewhere the user
         // is going - a link they tapped, or a redirect on the way to one - and
         // links in sign-up and verification emails routinely pass through

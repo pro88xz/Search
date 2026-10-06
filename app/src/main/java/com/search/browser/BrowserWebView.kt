@@ -32,6 +32,14 @@ class BrowserWebView(context: Context) : WebView(context) {
     /** The page was pulled down past its top by this many px (positive). */
     var onTopOverscroll: ((Int) -> Unit)? = null
 
+    /**
+     * The host of the page this view is showing, for the ad blocker's
+     * per-site exceptions. Written on the main thread as pages start and on
+     * WebView's request thread as a page's own request goes out; read on the
+     * request threads, which cannot ask the view for its address.
+     */
+    @Volatile var pageHost: String? = null
+
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
         if (ev.actionMasked == MotionEvent.ACTION_DOWN) touching = true
         val handled = super.dispatchTouchEvent(ev)
