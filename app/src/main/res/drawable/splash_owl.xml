@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The splash icon: the owl alone, no tile or circle behind it, on the
+     splash's white. Android 12+ draws a splash icon without a background on
+     a 288dp canvas; the launcher foreground is inset 24dp each side so the
+     owl is the size it was inside the old adaptive-icon splash (a 240dp
+     canvas). Same artwork as the launcher icon, so the two never drift. -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@mipmap/ic_launcher_foreground"
+    android:inset="24dp" />

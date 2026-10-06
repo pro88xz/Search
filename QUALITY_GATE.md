@@ -136,6 +136,8 @@ These were built without a phone to run them on. Check each once:
       is hidden under the bottom bar except under the + button; the bar's
       corners are square on websites and rounded on the home page.
 - [ ] Change the accent (Settings → Customize): the loading ring takes it.
+- [ ] Cold launch: the splash is the owl alone on white, no tile behind it
+      (Android 12+ and older).
 - [ ] Ad blocking on (Settings → Ad blocking): on a site with ads, Menu →
       "Allow ads on this site" reloads it with its ads; the site appears in
       Settings → Ad blocking; "Block ads on this site" or removing it there

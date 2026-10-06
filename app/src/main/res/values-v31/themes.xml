@@ -3,37 +3,18 @@
     <style name="Theme.Search.Splash" parent="Theme.MaterialComponents.NoActionBar">
         <item name="android:windowSplashScreenBackground">@color/splashBg</item>
         <!--
-          No icon background.
-
-          windowSplashScreenIconBackgroundColor paints a shape behind the icon,
-          for icons that would otherwise have no contrast against the splash.
-          The owl is light on dark and the splash is dark, so it never needed
-          one - and keeping it meant keeping two colours in step. They fell out
-          of step: values-night overrides splashBg and not splashIconBg, so in
-          dark mode the patch stayed #220549 while the splash moved to #2A1E48
-          and the shape became visible. Light mode hid it only because the two
-          values happened to be equal.
-
-          Removing it deletes the whole class of bug rather than adding a night
-          variant that has to be remembered next time either colour changes.
+          No icon background (windowSplashScreenIconBackgroundColor): the owl
+          sits straight on the splash's white, with nothing behind it.
         -->
         <!--
-          No windowSplashScreenAnimatedIcon, deliberately.
+          The owl alone, on white: no tile, circle or gradient behind it.
 
-          Left unset, the platform puts the app's LAUNCHER icon on the splash -
-          which is the point. One UI opens an app by growing the launcher icon
-          into the window, and that icon is the adaptive one: gradient,
-          squircle mask, owl. Supplying a separate splash drawable meant the
-          launcher grew a squircle and then the splash replaced it with a bare
-          owl on flat purple, so a single launch showed two different marks.
-
-          Now the thing that expands and the thing that lands are the same
-          object, and the handover is invisible.
-
-          It also removes a whole file that had to be kept in sync by hand: the
-          splash owl was sized at 83% of its canvas while the icon foreground
-          is at 66%, and nothing but memory connected those numbers.
+          Left unset, the platform put the launcher icon on the splash - the
+          owl inside its purple gradient - so it sat in a box. splash_owl is
+          the same artwork (the launcher icon's foreground), so the two cannot
+          drift apart, sized to match the owl the old splash showed.
         -->
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_owl</item>
         <item name="android:windowNoTitle">true</item>
     </style>
 </resources>
