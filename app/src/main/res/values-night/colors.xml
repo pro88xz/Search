@@ -8,7 +8,9 @@
     <color name="sugMuted">#8A8A8A</color>
     <color name="sugCard">#00FFFFFF</color>
     <color name="sugIcon">#9A9AA0</color>
-    <color name="fieldSurface">#26262B</color>
+    <!-- The home page's surface colour (home.html): its search box, and the
+         same box pinned to the top bar once it has scrolled away. -->
+    <color name="fieldSurface">#18181C</color>
     <color name="cardLine">#26262A</color>
     <!-- Mirrors the home page card fill and text colour -->
     <color name="feedCard">#17171A</color>

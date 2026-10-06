@@ -111,8 +111,13 @@ These were built without a phone to run them on. Check each once:
       the search field and the suggestion card are two cards of the same
       colour (white in light mode) on the grey search page, the field with no
       outline; the top bar is flat in that grey, with no curve, shadow or
-      line; leaving search brings the bar's rounded corners back. The
-      home page's compact bar (scroll home down) keeps its outlined pill.
+      line; leaving search brings the bar's hairline and shadow back.
+- [ ] Home page, scroll down past its search box: the same box takes the
+      top on its own (same colour and size, no outline, 16dp from either
+      edge); the owl and the gear slide away and the top bar fades into the
+      page's grey; scrolling back up brings them back. Open a story from the
+      scrolled home page: the website has the owl, gear and normal address
+      bar. Searching from the scrolled home page keeps the owl.
 - [ ] Loading: no line across the top of the page; a purple ring fills around
       the + button while a page loads, then fades.
 - [ ] Tabs, Bookmarks, History, Downloads and the Menu rise smoothly.
@@ -144,13 +149,10 @@ These were built without a phone to run them on. Check each once:
       stopped page.
 - [ ] On a site with a bar pinned to the bottom (songsterr.com), nothing of it
       is hidden under the bottom bar except under the + button.
-- [ ] Both bars are the same shape on home and on websites: the top bar's
-      bottom corners and the bottom bar's top corners rounded, in light, dark
-      and Night Owl. On amazon.com nothing at the top of the page is cut (the
-      logo and the cart are whole), and the bit outside each bar corner is
-      Amazon's navy beside its header, not grey; scrolling, it follows the
-      page's colour at that edge within a moment. No stutter while scrolling
-      on a low-end phone.
+- [ ] Both bars are square on home and on websites, in light, dark and Night
+      Owl; no grey wedges anywhere. On amazon.com nothing at the top of the
+      page is cut (the logo and the cart are whole). The bottom bar sits
+      close above Android's buttons, its icons centred in it.
 - [ ] Change the accent (Settings → Customize): the loading ring takes it.
 - [ ] Dark mode, with three-button navigation and with gestures: the bottom
       bar and the strip under Android's buttons are one colour (also with

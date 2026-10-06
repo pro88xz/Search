@@ -12,9 +12,11 @@ import android.view.MotionEvent
 import android.view.View
 
 /**
- * The bottom bar's surface. A sheet with rounded top corners whose top edge
+ * The bottom bar's surface. A sheet with square top corners whose top edge
  * rises in an arc around the New tab button, so the button sits inside the bar
- * as one shape rather than on top of it.
+ * as one shape rather than on top of it. Square on every page, as the top bar
+ * is: a rounded corner either covers part of the page or leaves a wedge
+ * beside it.
  *
  * The arc is a circle around the button, a pale ring wide, and it meets the
  * straight edge through a wide concave curve either side, so the edge flows up
@@ -40,26 +42,6 @@ class NavSheetView @JvmOverloads constructor(
         set(v) { field = v; rebuild() }
 
     /**
-     * Whether the bit outside each rounded corner is painted ([corners]).
-     * Over a website the page stops at the sheet's straight edge
-     * (MainActivity.applyBarOverlap), so nothing of it is behind the corners,
-     * and they are painted in the website's own colour at that edge, as the
-     * top bar's are, so the page seems to run on behind the curve. Over the
-     * home page, which runs on under the corners, they are left open onto it.
-     *
-     * The corners are rounded either way: the bar is one shape on every page.
-     */
-    var fillCorners = false
-        set(v) { if (field != v) { field = v; invalidate() } }
-
-    /** The page background: the corners' colour until a website's is known. */
-    val pageBackground = context.getColor(R.color.appBackground)
-
-    /** What [fillCorners] paints outside each rounded corner. */
-    val corners = CornerColors(this, pageBackground)
-    private val cornerPaint = Paint()
-
-    /**
      * The navigation bar's height. The sheet paints on down behind it, so the
      * bar and the strip under Android's buttons are one surface. That strip
      * showed the app's background with Android's own shade over it - in dark
@@ -76,7 +58,6 @@ class NavSheetView @JvmOverloads constructor(
         set(v) { field = v; rebuild() }
 
     private val ring = 6.5f * dp
-    private val corner = 28f * dp
     private val blend = 55f * dp
 
     private val dark = (resources.configuration.uiMode and
@@ -135,10 +116,8 @@ class NavSheetView @JvmOverloads constructor(
         val meet = Math.toDegrees(kotlin.math.atan2(drop, dx).toDouble()).toFloat()
 
         val top = edgeTop
-        // Left side up to the corner, then along to the first blend.
-        edge.moveTo(0f, top + corner)
-        box.set(0f, top, 2f * corner, top + 2f * corner)
-        edge.arcTo(box, 180f, 90f, false)
+        // From the left edge along to the first blend.
+        edge.moveTo(0f, top)
         edge.lineTo(cx - dx, top)
         // Up the left blend, over the button, down the right blend.
         box.set(cx - dx - blend, top - 2f * blend, cx - dx + blend, top)
@@ -147,10 +126,8 @@ class NavSheetView @JvmOverloads constructor(
         edge.arcTo(box, 180f + meet, 180f - 2f * meet, false)
         box.set(cx + dx - blend, top - 2f * blend, cx + dx + blend, top)
         edge.arcTo(box, 180f - meet, meet - 90f, false)
-        // Along to the right corner and down.
-        edge.lineTo(w - corner, top)
-        box.set(w - 2f * corner, top, w, top + 2f * corner)
-        edge.arcTo(box, 270f, 90f, false)
+        // Along to the right edge.
+        edge.lineTo(w, top)
 
         sheet.addPath(edge)
         sheet.lineTo(w, h + bottomInset)
@@ -177,14 +154,6 @@ class NavSheetView @JvmOverloads constructor(
 
     override fun onDraw(canvas: Canvas) {
         if (sheet.isEmpty) return
-        if (fillCorners) {
-            // First, so the sheet's edge and shadow fall over them.
-            val w = width.toFloat()
-            cornerPaint.color = corners.left
-            canvas.drawRect(0f, edgeTop, corner, edgeTop + corner, cornerPaint)
-            cornerPaint.color = corners.right
-            canvas.drawRect(w - corner, edgeTop, w, edgeTop + corner, cornerPaint)
-        }
         canvas.drawPath(sheet, fill)
         canvas.drawCircle(cx, cy, bump, ringPaint)
         // Last, so the hairline also traces the ring where the edge runs over it.

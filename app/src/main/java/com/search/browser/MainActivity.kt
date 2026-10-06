@@ -763,7 +763,8 @@ class MainActivity : AppCompatActivity() {
     // the when below, because the collapse animation has to travel between two
     // of them instead of jumping.
     private val FIELD_H_NORMAL = 48f
-    private val FIELD_H_COMPACT = 52f
+    // The home page's own search box is 56 tall; pinned, it stays 56.
+    private val FIELD_H_COMPACT = 56f
 
     /**
      * How far the search pill travels as it slides up into the bar, in dp.
@@ -772,25 +773,24 @@ class MainActivity : AppCompatActivity() {
     private val SLIDE_DP = 12f
     private val FIELD_H_SEARCH = 56f
 
+    /** The style styleUrlBar last gave the field. */
+    private var fieldMode = FIELD_NORMAL
+
     private fun styleUrlBar(mode: Int) {
         val d = resources.displayMetrics.density
         val pill = mode != FIELD_NORMAL
         val top = binding.urlBar.paddingTop
         val bottom = binding.urlBar.paddingBottom
+        fieldMode = mode
         // Searching, the field is a card like the one the suggestions are
-        // in: the same colour, no outline. The outlined pill is the home
-        // page's compact bar.
-        val searching = mode == FIELD_SEARCH
-        when {
-            searching -> binding.urlBar.setBackgroundResource(R.drawable.urlbar_search_card)
-            pill -> binding.urlBar.setBackgroundResource(R.drawable.urlbar_search_bg)
-            else -> binding.urlBar.setBackgroundResource(R.drawable.urlbar_bg)
-        }
-        // The pill's edge is drawn over the whole frame, after the mic, scan
-        // and clear buttons, so nothing inside the pill can cut its curve.
-        binding.urlBarContainer.foreground =
-            if (pill && !searching) androidx.core.content.ContextCompat.getDrawable(
-                this, R.drawable.urlbar_search_outline) else null
+        // in. Pinned to the top of the home page, it is the home page's own
+        // search box: its colour, its size, no outline - the same box,
+        // whether the page has scrolled or not.
+        binding.urlBar.setBackgroundResource(when (mode) {
+            FIELD_SEARCH -> R.drawable.urlbar_search_card
+            FIELD_COMPACT -> R.drawable.urlbar_search_bg
+            else -> R.drawable.urlbar_bg
+        })
         binding.urlBar.setTextSize(
             android.util.TypedValue.COMPLEX_UNIT_SP,
             when (mode) {
@@ -820,8 +820,14 @@ class MainActivity : AppCompatActivity() {
         // away while searching, 8dp to the screen edge. The old 6dp margins
         // added to those insets left gaps twice as wide as the ones the
         // field sits between on the home page.
-        lp.marginStart = (4 * d).toInt()
-        lp.marginEnd = ((if (mode == FIELD_SEARCH) 4 else 0) * d).toInt()
+        // Pinned on the home page, with the owl and the gear gone, it has the
+        // home box's 16dp from either edge (12dp plus the bar's own 4dp).
+        lp.marginStart = ((if (mode == FIELD_COMPACT) 12 else 4) * d).toInt()
+        lp.marginEnd = (when (mode) {
+            FIELD_SEARCH -> 4
+            FIELD_COMPACT -> 12
+            else -> 0
+        } * d).toInt()
         // Each of these has to hold a 48dp control, which is what a touch
         // target has to be. The three sizes stay three sizes - the step between
         // browsing and collapsed is the same 4dp it was - they just start from
@@ -964,6 +970,16 @@ class MainActivity : AppCompatActivity() {
         // already true, which also stops applyHomeCompact starting a new one.
         homeBarAnim?.cancel()
         homeBarAnim = null
+        // The owl stays on the search page even when search starts from
+        // home's pinned box, which had sent it away.
+        homeRowWidths().getOrNull(0)?.let { w ->
+            val owl = binding.homeBtn
+            val lp = owl.layoutParams
+            lp.width = w
+            owl.layoutParams = lp
+            owl.alpha = 1f
+            owl.visibility = View.VISIBLE
+        }
 
         // Captured before it is shown: on home the field is not on screen at
         // rest, on a page it already is, and the two want different entrances.
@@ -997,10 +1013,8 @@ class MainActivity : AppCompatActivity() {
         searchMode = false
         styleUrlBarForSearch(false)
         animateSearchOut()
-        // The bar's curve back, and the website's colours in its corners once
-        // the sheet is gone.
+        // The bar's own look back.
         binding.topBar.flat = false
-        scheduleBarCorners(260L)
         // Nothing transient left on the field: applyHomeCompact below may
         // animate it, and it should start from rest rather than from whatever
         // the entrance left behind.
@@ -1072,7 +1086,6 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         HealthStats.sessionStarted(this)
-        scheduleBarCorners(200L)
         registerNetworkWatch()
         // If a flexible update finished downloading while away, offer to install it.
         appUpdateManager.appUpdateInfo.addOnSuccessListener { info ->
@@ -1983,8 +1996,6 @@ class MainActivity : AppCompatActivity() {
         // Letting go of the page: a pull at the top either refreshes or springs back.
         web.onTouchEnd = { if (web === activeWeb()) releasePull() }
         web.onTopOverscroll = { px -> if (web === activeWeb()) pullBy(px) }
-        // The bar corners follow the colour of the page scrolling under them.
-        web.onScrolled = { if (web === activeWeb()) scheduleBarCorners(BAR_CORNER_SCROLL_MS) }
         web.layoutParams = FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT
@@ -2237,7 +2248,6 @@ class MainActivity : AppCompatActivity() {
             override fun onPageCommitVisible(view: WebView?, url: String?) {
                 super.onPageCommitVisible(view, url)
                 commitLoadWatch(tabOf(view))
-                if (view != null && view === activeWeb()) scheduleBarCorners(100L)
             }
 
             override fun onReceivedHttpError(
@@ -2394,9 +2404,6 @@ class MainActivity : AppCompatActivity() {
                 if (view == tabs.activeTab?.webView) {
                     refreshStar(); refreshOmniboxVisibility(shown)
                     pushAccentToPage(view)
-                    scheduleBarCorners(300L)
-                    uiHandler.removeCallbacks(barCornersLate)
-                    uiHandler.postDelayed(barCornersLate, 1500L)
                 }
             }
         }
@@ -2782,8 +2789,6 @@ class MainActivity : AppCompatActivity() {
         // that before the view is detached leaves a black frame on some devices.
         fullscreenCallback?.onCustomViewHidden()
         fullscreenCallback = null
-        // Rotated back, maybe: the page's edges are read again once it settles.
-        scheduleBarCorners(400L)
     }
 
     // ---------- Picture in picture ----------
@@ -3833,7 +3838,6 @@ class MainActivity : AppCompatActivity() {
         // only judged while on screen, so the watch starts again here.
         if (tab.openerId != null && returnedFromSignIn(tab)) watchReturnedPopup(tab, tab.url)
         scheduleSessionSave()
-        scheduleBarCorners(200L)
     }
 
     /**
@@ -3872,18 +3876,11 @@ class MainActivity : AppCompatActivity() {
     private var homeRowWidths: List<Int>? = null
 
     /**
-     * The views that give up their width and fade as the bar collapses.
-     *
-     * Empty on purpose. The owl used to be in here, which is why it vanished on
-     * scroll; now it stays exactly where it is through the whole transition and
-     * the pill slides up to meet it. That is the difference between the bar
-     * swapping states and the search box arriving.
-     *
-     * Empty is safe rather than merely tolerated: homeRowWidths caches an empty
-     * list, and every forEachIndexed over the row becomes a no-op, so nothing
-     * in the collapse machinery can reach the owl at all.
+     * The views that give up their width and fade as the bar collapses: the
+     * owl and the gear. Once home's search box has scrolled away it takes the
+     * top on its own, as wide as it is on the page.
      */
-    private fun homeBarRow(): List<View> = emptyList()
+    private fun homeBarRow(): List<View> = listOf(binding.homeBtn, binding.settingsBtn)
 
     // Natural widths live in the layout params, which keep their fixed dp even
     // while the view is collapsed to zero, so they survive the transition.
@@ -3912,6 +3909,9 @@ class MainActivity : AppCompatActivity() {
             v.alpha = t
         }
         binding.urlBarContainer.alpha = 1f - t
+        // And the bar fades into the home page's background, its line and
+        // shadow with it, so the box sits on the page as it does further down.
+        binding.topBar.blend = 1f - t
         // And it arrives rather than appearing. t is 1 for the icon row and 0
         // for the pill, so the pill starts SLIDE_DP below its resting place and
         // reaches it exactly as it reaches full opacity. The bar sets
@@ -3947,7 +3947,38 @@ class MainActivity : AppCompatActivity() {
         binding.urlBarContainer.alpha = 1f
         binding.urlBarContainer.translationY = 0f
         binding.urlBarContainer.visibility = if (compact) View.VISIBLE else View.INVISIBLE
+        binding.topBar.blend = if (compact) 1f else 0f
         styleUrlBar(if (compact) FIELD_COMPACT else FIELD_NORMAL)
+    }
+
+    /**
+     * The owl and the gear back in full and the bar its own colour: for any
+     * page but home, and for home before it says whether its search box has
+     * scrolled away. Not while searching, which keeps the gear away itself.
+     */
+    private fun resetHomeBarRow() {
+        if (searchMode) return
+        if (fieldMode == FIELD_COMPACT) styleUrlBar(FIELD_NORMAL)
+        if (homeBarProgress == 1f && binding.topBar.blend == 0f &&
+            homeBarRow().all { it.visibility == View.VISIBLE }
+        ) return
+        // Stops a collapse under way without letting it finish (homeBarSeq).
+        homeBarSeq++
+        homeBarAnim?.cancel()
+        homeBarAnim = null
+        homeBarProgress = 1f
+        val widths = homeRowWidths()
+        homeBarRow().forEachIndexed { i, v ->
+            val lp = v.layoutParams
+            lp.width = widths[i]
+            v.layoutParams = lp
+            v.alpha = 1f
+            v.translationY = 0f
+            v.visibility = View.VISIBLE
+        }
+        binding.urlBarContainer.alpha = 1f
+        binding.urlBarContainer.translationY = 0f
+        binding.topBar.blend = 0f
     }
 
     private fun applyHomeCompact(compact: Boolean, animate: Boolean = false) {
@@ -4026,6 +4057,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun refreshOmniboxVisibility(url: String?) {
         val isHome = url == null || url == homePage
+        resetHomeBarRow()
         if (!isHome) {
             // Leaving home: drop compact state and put the icon row back, in case
             // the user opened a link while the bar was collapsed.
@@ -4062,19 +4094,15 @@ class MainActivity : AppCompatActivity() {
 
     /**
      * On the home page the page runs the full overlap under the bottom bar:
-     * under the see-through strip where the arc rises and under the bar's
-     * rounded corners, so home's own grey shows behind them - and the feed's
-     * ad card and the page's bottom padding are laid out for exactly that, so
-     * home is left as it was.
+     * under the see-through strip where the arc rises and 28dp on under the
+     * bar itself, as it always has - the feed's ad card and the page's bottom
+     * padding are laid out for exactly that, so home is left as it was.
      *
      * On a website the page stops at the bar's straight edge, running only
      * under the see-through strip. A site lays out what it pins to the bottom
      * of its window - a toolbar, a cookie banner, a player's controls, a
      * "Download our app" strip - against the bottom of the WebView, and with
      * the page running under the bar's solid part that was hidden behind it.
-     * The bar keeps its rounded corners there too - one shape on every page -
-     * with the page background painted outside each curve
-     * (NavSheetView.fillCorners), as the top bar's corners are.
      */
     private fun applyBarOverlap(onHome: Boolean) {
         if (barOverlapHome == onHome) return
@@ -4087,116 +4115,7 @@ class MainActivity : AppCompatActivity() {
             lp.topMargin = -overlap
             binding.bottomBar.layoutParams = lp
         }
-        binding.navSheet.fillCorners = !onHome
-        if (onHome) {
-            // Home's own background, outside the top bar's corners; the
-            // bottom bar's are open onto the page.
-            val bg = binding.topBar.pageBackground
-            binding.topBar.corners.set(bg, bg, animate = false)
-            binding.navSheet.corners.set(bg, bg, animate = false)
-        } else {
-            scheduleBarCorners()
-        }
     }
-
-    // ---------- Bar corners on websites ----------
-    //
-    // On a website both bars paint the bit outside their rounded corners in
-    // the website's own colour at that edge (CornerColors), so the page seems
-    // to run on behind each curve rather than a grey wedge showing beside it.
-    // The colour is read off the screen: a one-pixel strip just inside the
-    // page below the top bar, and one above the bottom bar, copied from what
-    // the display already shows (PixelCopy, as the tab pictures are) - the
-    // page is asked for nothing. Read again as the page loads, as it scrolls
-    // (at most four times a second), on a tab switch, and when something
-    // that covered the page closes.
-
-    private var barCornersPending = false
-    private var barCornersBusy = false
-    private var barCornersBusySince = 0L
-    private var cornerStrips: Array<Bitmap>? = null
-    private val barCornersRun = Runnable {
-        barCornersPending = false
-        sampleBarCorners()
-    }
-    /** Once more a while after a page finishes, for what it draws late. */
-    private val barCornersLate = Runnable { scheduleBarCorners(0L) }
-    private val BAR_CORNER_SCROLL_MS = 250L
-    // Each strip is copied into this many pixels; the first and last are
-    // read. Across a phone's width that puts them about 6dp in from either
-    // edge: beside the corners, and clear of the page's scroll bar.
-    private val CORNER_STRIP_PX = 32
-
-    /** Reads the page's edge colours [delayMs] from now, unless already asked to. */
-    private fun scheduleBarCorners(delayMs: Long = 150L) {
-        if (barCornersPending) return
-        barCornersPending = true
-        uiHandler.postDelayed(barCornersRun, delayMs)
-    }
-
-    private fun sampleBarCorners() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        if (barOverlapHome != false || isFinishing || isDestroyed) return
-        // Covered by the app's own screens: no page to read. Each of these
-        // asks again when it closes.
-        if (searchMode || deckVisible || fullscreenView != null ||
-            binding.menuScrim.visibility == View.VISIBLE
-        ) return
-        val web = activeWeb() ?: return
-        if (!web.isAttachedToWindow || web.width <= 0 || web.height <= 0) return
-        // A read whose answer never came does not hold up the rest for good.
-        val now = android.os.SystemClock.uptimeMillis()
-        if (barCornersBusy && now - barCornersBusySince > 2000L) barCornersBusy = false
-        // Moving or covered for a moment - a tab swipe, the search sheet on
-        // its way out, a read still running: shortly, then.
-        if (barCornersBusy || binding.webContainer.translationX != 0f ||
-            binding.suggestBackdrop.visibility == View.VISIBLE
-        ) {
-            scheduleBarCorners(BAR_CORNER_SCROLL_MS)
-            return
-        }
-        val at = IntArray(2)
-        web.getLocationInWindow(at)
-        // 16dp in from the page's edge, clear of the shadow each bar casts on it.
-        val depth = (16 * resources.displayMetrics.density).toInt()
-        val top = at[1] + depth
-        val bottom = at[1] + web.height - depth
-        if (bottom <= top) return
-        val strips = cornerStrips ?: Array(2) {
-            Bitmap.createBitmap(CORNER_STRIP_PX, 1, Bitmap.Config.ARGB_8888)
-        }.also { cornerStrips = it }
-        val rows = intArrayOf(top, bottom)
-        val ok = BooleanArray(2)
-        var waiting = 2
-        barCornersBusy = true
-        barCornersBusySince = now
-        val finish = {
-            barCornersBusy = false
-            if (barOverlapHome == false && activeWeb() === web && !searchMode && !deckVisible) {
-                val last = CORNER_STRIP_PX - 1
-                if (ok[0]) binding.topBar.corners.set(
-                    opaque(strips[0].getPixel(0, 0)), opaque(strips[0].getPixel(last, 0)),
-                    animate = true)
-                if (ok[1]) binding.navSheet.corners.set(
-                    opaque(strips[1].getPixel(0, 0)), opaque(strips[1].getPixel(last, 0)),
-                    animate = true)
-            }
-        }
-        for (i in 0..1) {
-            val rect = android.graphics.Rect(at[0], rows[i], at[0] + web.width, rows[i] + 1)
-            try {
-                PixelCopy.request(window, rect, strips[i], { result ->
-                    ok[i] = result == PixelCopy.SUCCESS
-                    if (--waiting == 0) finish()
-                }, uiHandler)
-            } catch (e: Exception) {
-                // No surface to read just now; the next scroll or load reads again.
-                if (--waiting == 0) finish()
-            }
-        }
-    }
-
-    private fun opaque(c: Int): Int = c or (0xFF shl 24)
 
     /**
      * Whether a tab may be frozen to stay under the live-tab cap.
@@ -4545,7 +4464,6 @@ class MainActivity : AppCompatActivity() {
         binding.menuPanel.scaleY = 1f
         binding.menuPanel.alpha = 1f
         binding.menuPanel.translationY = 0f
-        scheduleBarCorners()
     }
 
     private fun addNewTab(loadUrl: String = homePage) {
@@ -5105,7 +5023,6 @@ class MainActivity : AppCompatActivity() {
         binding.tabDeck.visibility = View.GONE
         deckVisible = false
         androidx.core.view.ViewCompat.requestApplyInsets(binding.root)
-        scheduleBarCorners()
         // refreshAdSlot() refuses to show the card while the deck is up, and
         // closing the deck is the moment that condition clears. Without this,
         // any refresh that lands while the deck is open leaves the card hidden

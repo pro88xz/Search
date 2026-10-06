@@ -1,9 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The field while searching: a pill matching the home page field,
-     fully rounded against its 50dp height.
-     Fill only. The outline is urlbar_search_outline, drawn as the field's
-     frame foreground, above the mic, scan and clear buttons, so nothing
-     inside the pill can paint over its edge and break the curve.
+<!-- The field pinned to the top of the home page once its own search box has
+     scrolled away: the same box - the home page's colour (fieldSurface is
+     home.html's surface), fully rounded, no outline.
      No <padding> element here, so swapping this in never disturbs the text
      insets the EditText already carries. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"

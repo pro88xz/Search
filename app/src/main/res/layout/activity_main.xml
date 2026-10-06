@@ -236,23 +236,23 @@
         <!-- ===== BOTTOM navigation bar: Home, Bookmarks, New tab, Tabs, Menu.
              Icons only; each carries its name as a content description and a
              long-press tooltip. The frame is taller than the bar and pulled up
-             58dp over the bottom of the page: 30dp of see-through strip above
-             the bar's straight edge, where the arc and the New tab button rise,
-             and the 28dp of its rounded corners, so the page shows behind the
-             corners instead of a white block. The strip passes touches to the
+             58dp over the bottom of the home page: 30dp of see-through strip
+             above the bar's straight edge, where the arc and the New tab button
+             rise, and 28dp of the bar itself. The strip passes touches to the
              page. The ad slot's 68dp bottom margin and home.html's bottom
-             padding allow for the same 58dp. ===== -->
+             padding allow for the same 58dp. On a website the page stops at
+             the straight edge (MainActivity.applyBarOverlap). ===== -->
         <com.search.browser.SwipeBar
             android:id="@+id/bottomBar"
             android:layout_width="match_parent"
-            android:layout_height="92dp"
+            android:layout_height="86dp"
             android:layout_marginTop="-58dp"
             android:clipChildren="false"
             android:clipToPadding="false">
 
             <!-- The bar's surface, drawn: the top edge rises in an arc around
                  the New tab button. Its straight edge is 30dp down, where the
-                 62dp row of buttons below starts. -->
+                 56dp row of buttons below starts. -->
             <com.search.browser.NavSheetView
                 android:id="@+id/navSheet"
                 android:layout_width="match_parent"
@@ -262,7 +262,7 @@
             <LinearLayout
                 android:id="@+id/bottomSheet"
                 android:layout_width="match_parent"
-                android:layout_height="62dp"
+                android:layout_height="56dp"
                 android:layout_gravity="bottom"
                 android:orientation="horizontal"
                 android:gravity="center_vertical">
@@ -571,7 +571,7 @@
             android:layout_height="wrap_content"
             android:layout_gravity="bottom|end"
             android:layout_marginTop="16dp"
-            android:layout_marginBottom="70dp"
+            android:layout_marginBottom="64dp"
             android:layout_marginEnd="8dp"
             android:orientation="vertical"
             android:background="@drawable/menu_bg"
