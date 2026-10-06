@@ -26,6 +26,7 @@
     <color name="settingsPageBg">#F1EEF7</color>
     <color name="settingsCard">#FFFFFF</color>
     <color name="settingsIconTint">#5E44A0</color>
+    <!-- The splash in light mode; values-night has the dark one. -->
     <color name="splashBg">#FFFFFF</color>
     <color name="ic_launcher_background">#2A1E48</color>
     <color name="sugSheet">#FFFFFF</color>

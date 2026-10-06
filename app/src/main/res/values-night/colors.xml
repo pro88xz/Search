@@ -2,6 +2,9 @@
 <resources>
     <color name="searchPageBg">#0E0E10</color>
     <color name="appBackground">#0E0E10</color>
+    <!-- The splash in dark mode: the owl on the app's own dark background, so
+         the splash runs straight into the browser. Light mode is white. -->
+    <color name="splashBg">#0E0E10</color>
     <color name="sugMuted">#8A8A8A</color>
     <color name="sugCard">#00FFFFFF</color>
     <color name="sugIcon">#9A9AA0</color>

@@ -6,8 +6,9 @@
   phone values-night's Theme.Search.Splash beat values-v31's - and that one
   sets no splash icon, so the system fell back to the launcher icon and the
   owl sat in its purple box again. This file matches both, so it wins, and
-  it is the same splash as values-v31: the owl alone on white. Keep the two
-  in step.
+  it is the same splash as values-v31: the owl alone, no box, on splashBg -
+  which in dark mode is the app's dark background (values-night/colors.xml).
+  Keep the two in step.
 -->
 <resources>
     <style name="Theme.Search.Splash" parent="Theme.MaterialComponents.NoActionBar">

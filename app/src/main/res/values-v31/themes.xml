@@ -4,10 +4,11 @@
         <item name="android:windowSplashScreenBackground">@color/splashBg</item>
         <!--
           No icon background (windowSplashScreenIconBackgroundColor): the owl
-          sits straight on the splash's white, with nothing behind it.
+          sits straight on the splash background, with nothing behind it.
         -->
         <!--
-          The owl alone, on white: no tile, circle or gradient behind it.
+          The owl alone, on splashBg - white, or the app's dark background in
+          dark mode: no tile, circle or gradient behind it.
 
           Left unset, the platform put the launcher icon on the splash - the
           owl inside its purple gradient - so it sat in a box. splash_owl is
