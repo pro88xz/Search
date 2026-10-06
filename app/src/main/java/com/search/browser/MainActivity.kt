@@ -495,7 +495,21 @@ class MainActivity : AppCompatActivity() {
 
     private fun isErrorPage(url: String?): Boolean =
         url != null && (url.startsWith("file:///android_asset/offline.html") ||
-            url.startsWith("file:///android_asset/error.html"))
+            url.startsWith("file:///android_asset/error.html")) &&
+            // A page stopped for not responding is not a failure to retry by
+            // itself: it would only stop everything again (stoppedPage).
+            !url.contains("stopped=1")
+
+    /**
+     * The page shown in place of one the user ended for not responding: what
+     * happened, and a Try again that goes back to [url] only when tapped.
+     */
+    private fun stoppedPage(url: String, crashed: Boolean = false): String {
+        val base = "file:///android_asset/error.html?stopped=1" + (if (crashed) "&crashed=1" else "")
+        return try {
+            base + "&u=" + java.net.URLEncoder.encode(url, "UTF-8")
+        } catch (e: Exception) { base }
+    }
 
     /**
      * Back online: the tab on screen tries again if it is showing the offline
@@ -1250,7 +1264,8 @@ class MainActivity : AppCompatActivity() {
         val entries = keep.map { t ->
             // Standing in for a page that failed: saved as that page, without
             // a history that would only lead back to the error page.
-            val failed = t.failedUrl?.takeIf { isErrorPage(t.url) }
+            val failed = t.stoppedUrl?.let { stoppedPage(it) }
+                ?: t.failedUrl?.takeIf { isErrorPage(t.url) }
             if (failed != null) t.diskStateHash = 0
             var bytes: ByteArray? = null
             if (failed == null && (full || t === active || t.diskStateHash == 0)) {
@@ -3274,6 +3289,24 @@ class MainActivity : AppCompatActivity() {
         // State saved by an earlier freeze is older than the page that just
         // died. The address onPageStarted last recorded is where the tab was.
         tab.savedState = null
+        // Unless the user ended it for hanging, or it has now taken the
+        // renderer down twice in a row - a page too heavy for the phone,
+        // killed for memory each time it loads. Reloaded either way it would
+        // only do it again, taking every tab with it. It is rebuilt on a page
+        // that says so instead, and goes back only when Try again is tapped.
+        val now = android.os.SystemClock.uptimeMillis()
+        val crashLoop = now - tab.lastRendererLoss < 20_000L
+        tab.lastRendererLoss = now
+        val ended = tab.id == stoppedTabId
+        if (ended) stoppedTabId = null
+        if ((ended || crashLoop) &&
+            (tab.url.startsWith("http://") || tab.url.startsWith("https://"))
+        ) {
+            DebugLog.add { "tab#" + tab.id + (if (ended) " ended by the user" else
+                " lost its renderer twice in 20s") + "; not reloading it" }
+            tab.url = stoppedPage(tab.url, crashed = !ended)
+            tab.diskStateHash = 0
+        }
         if (tab === tabs.activeTab) {
             // Outside the callback, which WebView is still running for the
             // other tabs this renderer served.
@@ -3451,40 +3484,139 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ---------- A page that stops answering ----------
+    //
+    // Every WebView in the app shares one renderer process, so a page that
+    // locks it up - a script that never ends - locks every tab with it. The
+    // app's own buttons still work, but anything they ask of a page goes
+    // nowhere: Home, a new tab, another tab all stay blank, and the only way
+    // out used to be closing the app.
+    //
+    // Two things catch it now. Android reports a page that stops responding
+    // (Android 10 and up), and keeps reporting it while it stays stuck. And
+    // the app checks for itself: the home page is a local file that starts
+    // loading in milliseconds, so Home or New tab that has not started it
+    // after a few seconds means the pages are stuck - which also covers
+    // Android 9 and below, where nothing is reported.
+    //
+    // Either way the same prompt offers the way out. "Wait" holds it back for
+    // a while, not for good - it used to silence it until the page recovered,
+    // and a page that never did left no way out at all.
 
     private var unresponsiveDialog: android.app.AlertDialog? = null
-    // Set when the user chose to wait, so the prompt is not put straight back
-    // up by the next unresponsive report for the same hang.
-    private var waitingOnHang = false
+    private var hangQuietUntil = 0L
+    /** The tab the user ended for not responding, until it is rebuilt. */
+    private var stoppedTabId: Long? = null
+    private val HANG_WAIT_MS = 10_000L
 
     @android.annotation.TargetApi(Build.VERSION_CODES.Q)
     private fun onPageUnresponsive(view: WebView, renderer: android.webkit.WebViewRenderProcess?) {
         DebugLog.add { "page not responding in tab#" + tabOf(view)?.id }
-        if (view !== activeWeb() || waitingOnHang || unresponsiveDialog != null) return
-        if (isFinishing || isDestroyed) return
+        // Any tab, not only the one on screen: they all share the renderer.
+        showPagesStuck(view, renderer)
+    }
+
+    private fun onPageResponsive(view: WebView) {
+        DebugLog.add { "page responding again in tab#" + tabOf(view)?.id }
+        hangQuietUntil = 0L
+        unresponsiveDialog?.dismiss()
+        unresponsiveDialog = null
+    }
+
+    /**
+     * Offers the way out of a stuck page: wait, or end it. Ending it ends the
+     * renderer, so every page restarts - the stuck one included. On Android 9
+     * and below a renderer cannot be ended on its own, so the offer is to
+     * restart Search, whose tabs come back from disk (SessionStore).
+     *
+     * [renderer] is the WebViewRenderProcess when Android reported the hang,
+     * typed loosely so this compiles into code that also runs before Android 10.
+     */
+    private fun showPagesStuck(view: WebView?, renderer: Any?) {
+        if (unresponsiveDialog != null || isFinishing || isDestroyed) return
+        if (android.os.SystemClock.uptimeMillis() < hangQuietUntil) return
         HealthStats.count(this, HealthStats.PAGE_UNRESPONSIVE)
+        val canEnd = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
         unresponsiveDialog = android.app.AlertDialog.Builder(this)
             .setTitle("This page isn't responding")
-            .setMessage("You can wait for it, or close it and reload. Reloading restarts every open page.")
-            .setNegativeButton("Wait") { _, _ -> waitingOnHang = true }
-            .setPositiveButton("Reload") { _, _ ->
-                DebugLog.add { "user ended the unresponsive page" }
-                // Ending the renderer comes back through onRenderProcessGone,
-                // which rebuilds the tabs. If there is no renderer to end,
-                // a plain reload is the next best thing.
-                val ended = try { renderer?.terminate() == true } catch (e: Exception) { false }
-                if (!ended && isLiveWeb(view)) view.reload()
+            .setMessage(
+                if (canEnd) "It's holding up every tab. Wait for it, or end it - " +
+                    "your tabs will reload."
+                else "It's holding up every tab. Wait for it, or restart Search - " +
+                    "your tabs will come back.")
+            .setNegativeButton("Wait") { _, _ ->
+                hangQuietUntil = android.os.SystemClock.uptimeMillis() + HANG_WAIT_MS
+            }
+            .setPositiveButton(if (canEnd) "End it" else "Restart") { _, _ ->
+                endStuckPages(view, renderer)
             }
             .setOnDismissListener { unresponsiveDialog = null }
             .show()
     }
 
-    private fun onPageResponsive(view: WebView) {
-        waitingOnHang = false
-        if (view === activeWeb()) {
-            unresponsiveDialog?.dismiss()
-            unresponsiveDialog = null
+    private fun endStuckPages(view: WebView?, renderer: Any?) {
+        DebugLog.add { "user ended the unresponsive page" }
+        // The tab that hung is not loaded straight back into the same hang:
+        // it comes back as a "this page stopped" page with Try again.
+        val stuck = tabOf(view) ?: tabs.activeTab
+        stoppedTabId = stuck?.id
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            // Ending the renderer comes back through onRenderProcessGone,
+            // which rebuilds the tabs. If there is no renderer to end, a plain
+            // reload is the next best thing.
+            val r = (renderer as? android.webkit.WebViewRenderProcess)
+                ?: view?.webViewRenderProcess ?: activeWeb()?.webViewRenderProcess
+            val ended = try { r?.terminate() == true } catch (e: Exception) { false }
+            if (!ended) view?.takeIf { isLiveWeb(it) }?.reload()
+        } else {
+            restartBrowser()
         }
+    }
+
+    /**
+     * Android 9 and below: the renderer belongs to this process and cannot be
+     * ended on its own, so the process goes, and comes straight back. The
+     * tabs are written to disk first and restored on the way back up.
+     */
+    private fun restartBrowser() {
+        tabs.tabs.firstOrNull { it.id == stoppedTabId }?.let { t ->
+            if (t.url.startsWith("http://") || t.url.startsWith("https://")) t.stoppedUrl = t.url
+        }
+        saveSession(full = true)
+        SessionStore.flush(1500L)
+        try {
+            val launch = packageManager.getLaunchIntentForPackage(packageName)
+            if (launch != null) {
+                launch.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
+                    android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                val pending = android.app.PendingIntent.getActivity(this, 0, launch,
+                    android.app.PendingIntent.FLAG_CANCEL_CURRENT or
+                        android.app.PendingIntent.FLAG_IMMUTABLE)
+                (getSystemService(ALARM_SERVICE) as android.app.AlarmManager)
+                    .set(android.app.AlarmManager.RTC,
+                        System.currentTimeMillis() + 400L, pending)
+            }
+        } catch (e: Exception) { /* comes back when opened instead */ }
+        finishAffinity()
+        android.os.Process.killProcess(android.os.Process.myPid())
+    }
+
+    /**
+     * After asking [tab] for the home page, checks a few seconds later that it
+     * started. A local file starts in milliseconds; one that has not started
+     * means the renderer is stuck.
+     */
+    private fun expectPageStart(tab: Tab) {
+        val started = tab.loadsStarted
+        uiHandler.postDelayed({
+            if (isFinishing || isDestroyed || !tabs.tabs.contains(tab)) return@postDelayed
+            if (tab.loadsStarted != started) return@postDelayed
+            if (!lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) {
+                return@postDelayed
+            }
+            val web = tab.webView ?: return@postDelayed
+            DebugLog.add { "tab#" + tab.id + " did not start loading home: pages stuck" }
+            showPagesStuck(web, null)
+        }, 4000L)
     }
 
     // ---------- Memory ----------
@@ -3803,6 +3935,7 @@ class MainActivity : AppCompatActivity() {
         }
         binding.urlBarContainer.visibility =
             if (isHome && !homeCompact) View.INVISIBLE else View.VISIBLE
+        applyBarOverlap(isHome)
         refreshNav()
         refreshAdSlot()
         // Desktop mode is meaningless on the home page — reset it when we land
@@ -3811,6 +3944,41 @@ class MainActivity : AppCompatActivity() {
             Settings.setBool(this, Settings.DESKTOP_MODE, false)
             applyDesktopMode(false)
         }
+    }
+
+    // ---------- How far the page runs under the bottom bar ----------
+
+    /** The layout's own overlap (the home page's), read once. */
+    private var homeBarOverlap = -1
+    private var barOverlapHome: Boolean? = null
+
+    /**
+     * On the home page the page runs the full overlap under the bottom bar:
+     * under the see-through strip where the arc rises and under the bar's
+     * rounded corners, so home's own grey shows behind them - and the feed's
+     * ad card and the page's bottom padding are laid out for exactly that, so
+     * home is left as it was.
+     *
+     * On a website the page stops at the bar's straight edge, running only
+     * under the see-through strip. A site lays out what it pins to the bottom
+     * of its window - a toolbar, a cookie banner, a player's controls, a
+     * "Download our app" strip - against the bottom of the WebView, and with
+     * the page running under the bar's solid part that was hidden behind it.
+     * The bar's corners are drawn square there (NavSheetView.squareCorners),
+     * since a rounded one would open onto the app behind the page.
+     */
+    private fun applyBarOverlap(onHome: Boolean) {
+        if (barOverlapHome == onHome) return
+        val lp = binding.bottomBar.layoutParams
+            as? android.widget.LinearLayout.LayoutParams ?: return
+        if (homeBarOverlap < 0) homeBarOverlap = -lp.topMargin
+        barOverlapHome = onHome
+        val overlap = if (onHome) homeBarOverlap else binding.navSheet.edgeTop.toInt()
+        if (lp.topMargin != -overlap) {
+            lp.topMargin = -overlap
+            binding.bottomBar.layoutParams = lp
+        }
+        binding.navSheet.squareCorners = !onHome
     }
 
     /**
@@ -4165,6 +4333,7 @@ class MainActivity : AppCompatActivity() {
     private fun addNewTab(loadUrl: String = homePage) {
         val tab = tabs.createTab(loadUrl)
         openTab(tab, loadUrl)
+        if (loadUrl == homePage) expectPageStart(tab)
     }
 
     // ---------- Tab deck ----------
@@ -5862,6 +6031,7 @@ class MainActivity : AppCompatActivity() {
             // Through loadInto, which grants the home page's bridge its
             // privilege; a bare loadUrl would leave the news feed blank.
             loadInto(activeWeb(), homePage)
+            tabs.activeTab?.let { expectPageStart(it) }
         }
     }
 
@@ -5919,6 +6089,8 @@ class MainActivity : AppCompatActivity() {
         ).apply { shape = android.graphics.drawable.GradientDrawable.OVAL }
         binding.navNewTab.outlineProvider = android.view.ViewOutlineProvider.BACKGROUND
         binding.navSheet.accent = accent
+        // The loading ring around the button runs the same accent.
+        binding.loadRing.setAccent(accent)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             binding.navNewTab.outlineSpotShadowColor = accent
             binding.navNewTab.outlineAmbientShadowColor = accent

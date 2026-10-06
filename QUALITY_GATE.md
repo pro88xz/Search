@@ -127,6 +127,15 @@ These were built without a phone to run them on. Check each once:
 - [ ] Address bar: typing an open tab's site offers "Switch to tab"; copying a
       link elsewhere then opening search offers "Link you copied".
 - [ ] Downloads: a failed download retries; a paused one says why.
+- [ ] A page that freezes the app (Figma sign-in was one): tapping Home or +
+      brings up "This page isn't responding" within a few seconds; "Wait"
+      brings it back 10 s later if still stuck; "End it" (or "Restart" on
+      Android 9 and below) makes Home and the other tabs work again, and the
+      frozen tab shows "This page stopped responding" with Try again.
+- [ ] On a site with a bar pinned to the bottom (songsterr.com), nothing of it
+      is hidden under the bottom bar except under the + button; the bar's
+      corners are square on websites and rounded on the home page.
+- [ ] Change the accent (Settings → Customize): the loading ring takes it.
 - [ ] Ad blocking on (Settings → Ad blocking): on a site with ads, Menu →
       "Allow ads on this site" reloads it with its ads; the site appears in
       Settings → Ad blocking; "Block ads on this site" or removing it there

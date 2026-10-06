@@ -214,6 +214,16 @@ object SessionStore {
         null
     }
 
+    /**
+     * Waits, up to [timeoutMs], for every save already handed over to reach
+     * the disk - for when the process is about to end on purpose.
+     */
+    fun flush(timeoutMs: Long) {
+        try {
+            io.submit {}.get(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+        } catch (e: Throwable) { /* the writer is stuck or gone; carry on */ }
+    }
+
     /** Removes the saved session entirely. */
     fun clear(c: Context) {
         val app = c.applicationContext

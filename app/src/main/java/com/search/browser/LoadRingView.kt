@@ -19,8 +19,9 @@ import android.view.animation.DecelerateInterpolator
  *
  * It replaces the thin line that ran across the top of the page. The ring
  * sits in the pale band [NavSheetView] draws around the button and fills
- * clockwise from the top as the page loads, in the owl's purples: lavender
- * at the start of the arc deepening to the owl's darkest purple at its head.
+ * clockwise from the top as the page loads, in a gradient of the accent the
+ * user picked - the same accent the button wears: a light tint of it at the
+ * start of the arc, deepening to a dark shade of it at its head ([setAccent]).
  *
  * WebView reports progress in jumps (10, 30, 70, 100), so the arc glides to
  * each new value instead of stepping. At 100 it closes the circle and then
@@ -40,10 +41,10 @@ class LoadRingView @JvmOverloads constructor(
 
     private val stroke = 3.6f * dp
 
-    // The owl's purples, light to deep.
-    private val owlLight = Color.parseColor("#B48CFF")
-    private val owlMid = Color.parseColor("#7B3AF0")
-    private val owlDeep = Color.parseColor("#4A16B8")
+    // The accent's gradient, light to deep. Purple until setAccent says otherwise.
+    private var ringLight = Color.parseColor("#B48CFF")
+    private var ringMid = Color.parseColor("#7B3AF0")
+    private var ringDeep = Color.parseColor("#4A16B8")
 
     private val arcPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
@@ -54,6 +55,27 @@ class LoadRingView @JvmOverloads constructor(
         style = Paint.Style.STROKE
         strokeWidth = stroke
         color = Color.argb(46, 123, 58, 240)
+    }
+
+    /**
+     * Takes the ring's colours from [accent]: a lighter, softer tint for the
+     * start of the arc, the accent itself through the middle, and a deeper
+     * shade at the head - the same light-to-deep the New tab button runs.
+     */
+    fun setAccent(accent: Int) {
+        val hsv = FloatArray(3)
+        Color.colorToHSV(accent, hsv)
+        // An accent with no hue to speak of (the ink one) still needs a
+        // gradient that reads, so its tint is lifted further.
+        val grey = hsv[1] < 0.15f
+        ringLight = Color.HSVToColor(floatArrayOf(hsv[0],
+            (hsv[1] * 0.55f).coerceIn(0f, 1f),
+            (if (grey) 0.72f else (hsv[2] * 1.20f)).coerceIn(0f, 1f)))
+        ringMid = accent
+        ringDeep = Color.HSVToColor(floatArrayOf(hsv[0],
+            (hsv[1] * 1.15f).coerceIn(0f, 1f), (hsv[2] * 0.62f).coerceIn(0f, 1f)))
+        trackPaint.color = Color.argb(46, Color.red(accent), Color.green(accent), Color.blue(accent))
+        invalidate()
     }
 
     private val box = RectF()
@@ -203,7 +225,7 @@ class LoadRingView @JvmOverloads constructor(
         val cap = Math.toDegrees((stroke / 2f / radius).toDouble()).toFloat()
         val span = ((sweep + 2f * cap) / 360f).coerceIn(0.02f, 1f)
         val shader = SweepGradient(cx, cy,
-            intArrayOf(owlLight, owlMid, owlDeep, owlDeep),
+            intArrayOf(ringLight, ringMid, ringDeep, ringDeep),
             floatArrayOf(0f, span * 0.55f, span, 1f))
         shaderMatrix.setRotate(-90f - cap, cx, cy)
         shader.setLocalMatrix(shaderMatrix)

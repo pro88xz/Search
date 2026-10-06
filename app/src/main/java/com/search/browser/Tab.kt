@@ -76,6 +76,16 @@ class Tab(
     /** The load ([loadToken]) the metrics were last taken for. */
     var measuredToken = -1
 
+    /**
+     * The page this tab was showing when the user ended it for not responding,
+     * until the tab is next written to disk. It is saved as the "stopped" page
+     * rather than as itself, so a restart does not load straight back into it.
+     */
+    var stoppedUrl: String? = null
+
+    /** When this tab last lost its renderer (uptime ms), to catch a crash loop. */
+    var lastRendererLoss = 0L
+
     /** Names this tab's history file in the saved session; fixed for its life. */
     var diskKey: String = java.util.UUID.randomUUID().toString()
 
