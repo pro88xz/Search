@@ -572,9 +572,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupSuggestOverlay() {
         if (suggestBasePad < 0) suggestBasePad = binding.suggestBackdrop.paddingBottom
-        // The grey sheet under the search field carries on the top bar's
-        // shadow, which it would otherwise cover - see SearchSheetDrawable.
-        binding.suggestBackdrop.background = SearchSheetDrawable(this)
         suggestAdapter = SuggestAdapter(emptyList(), { item ->
             if (suggestListMoving()) return@SuggestAdapter
             val kind = item.optString("kind")
@@ -780,12 +777,20 @@ class MainActivity : AppCompatActivity() {
         val pill = mode != FIELD_NORMAL
         val top = binding.urlBar.paddingTop
         val bottom = binding.urlBar.paddingBottom
-        binding.urlBar.setBackgroundResource(
-            if (pill) R.drawable.urlbar_search_bg else R.drawable.urlbar_bg)
+        // Searching, the field is part of the one surface the search page is:
+        // the bar, the field and the suggestions all the suggestion card's
+        // colour, with no line round any of them. The pill and its outline
+        // are the home page's compact bar.
+        val searching = mode == FIELD_SEARCH
+        when {
+            searching -> binding.urlBar.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            pill -> binding.urlBar.setBackgroundResource(R.drawable.urlbar_search_bg)
+            else -> binding.urlBar.setBackgroundResource(R.drawable.urlbar_bg)
+        }
         // The pill's edge is drawn over the whole frame, after the mic, scan
         // and clear buttons, so nothing inside the pill can cut its curve.
         binding.urlBarContainer.foreground =
-            if (pill) androidx.core.content.ContextCompat.getDrawable(
+            if (pill && !searching) androidx.core.content.ContextCompat.getDrawable(
                 this, R.drawable.urlbar_search_outline) else null
         binding.urlBar.setTextSize(
             android.util.TypedValue.COMPLEX_UNIT_SP,
@@ -976,14 +981,14 @@ class MainActivity : AppCompatActivity() {
         imm.showSoftInput(binding.urlBar, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
         binding.suggestBackdrop.visibility = View.VISIBLE
         androidx.core.view.ViewCompat.requestApplyInsets(binding.root)
-        // The sheet carries the top bar's shadow, cast by the bar's colour
-        // of the moment - Night Owl's wash included.
-        (binding.suggestBackdrop.background as? SearchSheetDrawable)
-            ?.surfaceColor = binding.topBar.surfaceColor
-        // Under the top bar's corners now is the search sheet, not the
-        // website: they take the sheet's colour until search closes.
-        val sheetBg = binding.topBar.pageBackground
-        binding.topBar.corners.set(sheetBg, sheetBg, animate = true)
+        // One surface, top to bottom: the bar flat - no curve, shadow or
+        // line - and the page of suggestions and their card in its colour,
+        // which is the card's own (Night Owl's wash, while Night Owl is on).
+        val surface = binding.topBar.surfaceColor
+        binding.topBar.flat = true
+        binding.suggestBackdrop.setBackgroundColor(surface)
+        binding.suggestCard.backgroundTintList =
+            android.content.res.ColorStateList.valueOf(surface)
         animateSearchIn(fieldWasShowing)
         fetchSuggests(binding.urlBar.text.toString())
     }
@@ -993,7 +998,9 @@ class MainActivity : AppCompatActivity() {
         searchMode = false
         styleUrlBarForSearch(false)
         animateSearchOut()
-        // The website's colours back in the bar corners once the sheet is gone.
+        // The bar's curve back, and the website's colours in its corners once
+        // the sheet is gone.
+        binding.topBar.flat = false
         scheduleBarCorners(260L)
         // Nothing transient left on the field: applyHomeCompact below may
         // animate it, and it should start from rest rather than from whatever

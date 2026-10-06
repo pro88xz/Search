@@ -29,6 +29,9 @@ import android.widget.LinearLayout
  * both have. Never left to whatever is behind the bar, which Night Owl tints
  * the same as the bar.
  *
+ * While searching it is [flat]: no curve, no shadow, no line, so the bar,
+ * the search field and the suggestions under it read as one surface.
+ *
  * The surface also runs up behind the status bar ([topInset]). Stopping below
  * it made the bar read as a white tongue laid on the page.
  *
@@ -65,6 +68,15 @@ class TopSheetBar @JvmOverloads constructor(
     private val dark = (resources.configuration.uiMode and
         android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
         android.content.res.Configuration.UI_MODE_NIGHT_YES
+
+    /** Square, with no shadow and no line: the search page's top. */
+    var flat = false
+        set(v) {
+            if (field == v) return
+            field = v
+            rebuild()
+            repaint()
+        }
 
     /** The sheet's colour. Night Owl tints it, as it tints the bottom sheet. */
     var surfaceColor: Int = context.getColor(R.color.barSurface)
@@ -106,6 +118,14 @@ class TopSheetBar @JvmOverloads constructor(
         sheet.reset()
         edge.reset()
         if (w <= 0f || h <= 0f) return
+        // Closed over the top of the status bar strip rather than the top of
+        // this view, so the surface reaches the top of the screen.
+        val top = -topInset.toFloat()
+        if (flat) {
+            sheet.addRect(0f, top, w, h, Path.Direction.CW)
+            invalidate()
+            return
+        }
         // Round the left corner, along the bottom, round the right corner:
         // all inside this view, so none of it lies over the page.
         edge.moveTo(0f, h - corner)
@@ -114,9 +134,6 @@ class TopSheetBar @JvmOverloads constructor(
         edge.lineTo(w - corner, h)
         box.set(w - 2f * corner, h - 2f * corner, w, h)
         edge.arcTo(box, 90f, -90f, false)
-        // Closed over the top of the status bar strip rather than the top of
-        // this view, so the surface reaches the top of the screen.
-        val top = -topInset.toFloat()
         sheet.addPath(edge)
         sheet.lineTo(w, top)
         sheet.lineTo(0f, top)
@@ -134,7 +151,8 @@ class TopSheetBar @JvmOverloads constructor(
         // a shadow on an old phone is the wrong trade. The hairline still
         // draws there, so the edge still reads.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            fill.setShadowLayer(14f * dp, 0f, 1f * dp,
+            if (flat) fill.clearShadowLayer()
+            else fill.setShadowLayer(14f * dp, 0f, 1f * dp,
                 if (dark) Color.argb(110, 0, 0, 0) else Color.argb(26, 60, 48, 112))
         }
         line.color = if (dark) Color.argb(18, 255, 255, 255)
@@ -150,6 +168,10 @@ class TopSheetBar @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         if (sheet.isEmpty) return
+        if (flat) {
+            canvas.drawPath(sheet, fill)
+            return
+        }
         // The corners first, so the sheet's edge and shadow fall over them.
         val w = width.toFloat()
         val h = height.toFloat()

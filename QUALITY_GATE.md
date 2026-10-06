@@ -107,9 +107,11 @@ debug log, lines with `metrics`).
 
 These were built without a phone to run them on. Check each once:
 
-- [ ] Search mode: the top bar keeps its shadow over the grey suggestion
-      sheet; the search pill's outline is unbroken around the mic and scan
-      buttons; Night Owl tint matches.
+- [ ] Search mode, from home and from a website, light, dark and Night Owl:
+      the top bar, the search field and the suggestions are one colour, the
+      card's, with no curve, shadow or line anywhere, and no outline round
+      the field; leaving search brings the bar's rounded corners back. The
+      home page's compact bar (scroll home down) keeps its outlined pill.
 - [ ] Loading: no line across the top of the page; a purple ring fills around
       the + button while a page loads, then fades.
 - [ ] Tabs, Bookmarks, History, Downloads and the Menu rise smoothly.

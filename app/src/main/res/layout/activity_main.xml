@@ -496,12 +496,10 @@
         </LinearLayout>
     </LinearLayout>
 
-    <!-- The search results, as two surfaces rather than one.
-
-         The backdrop is the page; the RecyclerView is a card on it. Before
-         this the list WAS the page - one flat expanse the same colour as the
-         box above it, which is why it read as unfinished beside a browser
-         that does this properly.
+    <!-- The search results. The backdrop is the page, with the card of
+         suggestions on it - both in the card's colour, as is the top bar
+         while searching (MainActivity.enterSearchMode), so the search page
+         is one surface with no line or shadow across it.
 
          clickable on the backdrop is not decoration: it is match_parent over
          the WebView, and without it a tap on the empty area goes straight
@@ -511,7 +509,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_marginTop="58dp"
-        android:background="@color/searchPageBg"
+        android:background="@color/sugSheet"
         android:clickable="true"
         android:focusable="false"
         android:visibility="gone">
