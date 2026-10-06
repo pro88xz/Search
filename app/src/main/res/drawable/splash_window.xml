@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- The launch window before Android 12, which has no system splash: the
-     same white with the owl centred, at the size Android 12+ shows it. -->
+     same background with the owl centred, at the size Android 12+ shows it
+     (splash_owl): the foreground at 240dp, the owl about 105dp tall. -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:drawable="@color/splashBg" />
     <item
