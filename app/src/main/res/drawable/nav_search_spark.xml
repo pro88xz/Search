@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The New tab button's icon: a search glass with a sparkle - a fresh
-     search, which is what the button starts. Drawn to match the other bar
-     icons (Tabler outline style): 24 grid, stroke 2.4, round caps and joins.
-     Drawn white on the round button; colour is applied by tint at runtime. -->
+<!-- The Search button's icon: a search glass with a sparkle - a fresh
+     search, which is what the button starts. In the other bar icons' style
+     (Tabler outline: 24 grid, round caps and joins), with a 2.7 line, shown
+     at 28dp: white on a coloured circle reads lighter than dark on white, and
+     the centre button wants a little more presence than the icons beside
+     it. Colour is applied by tint at runtime. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
@@ -11,14 +13,14 @@
     <!-- The glass. -->
     <path
         android:strokeColor="#FF000000"
-        android:strokeWidth="2.4"
+        android:strokeWidth="2.7"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
         android:pathData="M3.7,11.5a6.3,6.3 0,1 0,12.6 0a6.3,6.3 0,1 0,-12.6 0" />
     <!-- Its handle. -->
     <path
         android:strokeColor="#FF000000"
-        android:strokeWidth="2.4"
+        android:strokeWidth="2.7"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
         android:pathData="M14.6,16.1L20.2,21.7" />

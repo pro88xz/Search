@@ -361,8 +361,8 @@
                 <!-- A search glass with a sparkle: the button opens search in
                      the tab on screen, as a tap on the search box does. -->
                 <ImageView
-                    android:layout_width="26dp"
-                    android:layout_height="26dp"
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
                     android:layout_gravity="center"
                     android:src="@drawable/nav_search_spark"
                     android:tint="#FFFFFF"
