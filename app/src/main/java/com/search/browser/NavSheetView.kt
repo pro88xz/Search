@@ -49,6 +49,16 @@ class NavSheetView @JvmOverloads constructor(
     var squareCorners = false
         set(v) { if (field != v) { field = v; rebuild() } }
 
+    /**
+     * The navigation bar's height. The sheet paints on down behind it, so the
+     * bar and the strip under Android's buttons are one surface. That strip
+     * showed the app's background with Android's own shade over it - in dark
+     * mode a second, different dark under the bar. Only the painting goes
+     * there; this view and the buttons stay above the navigation bar.
+     */
+    var bottomInset = 0
+        set(v) { if (field != v) { field = v; rebuild() } }
+
     /** The New tab button: its radius, and how far its centre sits below the edge. */
     var buttonRadius = 29f * dp
         set(v) { field = v; rebuild() }
@@ -141,8 +151,8 @@ class NavSheetView @JvmOverloads constructor(
         }
 
         sheet.addPath(edge)
-        sheet.lineTo(w, h)
-        sheet.lineTo(0f, h)
+        sheet.lineTo(w, h + bottomInset)
+        sheet.lineTo(0f, h + bottomInset)
         sheet.close()
         invalidate()
     }

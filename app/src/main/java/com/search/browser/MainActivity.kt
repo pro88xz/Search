@@ -546,6 +546,28 @@ class MainActivity : AppCompatActivity() {
     private var suggestSeq = 0
     // The suggestion backdrop's own bottom padding from the layout, kept so
     // the keyboard inset can be added on top of it rather than replacing it.
+    // Each overlay's own bottom padding, before reachUnderNavBar adds to it.
+    private val navPadBase = HashMap<View, Int>()
+
+    /**
+     * Stretches [v] down over the strip under the navigation bar, which the
+     * root leaves as padding, so its background runs to the bottom of the
+     * screen as the bottom bar's does. The strip is added to its bottom
+     * padding, so nothing in it is laid out behind Android's buttons.
+     * [padding] is the bottom padding it would have without the strip.
+     */
+    private fun reachUnderNavBar(v: View, strip: Int,
+                                 padding: Int = navPadBase.getOrPut(v) { v.paddingBottom }) {
+        val lp = v.layoutParams as? ViewGroup.MarginLayoutParams ?: return
+        if (lp.bottomMargin != -strip) {
+            lp.bottomMargin = -strip
+            v.layoutParams = lp
+        }
+        if (v.paddingBottom != padding + strip) {
+            v.setPadding(v.paddingLeft, v.paddingTop, v.paddingRight, padding + strip)
+        }
+    }
+
     private var suggestBasePad = -1
 
     private fun setupSuggestOverlay() {
@@ -1365,6 +1387,18 @@ class MainActivity : AppCompatActivity() {
             keepSplash = false
         }, 1500L)
         enableEdgeToEdge()
+        // The bottom bar paints behind the navigation bar itself
+        // (NavSheetView.bottomInset), so Android's own shade over the buttons
+        // goes: with three-button navigation it laid a second, different
+        // colour under the bar - a dark band below a dark bar. Before Android
+        // 10 there is no switch for the shade, so the bar is made clear; under
+        // Android 8 its buttons are always white and keep their dark backing.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            @Suppress("DEPRECATION")
+            window.navigationBarColor = android.graphics.Color.TRANSPARENT
+        }
         super.onCreate(savedInstanceState)
         // Apply the saved theme preference before inflating.
         when (Settings.getTheme(this)) {
@@ -1429,15 +1463,21 @@ class MainActivity : AppCompatActivity() {
             // back for the navigation bar. With clipToPadding=false that is
             // scrollable room, not dead space. On the backdrop, not the card,
             // so the card stops at the keyboard rather than growing a band.
-            val base = if (suggestBasePad >= 0) suggestBasePad
-                else binding.suggestBackdrop.paddingBottom
+            // Read once, before anything here has added to it.
+            if (suggestBasePad < 0) suggestBasePad = binding.suggestBackdrop.paddingBottom
+            val base = suggestBasePad
             val extra = if (pageTyping) 0 else (ime - bars.bottom).coerceAtLeast(0)
-            binding.suggestBackdrop.setPadding(
-                binding.suggestBackdrop.paddingLeft,
-                binding.suggestBackdrop.paddingTop,
-                binding.suggestBackdrop.paddingRight,
-                base + extra
-            )
+            // The strip under the navigation bar. The bottom bar's sheet
+            // paints down into it, so the bar and the strip under Android's
+            // buttons are one surface, and the screens that cover the bar -
+            // the tabs, the search sheet, the menu's dimming - reach down
+            // with it, each in its own colour. Nothing is laid out there:
+            // each keeps the strip as padding.
+            val navStrip = if (pageTyping) 0 else bars.bottom
+            binding.navSheet.bottomInset = navStrip
+            reachUnderNavBar(binding.tabDeck, navStrip)
+            reachUnderNavBar(binding.menuScrim, navStrip)
+            reachUnderNavBar(binding.suggestBackdrop, navStrip, base + extra)
             insets
         }
         setupSuggestOverlay()

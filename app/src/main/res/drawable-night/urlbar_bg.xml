@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The address field in dark mode. Light mode darkens the bar a little
+     (#11000000); on a dark bar that made no difference at all, and the field
+     vanished into it. A light wash instead, so it shows on the dark bar and
+     on Night Owl's tint alike. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#21FFFFFF" />
+    <corners android:radius="@dimen/radius_pill" />
+</shape>

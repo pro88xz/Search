@@ -143,6 +143,11 @@ These were built without a phone to run them on. Check each once:
       is hidden under the bottom bar except under the + button; the bar's
       corners are square on websites and rounded on the home page.
 - [ ] Change the accent (Settings → Customize): the loading ring takes it.
+- [ ] Dark mode, with three-button navigation and with gestures: the bottom
+      bar and the strip under Android's buttons are one colour (also with
+      the tabs screen, the search sheet and the menu open, and in Night Owl);
+      the buttons are light on dark and dark on light. The address field
+      shows as a lighter pill on the dark top bar.
 - [ ] Cold launch: the splash is the owl alone, no tile behind it - on white
       in light mode, on the app's dark background in dark mode (Android 12+
       and older).
