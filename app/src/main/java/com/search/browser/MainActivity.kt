@@ -2358,6 +2358,28 @@ class MainActivity : AppCompatActivity() {
                 exitFullscreen()
             }
 
+            /**
+             * The picture a video shows before it plays when the page gave it
+             * none: a transparent pixel, as in Chrome, instead of WebView's
+             * own grey box with a play button.
+             *
+             * More than looks. WebView hands this picture to the page through
+             * a 1 KB pipe, with one of its loading threads waiting to read it
+             * and a low-priority thread writing it - and the grey picture is a
+             * few KB, so each writer has to wait for its reader to make room.
+             * A page with many videos and no posters asks for it many times at
+             * once (figma.com's front page has eight Vimeo players, and its
+             * debug log shows each one asking), and those readers and writers
+             * waiting on each other can hold every thread WebView loads pages
+             * with. Then nothing loads in any tab, not even this app's own
+             * pages, and ending the page does not help, because the threads
+             * belong to the app: on Figma, after tapping Log in, only closing
+             * and reopening the app did. A single pixel is written in one go,
+             * so neither side ever waits on the other.
+             */
+            override fun getDefaultVideoPoster(): Bitmap? =
+                Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
+
             override fun onGeolocationPermissionsShowPrompt(
                 origin: String?,
                 callback: android.webkit.GeolocationPermissions.Callback?
@@ -3313,7 +3335,14 @@ class MainActivity : AppCompatActivity() {
             uiHandler.post {
                 if (!isFinishing && !isDestroyed && tab === tabs.activeTab &&
                     tab.webView == null
-                ) openTab(tab)
+                ) {
+                    // Ended by the user: if the page put up in its place does
+                    // not start either, the hang was never in the renderer,
+                    // and the prompt comes back offering a restart. Longer
+                    // than for Home, as a new renderer has to start first.
+                    if (ended) expectPageStart(tab, 6000L)
+                    openTab(tab)
+                }
             }
         }
     }
@@ -3501,12 +3530,24 @@ class MainActivity : AppCompatActivity() {
     // Either way the same prompt offers the way out. "Wait" holds it back for
     // a while, not for good - it used to silence it until the page recovered,
     // and a page that never did left no way out at all.
+    //
+    // Ending the page ends the renderer, which clears a page that is stuck.
+    // It does not clear a hang in the app's own process - WebView's loading
+    // threads are the app's - and Figma showed one: ended, the new renderer
+    // could not load even the "stopped" page, and Home stayed blank. So the
+    // page that replaces an ended one is watched too, and pages still stuck
+    // soon after an end are offered a restart of Search instead, with the
+    // tabs coming back from disk.
 
     private var unresponsiveDialog: android.app.AlertDialog? = null
     private var hangQuietUntil = 0L
     /** The tab the user ended for not responding, until it is rebuilt. */
     private var stoppedTabId: Long? = null
     private val HANG_WAIT_MS = 10_000L
+    /** When the user last ended the renderer for a hang (uptime), or 0. */
+    private var rendererEndedAt = 0L
+    /** Pages stuck again this soon after an end are not stuck in the renderer. */
+    private val ENDED_RECENTLY_MS = 90_000L
 
     @android.annotation.TargetApi(Build.VERSION_CODES.Q)
     private fun onPageUnresponsive(view: WebView, renderer: android.webkit.WebViewRenderProcess?) {
@@ -3525,41 +3566,50 @@ class MainActivity : AppCompatActivity() {
     /**
      * Offers the way out of a stuck page: wait, or end it. Ending it ends the
      * renderer, so every page restarts - the stuck one included. On Android 9
-     * and below a renderer cannot be ended on its own, so the offer is to
-     * restart Search, whose tabs come back from disk (SessionStore).
+     * and below a renderer cannot be ended on its own, and pages still stuck
+     * just after one was ended are not held up by it, so in those two cases
+     * the offer is to restart Search, whose tabs come back from disk
+     * (SessionStore).
      *
      * [renderer] is the WebViewRenderProcess when Android reported the hang,
      * typed loosely so this compiles into code that also runs before Android 10.
      */
     private fun showPagesStuck(view: WebView?, renderer: Any?) {
         if (unresponsiveDialog != null || isFinishing || isDestroyed) return
-        if (android.os.SystemClock.uptimeMillis() < hangQuietUntil) return
+        val now = android.os.SystemClock.uptimeMillis()
+        if (now < hangQuietUntil) return
         HealthStats.count(this, HealthStats.PAGE_UNRESPONSIVE)
-        val canEnd = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+        val endedRecently = rendererEndedAt != 0L && now - rendererEndedAt < ENDED_RECENTLY_MS
+        val canEnd = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && !endedRecently
+        if (endedRecently) DebugLog.add { "pages still stuck after ending the page: offering a restart" }
         unresponsiveDialog = android.app.AlertDialog.Builder(this)
-            .setTitle("This page isn't responding")
-            .setMessage(
-                if (canEnd) "It's holding up every tab. Wait for it, or end it - " +
+            .setTitle(if (endedRecently) "Pages still aren't loading" else "This page isn't responding")
+            .setMessage(when {
+                endedRecently -> "Ending the page didn't free them. Restart Search to clear " +
+                    "it - your tabs will come back."
+                canEnd -> "It's holding up every tab. Wait for it, or end it - " +
                     "your tabs will reload."
-                else "It's holding up every tab. Wait for it, or restart Search - " +
-                    "your tabs will come back.")
+                else -> "It's holding up every tab. Wait for it, or restart Search - " +
+                    "your tabs will come back."
+            })
             .setNegativeButton("Wait") { _, _ ->
                 hangQuietUntil = android.os.SystemClock.uptimeMillis() + HANG_WAIT_MS
             }
             .setPositiveButton(if (canEnd) "End it" else "Restart") { _, _ ->
-                endStuckPages(view, renderer)
+                endStuckPages(view, renderer, restart = !canEnd)
             }
             .setOnDismissListener { unresponsiveDialog = null }
             .show()
     }
 
-    private fun endStuckPages(view: WebView?, renderer: Any?) {
-        DebugLog.add { "user ended the unresponsive page" }
+    private fun endStuckPages(view: WebView?, renderer: Any?, restart: Boolean) {
         // The tab that hung is not loaded straight back into the same hang:
         // it comes back as a "this page stopped" page with Try again.
         val stuck = tabOf(view) ?: tabs.activeTab
         stoppedTabId = stuck?.id
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        if (!restart && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            DebugLog.add { "user ended the unresponsive page" }
+            rendererEndedAt = android.os.SystemClock.uptimeMillis()
             // Ending the renderer comes back through onRenderProcessGone,
             // which rebuilds the tabs. If there is no renderer to end, a plain
             // reload is the next best thing.
@@ -3568,14 +3618,14 @@ class MainActivity : AppCompatActivity() {
             val ended = try { r?.terminate() == true } catch (e: Exception) { false }
             if (!ended) view?.takeIf { isLiveWeb(it) }?.reload()
         } else {
+            DebugLog.add { "user restarted Search for stuck pages" }
             restartBrowser()
         }
     }
 
     /**
-     * Android 9 and below: the renderer belongs to this process and cannot be
-     * ended on its own, so the process goes, and comes straight back. The
-     * tabs are written to disk first and restored on the way back up.
+     * Ends this process and opens Search again in a new one (RestartActivity).
+     * The tabs are written to disk first and restored on the way back up.
      */
     private fun restartBrowser() {
         tabs.tabs.firstOrNull { it.id == stoppedTabId }?.let { t ->
@@ -3584,28 +3634,24 @@ class MainActivity : AppCompatActivity() {
         saveSession(full = true)
         SessionStore.flush(1500L)
         try {
-            val launch = packageManager.getLaunchIntentForPackage(packageName)
-            if (launch != null) {
-                launch.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
-                    android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK)
-                val pending = android.app.PendingIntent.getActivity(this, 0, launch,
-                    android.app.PendingIntent.FLAG_CANCEL_CURRENT or
-                        android.app.PendingIntent.FLAG_IMMUTABLE)
-                (getSystemService(ALARM_SERVICE) as android.app.AlarmManager)
-                    .set(android.app.AlarmManager.RTC,
-                        System.currentTimeMillis() + 400L, pending)
-            }
-        } catch (e: Exception) { /* comes back when opened instead */ }
-        finishAffinity()
-        android.os.Process.killProcess(android.os.Process.myPid())
+            // RestartActivity, in a process of its own, ends this one and
+            // opens the browser again.
+            RestartActivity.restart(this)
+        } catch (e: Exception) {
+            // Could not be started: close instead, and the tabs come back
+            // from disk when Search is next opened.
+            finishAffinity()
+            android.os.Process.killProcess(android.os.Process.myPid())
+        }
     }
 
     /**
-     * After asking [tab] for the home page, checks a few seconds later that it
-     * started. A local file starts in milliseconds; one that has not started
-     * means the renderer is stuck.
+     * After asking [tab] for a local page - home, or the page standing in for
+     * one the user ended - checks [afterMs] later that it started. A local
+     * file starts in milliseconds; one that has not started means the pages
+     * are stuck.
      */
-    private fun expectPageStart(tab: Tab) {
+    private fun expectPageStart(tab: Tab, afterMs: Long = 4000L) {
         val started = tab.loadsStarted
         uiHandler.postDelayed({
             if (isFinishing || isDestroyed || !tabs.tabs.contains(tab)) return@postDelayed
@@ -3614,9 +3660,9 @@ class MainActivity : AppCompatActivity() {
                 return@postDelayed
             }
             val web = tab.webView ?: return@postDelayed
-            DebugLog.add { "tab#" + tab.id + " did not start loading home: pages stuck" }
+            DebugLog.add { "tab#" + tab.id + " did not start loading: pages stuck" }
             showPagesStuck(web, null)
-        }, 4000L)
+        }, afterMs)
     }
 
     // ---------- Memory ----------

@@ -93,6 +93,18 @@
             android:exported="false"
             android:theme="@style/Theme.Search" />
         <!--
+          Restarts the browser when its pages are stuck (RestartActivity). In
+          a process of its own, so it outlives the one it ends; it draws
+          nothing and is gone at once.
+        -->
+        <activity
+            android:name=".RestartActivity"
+            android:process=":restart"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:exported="false" />
+        <!--
           The intent-filter is what stops MediaButtonReceiver crashing.
           Its onReceive looks for a service declaring MEDIA_BUTTON, then for a
           media browser service, and throws IllegalStateException when it finds

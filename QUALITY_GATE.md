@@ -127,11 +127,18 @@ These were built without a phone to run them on. Check each once:
 - [ ] Address bar: typing an open tab's site offers "Switch to tab"; copying a
       link elsewhere then opening search offers "Link you copied".
 - [ ] Downloads: a failed download retries; a paused one says why.
-- [ ] A page that freezes the app (Figma sign-in was one): tapping Home or +
-      brings up "This page isn't responding" within a few seconds; "Wait"
-      brings it back 10 s later if still stuck; "End it" (or "Restart" on
-      Android 9 and below) makes Home and the other tabs work again, and the
-      frozen tab shows "This page stopped responding" with Try again.
+- [ ] Figma: on figma.com tap Log in - the sign-in form appears (not an
+      empty white box) and signing in works; Home and other tabs keep
+      working throughout. Videos without a picture of their own show no grey
+      play-button box before they play.
+- [ ] A page that freezes the app: tapping Home or + brings up "This page
+      isn't responding" within a few seconds; "Wait" brings it back 10 s
+      later if still stuck; "End it" (or "Restart" on Android 9 and below)
+      makes Home and the other tabs work again, and the frozen tab shows
+      "This page stopped responding" with Try again. If pages are still stuck
+      after "End it", "Pages still aren't loading" offers "Restart": Search
+      closes and opens again by itself with its tabs, the frozen one as the
+      stopped page.
 - [ ] On a site with a bar pinned to the bottom (songsterr.com), nothing of it
       is hidden under the bottom bar except under the + button; the bar's
       corners are square on websites and rounded on the home page.
