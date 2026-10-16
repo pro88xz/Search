@@ -33,8 +33,8 @@ android {
         applicationId = "com.devbangs.search"
         minSdk = 24
         targetSdk = 36
-        versionCode = 25
-        versionName = "1.6.3"
+        versionCode = 26
+        versionName = "1.6.4"
 
         buildConfigField("String", "YOUTUBE_API_KEY", "\"" + youtubeApiKey + "\"")
     }
