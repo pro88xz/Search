@@ -76,6 +76,9 @@ class BrowserWebView(context: Context) : WebView(context) {
         }
     }
 
+    /** How tall the page is, in pixels, for MainActivity's bars to judge whether it would still scroll. */
+    fun scrollRange(): Int = computeVerticalScrollRange()
+
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
         if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
             touching = true

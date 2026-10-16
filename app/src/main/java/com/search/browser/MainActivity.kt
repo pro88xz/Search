@@ -1167,6 +1167,10 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         refreshScrollPrefs()
+        // Top Stories fetched while the app comes to the front, so home opens
+        // on fresh ones rather than waiting for them; nothing is fetched when
+        // the saved ones are under half an hour old.
+        if (!nightOwl) NewsFeed.refreshIfDue(this) { fresh -> runOnUiThread { pushFeedUpdate(fresh) } }
         if (!tintBarsPref) setBarTint(null, null, animate = false)
         HealthStats.sessionStarted(this)
         registerNetworkWatch()
@@ -1523,6 +1527,9 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        // The bottom bar's overlap as laid out (the home page's), before
+        // anything moves it (applyBarOverlap, setPageUnderBars).
+        barRestOverlap = -((binding.bottomBar.layoutParams as? android.widget.LinearLayout.LayoutParams)?.topMargin ?: 0)
         // Health numbers (HealthStats): the last session's ending, Android's
         // exit records, the crash counter; and how long until the browser is
         // ready to draw - from the process starting on a cold start, from
@@ -1952,7 +1959,9 @@ class MainActivity : AppCompatActivity() {
                 // ended the process on every launch, as soon as home asked for
                 // stories. The page shows its empty state instead.
                 val json = try {
-                    NewsFeed.fetch(this@MainActivity)
+                    // The saved stories at once; newer ones, when a refresh
+                    // behind them finds some, follow (pushFeedUpdate).
+                    NewsFeed.fetch(this@MainActivity) { fresh -> runOnUiThread { pushFeedUpdate(fresh) } }
                 } catch (t: Throwable) {
                     DebugLog.add { "feed  failed: " + t.javaClass.simpleName + ": " + t.message }
                     "[]"
@@ -1966,6 +1975,19 @@ class MainActivity : AppCompatActivity() {
         val js = "window.__onFeed && window.__onFeed(" + requestId + ", JSON.parse(" +
             org.json.JSONObject.quote(json) + "));"
         web.evaluateJavascript(js, null)
+    }
+
+    /**
+     * Newer stories than the ones home is showing, from a refresh that ran
+     * behind them. Home takes them in when the reader is not in the middle of
+     * the stories, and otherwise when they are next back at the top.
+     */
+    private fun pushFeedUpdate(json: String) {
+        if (isFinishing || isDestroyed || nightOwl) return
+        val web = activeWeb() ?: return
+        if (web.url != homePage) return
+        web.evaluateJavascript("window.__onFeedUpdate && window.__onFeedUpdate(JSON.parse(" +
+            org.json.JSONObject.quote(json) + "));", null)
     }
 
     private fun localSuggestionMatches(query: String, limit: Int): List<Triple<String, String, String>> {
@@ -2878,12 +2900,16 @@ class MainActivity : AppCompatActivity() {
     // toolbar does. On the home page and on websites alike.
     //
     // The bars move by translation, and the page is resized only twice: at the
-    // end of a hide and at the start of a show. Each time the page area is
-    // offset by exactly the top bar's height in the same frame, so the text
-    // under the finger never jumps. Resizing on every frame instead would make
-    // a heavy page relayout continuously, and letting the page run under the
-    // bars all the time would hide what sites pin to their bottom edge - the
-    // reason the bar stops the page at its straight edge (applyBarOverlap).
+    // start of a hide, when it grows to the whole screen while both bars still
+    // cover its new edges, and at the end of a show, when it stops at their
+    // edges again under bars already back in place. Neither uncovers page that
+    // has not been painted yet, which is what showed as a white band. Each
+    // time the page area is offset by exactly the top bar's height in the same
+    // frame, so the text under the finger never jumps. Resizing on every frame
+    // instead would make a heavy page relayout continuously, and letting the
+    // page run under the bars all the time would hide what sites pin to their
+    // bottom edge - the reason the bar stops the page at its straight edge
+    // (applyBarOverlap).
 
     private var barsHidden = false
     // Read once per resume rather than on every scroll event (refreshScrollPrefs).
@@ -2900,7 +2926,10 @@ class MainActivity : AppCompatActivity() {
     }
     private var barScrollAcc = 0
     private var barsTopH = 0
-    private var barsBottomPart = 0
+    /** Whether the page runs under both bars (setPageUnderBars): while they are away or coming back. */
+    private var pageUnderBars = false
+    /** When the bars last started to move (uptime). */
+    private var barsMovedAt = 0L
     private var pageTyping = false
 
     private fun barsMayHide(web: View): Boolean =
@@ -2913,6 +2942,10 @@ class MainActivity : AppCompatActivity() {
     private fun onPageScrollForBars(web: View, y: Int, oldY: Int) {
         val dy = y - oldY
         if (dy == 0 || web !== activeWeb()) return
+        // The page changing size moves it too: near the end of a page the
+        // scroll is pulled back by as much as it grew. That is not the reader
+        // scrolling up, and must not bring the bars straight back.
+        if (android.os.SystemClock.uptimeMillis() - barsMovedAt < 350L) { barScrollAcc = 0; return }
         val density = resources.displayMetrics.density
         if (y <= (8 * density).toInt()) {          // back at the top
             barScrollAcc = 0
@@ -2927,7 +2960,12 @@ class MainActivity : AppCompatActivity() {
         if ((dy > 0) != (barScrollAcc > 0)) barScrollAcc = 0
         barScrollAcc += dy
         val threshold = (24 * density).toInt()
-        if (!barsHidden && barScrollAcc > threshold && y > binding.topBar.height) hideBars()
+        // Only on a page that still scrolls once it has the whole screen: on
+        // one that would then fit, there would be no scrolling up to bring
+        // the bars back.
+        val grow = binding.topBar.height + binding.bottomBar.height
+        if (!barsHidden && barScrollAcc > threshold && y > binding.topBar.height &&
+            b.scrollRange() - web.height - grow > threshold * 2) hideBars()
         else if (barsHidden && barScrollAcc < -threshold) showBars()
     }
 
@@ -2937,28 +2975,28 @@ class MainActivity : AppCompatActivity() {
         val area = binding.webArea
         if (barsHidden || top.height <= 0 || top.visibility != View.VISIBLE) return
         barsHidden = true
+        barsMovedAt = android.os.SystemClock.uptimeMillis()
+        top.animate().cancel(); area.animate().cancel(); bottom.animate().cancel()
         barsTopH = top.height
-        val blp = bottom.layoutParams as android.widget.LinearLayout.LayoutParams
-        // The room the bottom bar takes in the layout: its height less the
-        // part of it that already overlaps the page.
-        barsBottomPart = if (bottom.visibility == View.GONE) 0 else (bottom.height + blp.topMargin).coerceAtLeast(0)
         val h = barsTopH
         // The page takes the whole screen at once, while both bars still cover
         // its new edges - so the page has painted them by the time the bars
-        // have moved off. It is offset by the top bar's height in the same
-        // frame, so nothing on it moves yet; then it rises with the bar.
-        // Resizing it afterwards, as this used to, left a white band showing
-        // until the page caught up.
-        setPageMargins(-h, -barsBottomPart)
-        area.translationY = area.translationY + h
+        // have moved off. Its top goes up under the top bar, so it is offset
+        // by the bar's height in the same frame and nothing on it moves yet;
+        // then it rises with the bar. Bars that were on their way back are
+        // simply turned round: the page is still under them.
+        if (!pageUnderBars) {
+            setPageUnderBars(true)
+            area.translationY = area.translationY + h
+        }
         showEdgeScrims()
+        val drop = (bottom.height + binding.navSheet.bottomInset).toFloat()
         if (!animationsOn()) {
             top.translationY = -h.toFloat(); area.translationY = 0f
-            bottom.translationY = (bottom.height + binding.navSheet.bottomInset).toFloat()
+            bottom.translationY = drop
             top.visibility = View.INVISIBLE; bottom.visibility = View.INVISIBLE
             return
         }
-        val drop = (bottom.height + binding.navSheet.bottomInset).toFloat()
         val ms = 220L
         val ease = android.view.animation.PathInterpolator(0.3f, 0f, 0.2f, 1f)
         top.animate().translationY(-h.toFloat()).setDuration(ms).setInterpolator(ease).start()
@@ -2973,13 +3011,30 @@ class MainActivity : AppCompatActivity() {
             }.start()
     }
 
-    /** The page area's margins in the bar layout: negative to run under the bars. */
-    private fun setPageMargins(top: Int, bottom: Int) {
-        val lp = binding.webArea.layoutParams as? android.widget.LinearLayout.LayoutParams ?: return
-        if (lp.topMargin == top && lp.bottomMargin == bottom) return
-        lp.topMargin = top
-        lp.bottomMargin = bottom
-        binding.webArea.layoutParams = lp
+    /**
+     * Lets the page run under both bars, or stops it at their edges again.
+     *
+     * Done with the bars' own margins, not the page's. A bar whose negative
+     * margin matches its height takes no room in the layout, and the page,
+     * which takes all the room the bars leave, grows by exactly that. A
+     * negative margin on the page itself does not work: LinearLayout never
+     * lets a child's margins shrink the room the others take, so the page
+     * only moved up, and a band the height of both bars stayed empty at the
+     * bottom of the screen for as long as they were away. The bars stay
+     * where they were laid out either way; only the page changes.
+     */
+    private fun setPageUnderBars(under: Boolean) {
+        pageUnderBars = under
+        val top = binding.topBar
+        (top.layoutParams as? android.widget.LinearLayout.LayoutParams)?.let { lp ->
+            val m = if (under) -top.height else 0
+            if (lp.bottomMargin != m) { lp.bottomMargin = m; top.layoutParams = lp }
+        }
+        val bottom = binding.bottomBar
+        (bottom.layoutParams as? android.widget.LinearLayout.LayoutParams)?.let { lp ->
+            val m = if (under) -bottom.height else -barRestOverlap
+            if (lp.topMargin != m) { lp.topMargin = m; bottom.layoutParams = lp }
+        }
     }
 
     // The status bar and navigation bar strips, held in the bars' colours
@@ -3026,41 +3081,40 @@ class MainActivity : AppCompatActivity() {
         if (!barsHidden) return
         barsHidden = false
         barScrollAcc = 0
+        barsMovedAt = android.os.SystemClock.uptimeMillis()
         val top = binding.topBar
         val bottom = binding.bottomBar
         val area = binding.webArea
         top.animate().cancel(); area.animate().cancel(); bottom.animate().cancel()
-        val h = barsTopH
         top.visibility = View.VISIBLE
         bottom.visibility = if (pageTyping) View.GONE else View.VISIBLE
-        val bottomPart = if (bottom.visibility == View.GONE) 0 else barsBottomPart
         if (!animate || !animationsOn()) {
-            setPageMargins(0, 0)
-            top.translationY = 0f; area.translationY = 0f; bottom.translationY = 0f
-            hideEdgeScrims()
-            schedulePageTint(120L)
+            settleBars()
             return
         }
-        // The page gives the top back at once, offset by the bar's height so
-        // nothing on it moves, and comes down with the bar. Its bottom stays
-        // under the bottom bar until that bar is back over it, so no gap opens
-        // there; then the page stops at the bar's edge again, out of sight.
-        val lp = area.layoutParams as android.widget.LinearLayout.LayoutParams
-        val shift = 0 - lp.topMargin
-        setPageMargins(0, -(bottomPart + h))
-        area.translationY = area.translationY - shift
+        // The page keeps the whole screen while the bars come back and comes
+        // down with the top bar, and the bottom bar rises over its foot. Only
+        // once both are in place does it stop at their edges again - which
+        // takes away page the bars already cover, so nothing new has to be
+        // painted and no gap can open on the way.
         showEdgeScrims()
         val ms = 220L
         val ease = android.view.animation.PathInterpolator(0.2f, 0f, 0f, 1f)
+        val areaTo = if (pageUnderBars) barsTopH.toFloat() else 0f
         top.animate().translationY(0f).setDuration(ms).setInterpolator(ease).start()
-        area.animate().translationY(0f).setDuration(ms).setInterpolator(ease).start()
+        area.animate().translationY(areaTo).setDuration(ms).setInterpolator(ease).start()
         bottom.animate().translationY(0f).setDuration(ms).setInterpolator(ease)
-            .withEndAction {
-                if (barsHidden) return@withEndAction
-                setPageMargins(0, 0)
-                hideEdgeScrims()
-                schedulePageTint(60L)
-            }.start()
+            .withEndAction { if (!barsHidden) settleBars() }.start()
+    }
+
+    /** The bars in place and the page stopped at their edges, in one frame. */
+    private fun settleBars() {
+        setPageUnderBars(false)
+        binding.topBar.translationY = 0f
+        binding.webArea.translationY = 0f
+        binding.bottomBar.translationY = 0f
+        hideEdgeScrims()
+        schedulePageTint(60L)
     }
 
     // ---------- The page's colours in the bars ----------
@@ -4742,6 +4796,8 @@ class MainActivity : AppCompatActivity() {
     /** The layout's own overlap (the home page's), read once. */
     private var homeBarOverlap = -1
     private var barOverlapHome: Boolean? = null
+    /** How far the bottom bar overlaps the page while it is in place (setPageUnderBars). */
+    private var barRestOverlap = 0
 
     /**
      * On the home page the page runs the full overlap under the bottom bar:
@@ -4759,11 +4815,13 @@ class MainActivity : AppCompatActivity() {
         if (barOverlapHome == onHome) return
         val lp = binding.bottomBar.layoutParams
             as? android.widget.LinearLayout.LayoutParams ?: return
-        if (homeBarOverlap < 0) homeBarOverlap = -lp.topMargin
+        if (homeBarOverlap < 0) homeBarOverlap = barRestOverlap
         barOverlapHome = onHome
-        val overlap = if (onHome) homeBarOverlap else binding.navSheet.edgeTop.toInt()
-        if (lp.topMargin != -overlap) {
-            lp.topMargin = -overlap
+        barRestOverlap = if (onHome) homeBarOverlap else binding.navSheet.edgeTop.toInt()
+        // While the bars are away the page runs under all of the bar; it
+        // stops at the new edge when they come back (settleBars).
+        if (!pageUnderBars && lp.topMargin != -barRestOverlap) {
+            lp.topMargin = -barRestOverlap
             binding.bottomBar.layoutParams = lp
         }
     }

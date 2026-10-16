@@ -224,3 +224,19 @@ These were built without a phone to run them on. Check each once:
       the clock and battery icons white. YouTube (white): bars white, icons
       dark. A red site: a muted red, not a bright one. Dark theme on a white
       site: bars stay dark.
+- [ ] (1.6.3) Scroll down on YouTube, meshy.ai and the home page and stop
+      with the bars away: the page reaches the strip above Android's buttons,
+      with no grey or white band between them, for as long as the bars stay
+      away. YouTube's own bottom bar sits right on that strip.
+- [ ] (1.6.3) Scroll back up: the bars return over the page with no gap
+      opening at the bottom on the way. A page barely taller than the screen
+      does not hide them at all.
+- [ ] (1.6.3) Top Stories: no stories of injuries, attacks, war, conflict,
+      crime, disasters or deaths, and no bloodied or violent pictures; tech,
+      game, science and entertainment stories still appear.
+- [ ] (1.6.3) Open home after an hour away: stories appear at once (the saved
+      ones), and fresher ones replace them within seconds when the page is
+      at the top. While reading further down, the stories do not change
+      under you; they update once you are back at the top.
+- [ ] (1.6.3) First run after Clear data: stories appear within about 3-5
+      seconds, then fill out when the slower publishers answer.
