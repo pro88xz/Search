@@ -194,4 +194,9 @@ These were built without a phone to run them on. Check each once:
       Scroll to a differently coloured part: the bars ease to it. Icons stay
       readable in light and dark theme. Home, Night Owl and the offline page:
       plain bars. Settings → Customize → Page colours in the bars off: plain.
+- [ ] Top Stories shows World stories (BBC, Guardian, NPR, Sky, France 24,
+      ABC, CBS, UN News) among the first cards, each with a sharp picture, and
+      a "World" filter chip under See all. Menu > Share debug log, "feed"
+      lines: each world source shows the URL that answered and items kept.
+      The feed's ad card is where it always was.
 
