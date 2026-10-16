@@ -40,8 +40,46 @@ class BrowserWebView(context: Context) : WebView(context) {
      */
     @Volatile var pageHost: String? = null
 
+    /**
+     * Settings > Block autoplay, as the user set it.
+     *
+     * WebView's switch for it (mediaPlaybackRequiresUserGesture) wants the tap
+     * in the very frame that starts the video. Film and video sites play from
+     * a player in an embedded frame, started by their own play button in the
+     * page around it - so with the switch on, the tap never counted and the
+     * film never started: "can't watch a movie". Chrome instead lets a page
+     * play once the user has interacted with it. That is what this does: the
+     * block holds until the first touch on the page, then lifts for that site,
+     * and comes back when the tab moves to another site (notePageSite).
+     */
+    var blockAutoplay = true
+        set(value) {
+            field = value
+            autoplayUnlocked = false
+            settings.mediaPlaybackRequiresUserGesture = value
+        }
+    private var autoplayUnlocked = false
+    private var autoplaySite: String? = null
+
+    /** A page has started; a new site must be touched again before its media starts itself. */
+    fun notePageSite(url: String?) {
+        val site = UrlHelper.siteOf(url)
+        if (site == autoplaySite) return
+        autoplaySite = site
+        if (autoplayUnlocked) {
+            autoplayUnlocked = false
+            settings.mediaPlaybackRequiresUserGesture = blockAutoplay
+        }
+    }
+
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-        if (ev.actionMasked == MotionEvent.ACTION_DOWN) touching = true
+        if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
+            touching = true
+            if (blockAutoplay && !autoplayUnlocked) {
+                autoplayUnlocked = true
+                settings.mediaPlaybackRequiresUserGesture = false
+            }
+        }
         val handled = super.dispatchTouchEvent(ev)
         if (ev.actionMasked == MotionEvent.ACTION_UP || ev.actionMasked == MotionEvent.ACTION_CANCEL) {
             touching = false

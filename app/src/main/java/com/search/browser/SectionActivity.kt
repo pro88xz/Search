@@ -306,7 +306,7 @@ class SectionActivity : AppCompatActivity() {
         )
         addToggle(
             "Block autoplay",
-            "Stop videos and audio from playing automatically.",
+            "Videos and sound wait until you tap the page.",
             Settings.SITE_BLOCK_AUTOPLAY, true
         )
         addToggle(

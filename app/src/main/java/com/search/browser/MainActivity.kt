@@ -1124,11 +1124,11 @@ class MainActivity : AppCompatActivity() {
                 textZoom = zoom
                 javaScriptEnabled = js
                 blockNetworkImage = blockImg
-                mediaPlaybackRequiresUserGesture = blockAutoplay
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                     safeBrowsingEnabled = safeBrowsing
                 }
             }
+            (tab.webView as? BrowserWebView)?.blockAutoplay = blockAutoplay
             // Third-party cookies are a property of the WebView held by the
             // CookieManager, not of its settings object.
             tab.webView?.let {
@@ -1998,6 +1998,7 @@ class MainActivity : AppCompatActivity() {
     @SuppressLint("SetJavaScriptEnabled", "AddJavascriptInterface")
     private fun newWebView(): WebView {
         val web = BrowserWebView(this)
+        web.blockAutoplay = Settings.getBool(this, Settings.SITE_BLOCK_AUTOPLAY, true)
         // Letting go of the page: a pull at the top either refreshes or springs back.
         web.onTouchEnd = { if (web === activeWeb()) releasePull() }
         web.onTopOverscroll = { px -> if (web === activeWeb()) pullBy(px) }
@@ -2019,8 +2020,13 @@ class MainActivity : AppCompatActivity() {
             displayZoomControls = false
             setSupportZoom(true)
             javaScriptCanOpenWindowsAutomatically = true
-            mediaPlaybackRequiresUserGesture =
-                Settings.getBool(this@MainActivity, Settings.SITE_BLOCK_AUTOPLAY, true)
+            // Mixed content as browsers handle it: an http picture, video or
+            // sound on an https page is fetched (Chromium upgrades it to https
+            // where it can), while http scripts and frames stay blocked.
+            // WebView's own default refused all of it, and many video sites
+            // serve their streams from plain http hosts - the player came up
+            // and never played.
+            mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
 
             // Data saver: block images when enabled.
             blockNetworkImage = Settings.getBool(this@MainActivity, Settings.SITE_BLOCK_IMAGES, false)
@@ -2302,6 +2308,7 @@ class MainActivity : AppCompatActivity() {
                 // shipped inside the app may.
                 (view?.tag as? SearchAppBridge)?.privileged =
                     url != null && url.startsWith("file:///android_asset/")
+                (view as? BrowserWebView)?.notePageSite(url)
                 if (searchMode && url != null && url != homePage && view != null &&
                     view === activeWeb()) exitSearchMode()
                 super.onPageStarted(view, url, favicon)
@@ -2776,6 +2783,22 @@ class MainActivity : AppCompatActivity() {
         setSystemBarsVisible(false)
         requestedOrientation =
             android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        // A portrait video (a short, a phone-shot clip) is turned upright
+        // again rather than shown sideways in a landscape screen. The page
+        // knows the video's size; landscape stays when it does not say.
+        activeWeb()?.evaluateJavascript(
+            "(function(){var e=document.fullscreenElement||document.webkitFullscreenElement;" +
+                "var v=e&&(e.tagName==='VIDEO'?e:e.querySelector('video'));" +
+                "return v&&v.videoWidth?v.videoWidth+'x'+v.videoHeight:'';})()"
+        ) { r ->
+            val size = r?.trim('"')?.split('x')
+            val w = size?.getOrNull(0)?.toIntOrNull() ?: 0
+            val h = size?.getOrNull(1)?.toIntOrNull() ?: 0
+            if (fullscreenView === view && w > 0 && h > w) {
+                requestedOrientation =
+                    android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+            }
+        }
     }
 
     private fun exitFullscreen() {
