@@ -161,6 +161,12 @@ class NavSheetView @JvmOverloads constructor(
         invalidate()
     }
 
+    /** What the sheet is painted in right now, left, middle and right (for EdgeScrim). */
+    fun paintColours(): IntArray {
+        val t = tint
+        return if (t != null && t.size == 3) t.copyOf() else IntArray(3) { surfaceColor }
+    }
+
     private fun mix(a: Int, b: Int, t: Float): Int = Color.rgb(
         (Color.red(a) + (Color.red(b) - Color.red(a)) * t).toInt(),
         (Color.green(a) + (Color.green(b) - Color.green(a)) * t).toInt(),

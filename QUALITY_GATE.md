@@ -214,4 +214,13 @@ These were built without a phone to run them on. Check each once:
       shows the owl silhouette (purple or white), not a white square.
 - [ ] (1.6.1) Launcher icon, owl on error/offline pages and suggestion icons
       look exactly as before (they are now WebP).
-
+- [ ] (1.6.2) Scroll down and up on YouTube, a news site and the home page:
+      the bars slide away and back with no white band at the top (under the
+      clock) or bottom at any moment; the status bar strip keeps the bar's
+      colour while the bar is away.
+- [ ] (1.6.2) m.youtube.com: YouTube's own bottom bar (Home, Shorts, You)
+      sits directly on our bar, with no empty band between them.
+- [ ] (1.6.2) meshy.ai (dark): both bars go dark, the address and icons white,
+      the clock and battery icons white. YouTube (white): bars white, icons
+      dark. A red site: a muted red, not a bright one. Dark theme on a white
+      site: bars stay dark.
