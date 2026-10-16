@@ -156,7 +156,12 @@ These were built without a phone to run them on. Check each once:
       page is cut (the logo and the cart are whole). The bottom bar sits
       close above Android's buttons, its icons centred in it.
 - [ ] Change the accent (Settings → Customize): the loading ring takes it.
-- [ ] The bottom bar's centre button shows a search glass with a sparkle.
+- [ ] The bottom bar's centre button shows the owl in a sky that matches the
+      clock: blue sky, sun and clouds by day; orange horizon and the sun
+      sinking from 18:15; stars and the moon (in tonight's phase - compare
+      with the real moon) from 19:15; the reverse from 05:45. Night Owl tabs
+      show the night. Tapping it bounces the owl. With animations off
+      (Developer options or Remove animations) it holds still.
       Tapping it - from home, a website, find in page - opens search in the
       same tab, as tapping the search box does: no new tab, the tab count
       does not change. Back closes search and leaves the page as it was.
@@ -173,3 +178,30 @@ These were built without a phone to run them on. Check each once:
       "Allow ads on this site" reloads it with its ads; the site appears in
       Settings → Ad blocking; "Block ads on this site" or removing it there
       blocks them again. The home-feed AdMob card is unchanged either way.
+- [ ] Hide bars while scrolling: on a long article and on the home feed,
+      scroll down - both bars slide away and the page fills the screen with
+      no jump in the text; scroll up a little - both come back. At the top of
+      the page, on opening a link, switching tabs, tapping the owl, the menu
+      or the tabs, the bars are there. Typing into a page field still keeps
+      the bottom bar out of the keyboard's way. Settings → Customize → Hide
+      bars while scrolling off: the bars stay. With TalkBack on: the bars stay.
+- [ ] Site icon: on a website (e.g. github.com, bbc.com, amazon.com) tap the
+      owl - the search field shows the site's icon, sharp at 24dp, rounded,
+      before the address. A site seen before shows it at once. On home: no icon.
+- [ ] Page colours: on a site with a coloured header (e.g. a red or blue
+      news site), the top bar and the status bar strip take a soft wash of
+      it, not a solid block; a site with a dark footer tints the bottom bar.
+      Scroll to a differently coloured part: the bars ease to it. Icons stay
+      readable in light and dark theme. Home, Night Owl and the offline page:
+      plain bars. Settings → Customize → Page colours in the bars off: plain.
+- [ ] Top Stories shows World stories (BBC, Guardian, NPR, Sky, France 24,
+      ABC, CBS, UN News) among the first cards, each with a sharp picture, and
+      a "World" filter chip under See all. Menu > Share debug log, "feed"
+      lines: each world source shows the URL that answered and items kept.
+      The feed's ad card is where it always was.
+- [ ] Menu > Print or save as PDF on an article: Android's print screen
+      opens; Save as PDF writes a readable PDF. On home it says to open a page.
+- [ ] A page behind HTTP sign-in (a router's admin page, or
+      https://httpbin.org/basic-auth/user/pass): a "Sign in to ..." dialog;
+      right details open the page, Cancel leaves the site's own 401 page.
+

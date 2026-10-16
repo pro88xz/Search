@@ -82,6 +82,18 @@
                     android:textSize="15sp"
                     android:background="@drawable/urlbar_bg" />
 
+                <!-- The site's own icon, crisp (SiteIcons), while searching
+                     from a website: which page the search starts from. -->
+                <ImageView
+                    android:id="@+id/siteIcon"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:layout_gravity="start|center_vertical"
+                    android:layout_marginStart="16dp"
+                    android:scaleType="fitCenter"
+                    android:visibility="gone"
+                    android:importantForAccessibility="no" />
+
                 <ImageButton
                     android:id="@+id/starBtn"
                     android:layout_width="48dp"
@@ -358,14 +370,14 @@
                 android:foreground="@drawable/nav_ripple"
                 android:contentDescription="Search">
 
-                <!-- A search glass with a sparkle: the button opens search in
-                     the tab on screen, as a tap on the search box does. -->
-                <ImageView
-                    android:layout_width="28dp"
-                    android:layout_height="28dp"
-                    android:layout_gravity="center"
-                    android:src="@drawable/nav_search_spark"
-                    android:tint="#FFFFFF"
+                <!-- The owl peeking up into a sky that follows the clock: day,
+                     sunset, night with the moon in its real phase
+                     (OwlButtonView). The button opens search in the tab on
+                     screen, as a tap on the search box does. -->
+                <com.search.browser.OwlButtonView
+                    android:id="@+id/navOwl"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
                     android:importantForAccessibility="no" />
             </FrameLayout>
 
@@ -687,6 +699,13 @@
                     android:src="@drawable/menu_find" android:layout_marginEnd="18dp" />
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
                     android:text="Find in page" android:textSize="16sp"
+                    android:textColor="?android:attr/textColorPrimary" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/menuPrint" style="@style/MenuRow">
+                <ImageView android:layout_width="22dp" android:layout_height="22dp"
+                    android:src="@drawable/menu_print" android:layout_marginEnd="18dp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="Print or save as PDF" android:textSize="16sp"
                     android:textColor="?android:attr/textColorPrimary" />
             </LinearLayout>
             <!-- Ad blocking off or back on for the site on screen. Only while

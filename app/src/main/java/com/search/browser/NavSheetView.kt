@@ -68,6 +68,13 @@ class NavSheetView @JvmOverloads constructor(
     var surfaceColor: Int = context.getColor(R.color.barSurface)
         set(v) { field = v; repaint() }
 
+    /**
+     * The page's colours across the bar, left to right (PageTint, already
+     * softened into the surface), or null for the plain surface.
+     */
+    var tint: IntArray? = null
+        set(v) { field = v; repaint() }
+
     /** The accent, which the ring around the button carries a little of. */
     var accent: Int = Color.parseColor("#8B6BD8")
         set(v) { field = v; repaint() }
@@ -94,6 +101,7 @@ class NavSheetView @JvmOverloads constructor(
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
         rebuild()
+        if (tint != null) repaint()
     }
 
     private fun rebuild() {
@@ -138,12 +146,18 @@ class NavSheetView @JvmOverloads constructor(
 
     private fun repaint() {
         fill.color = surfaceColor
+        val t = tint
+        fill.shader = if (t != null && t.size == 3 && width > 0) {
+            android.graphics.LinearGradient(0f, 0f, width.toFloat(), 0f, t,
+                floatArrayOf(1f / 6f, 0.5f, 5f / 6f), android.graphics.Shader.TileMode.CLAMP)
+        } else null
+        val middle = if (t != null && t.size == 3) t[1] else surfaceColor
         // A soft shadow, lifted slightly, so the sheet and its arc float over
         // the page as one piece.
         fill.setShadowLayer(14f * dp, 0f, -1f * dp,
             if (dark) Color.argb(110, 0, 0, 0) else Color.argb(26, 60, 48, 112))
-        ringPaint.color = mix(surfaceColor, accent, if (dark) 0.16f else 0.07f)
-        line.color = if (dark) Color.argb(18, 255, 255, 255) else mix(surfaceColor, accent, 0.12f)
+        ringPaint.color = mix(middle, accent, if (dark) 0.16f else 0.07f)
+        line.color = if (dark) Color.argb(18, 255, 255, 255) else mix(middle, accent, 0.12f)
         invalidate()
     }
 

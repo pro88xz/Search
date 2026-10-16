@@ -4,6 +4,16 @@
     <style name="Theme.Search" parent="Theme.MaterialComponents.Light.NoActionBar">
         <item name="android:windowBackground">@color/appBackground</item>
         <item name="android:colorBackground">@color/appBackground</item>
+        <!--
+          The light theme is drawn as it is. Android's light framework themes
+          allow "force dark", and with the phone in dark mode Samsung's "Dark
+          mode for apps" (and Android's Override force-dark) repaints any app
+          that allows it - so a user who picked Light in Settings got a light
+          theme the system darkened again, pages included: "can't switch to
+          light mode". The app has a real dark theme (values-night) for when
+          dark is wanted. Ignored below Android 10.
+        -->
+        <item name="android:forceDarkAllowed">false</item>
     </style>
     <!--
       Dialogs.
@@ -33,5 +43,6 @@
         <item name="android:windowBackground">@drawable/splash_window</item>
         <item name="android:windowFullscreen">true</item>
         <item name="android:windowNoTitle">true</item>
+        <item name="android:forceDarkAllowed">false</item>
     </style>
 </resources>

@@ -82,6 +82,7 @@ object NewsFeed {
 
     // ---------- categories ----------
 
+    internal const val WORLD = "World"
     internal const val AI = "AI"
     internal const val MOBILE = "Mobile"
     internal const val TECH = "Tech"
@@ -104,12 +105,14 @@ object NewsFeed {
 
     /** The only values "category" can take. home.html may style each one. */
     internal val CATEGORIES = listOf(
-        AI, MOBILE, TECH, GAMING, ENTERTAINMENT, MUSIC, CREATORS, INTERNET,
+        WORLD, AI, MOBILE, TECH, GAMING, ENTERTAINMENT, MUSIC, CREATORS, INTERNET,
         DEVELOPER, SECURITY, SPACE, SCIENCE, ROBOTICS, AUTO, BUSINESS, SPORTS,
         TRAVEL, DESIGN, INTERESTING
     )
 
     private val ANY: Set<String> = CATEGORIES.toSet()
+    /** What a headline rule may turn a world-news item into. */
+    private val WORLD_REFINE: Set<String> by lazy { setOf(SPORTS, SCIENCE, SPACE, ENTERTAINMENT, MUSIC, INTERESTING, AI) }
 
     /**
      * How wide an audience a category has, added to a story's score. This is
@@ -118,6 +121,8 @@ object NewsFeed {
      * when nothing else is happening.
      */
     private val BROAD: Map<String, Double> = HashMap<String, Double>().apply {
+        // The day's world news is the broadest interest there is.
+        put(WORLD, 0.8)
         for (c in listOf(AI, MOBILE, GAMING, ENTERTAINMENT, MUSIC, SPACE, SCIENCE, SPORTS, INTERESTING)) put(c, 0.6)
         for (c in listOf(TECH, INTERNET, CREATORS, AUTO, ROBOTICS, TRAVEL, DESIGN, SECURITY)) put(c, 0.3)
         for (c in listOf(BUSINESS, DEVELOPER)) put(c, 0.0)
@@ -152,7 +157,8 @@ object NewsFeed {
     )
 
     /**
-     * The whole configuration surface. 22 publishers. Each feed is read
+     * The whole configuration surface. 30 publishers: international news first,
+     * then technology and culture. Each feed is read
      * gzipped, stops after [MAX_ITEMS_PER_SOURCE] items or [MAX_BYTES]
      * unzipped, and is fetched at most every [TTL_MS]. Estimated at 300-600KB
      * a refresh, most of it the full-text feeds; the per-source DebugLog
@@ -176,6 +182,50 @@ object NewsFeed {
      * API key is configured; see [fetchYouTube].
      */
     internal val SOURCES: List<Source> = listOf(
+        // World news, from international editions rather than one country's
+        // front page, and only outlets that are free to read - a story that
+        // opens on a paywall is not news to the reader. Each carries a picture
+        // per item: BBC and Sky give small thumbnails whose size sits in the
+        // URL and is raised (upgradeImage); The Guardian offers 140 and 460px
+        // copies and its URLs are signed, so the 460 is used as it is.
+        // Al Jazeera, DW and Reuters were left out: their feeds carry no
+        // per-item image, or there is no public feed. The busiest headlines -
+        // the ones several of these run at once - rise on momentum (cluster).
+        // A headline rule may move an item into sport, science, space, the
+        // arts or the oddities, but not business: world headlines are full of
+        // "billion" and "tariffs" that are politics, not markets.
+        Source("bbcworld", "BBC News", "bbc.com", WORLD, 1, listOf(
+            "https://feeds.bbci.co.uk/news/world/rss.xml",
+            "https://feeds.bbci.co.uk/news/rss.xml"
+        ), WORLD_REFINE, 24),
+        Source("guardianworld", "The Guardian", "theguardian.com", WORLD, 1, listOf(
+            "https://www.theguardian.com/world/rss",
+            "https://www.theguardian.com/international/rss"
+        ), WORLD_REFINE, 24),
+        Source("nprworld", "NPR", "npr.org", WORLD, 1, listOf(
+            "https://feeds.npr.org/1004/rss.xml",
+            "https://feeds.npr.org/1001/rss.xml"
+        ), WORLD_REFINE, 36),
+        Source("skyworld", "Sky News", "news.sky.com", WORLD, 2, listOf(
+            "https://feeds.skynews.com/feeds/rss/world.xml",
+            "https://feeds.skynews.com/feeds/rss/home.xml"
+        ), WORLD_REFINE, 24),
+        Source("france24", "France 24", "france24.com", WORLD, 1, listOf(
+            "https://www.france24.com/en/rss",
+            "https://www.france24.com/en/international/rss"
+        ), WORLD_REFINE, 24),
+        Source("abcnewsworld", "ABC News", "abcnews.go.com", WORLD, 2, listOf(
+            "https://abcnews.go.com/abcnews/internationalheadlines",
+            "https://abcnews.go.com/abcnews/topstories"
+        ), WORLD_REFINE, 24),
+        Source("cbsworld", "CBS News", "cbsnews.com", WORLD, 2, listOf(
+            "https://www.cbsnews.com/latest/rss/world",
+            "https://www.cbsnews.com/latest/rss/main"
+        ), WORLD_REFINE, 24),
+        Source("unnews", "UN News", "news.un.org", WORLD, 1, listOf(
+            "https://news.un.org/feed/subscribe/en/news/all/rss.xml"
+        ), setOf(SCIENCE), 72),
+
         // General technology. Headline rules may move any item anywhere.
         Source("verge", "The Verge", "theverge.com", TECH, 1, listOf(
             "https://www.theverge.com/rss/index.xml",
@@ -297,7 +347,8 @@ object NewsFeed {
     private const val MAX_BYTES = 200_000
     /** Items read from one feed. Feeds are newest first; the rest is old. */
     private const val MAX_ITEMS_PER_SOURCE = 20
-    private const val THREADS = 6
+    /** Eight at once: thirty publishers in about the time the old six took for twenty-two. */
+    private const val THREADS = 8
     /** Wall clock for one source, all candidates included. */
     private const val SOURCE_BUDGET_MS = 20_000L
     /** Wall clock for the whole refresh. Whatever arrived by then ships. */
@@ -1498,7 +1549,7 @@ object NewsFeed {
     private val CONDE = Regex("(/photos/[0-9a-f]{24}/[^/]+/)(pass|w_(\\d+)(,c_limit)?)/")
     private val GAMESPOT = Regex("^(https://www\\.gamespot\\.com/a/uploads/)(square|scale|screen)_(tiny|mini|petite|small|medium)/")
     private val BBC = Regex("/\\d{2,4}/cpsprodpb/")
-    private val SKY = Regex("/(\\d{3,4})x(\\d{3,4})/")
+    private val SKY = Regex("/(\\d{2,4})x(\\d{2,4})/")
 
     private const val TARGET_W = 1200
 
@@ -1537,8 +1588,13 @@ object NewsFeed {
             if (url.contains("ichef.bbci.co.uk")) {
                 return url.replace(BBC, "/800/cpsprodpb/") to 800
             }
+            // Sky: /70x50/ thumbnails in the feed. Only claimed as 768 when the
+            // size was actually there to change: a URL left as it was must not
+            // be scored as a large picture.
             if (url.contains("365dm.com")) {
-                return url.replace(SKY, "/768x432/") to 768
+                val m = SKY.find(url) ?: return url to 0
+                if (m.groupValues[1].toInt() >= 768) return url to 0
+                return url.replaceRange(m.range, "/768x432/") to 768
             }
             val host = url.substringAfter("://").substringBefore('/').lowercase(Locale.ROOT)
             val query = url.substringAfter('?', "")

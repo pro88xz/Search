@@ -869,8 +869,60 @@ class MainActivity : AppCompatActivity() {
         // Empty: mic 48 + 9dp divider + scan 48 + 8dp margin, plus breathing
         // room. Otherwise: clear 48 + its 7dp margin, same. Both grew with the
         // controls; left as they were, a long address would run under them.
+        // The site's icon, when it shows, sits in front of the text.
+        val start = if (binding.siteIcon.visibility == View.VISIBLE) 50 else 26
         binding.urlBar.setPaddingRelative(
-            (26 * d).toInt(), top, ((if (empty) 120 else 60) * d).toInt(), bottom)
+            (start * d).toInt(), top, ((if (empty) 120 else 60) * d).toInt(), bottom)
+    }
+
+    // ---------- The site's icon in the search field ----------
+
+    /** Shows [url]'s crisp icon in the field while searching from it; nothing for home or non-web pages. */
+    private fun showSiteIcon(url: String?) {
+        val key = SiteIcons.keyOf(url)
+        val web = activeWeb()
+        if (url == null || key == null || web == null || url == homePage) { hideSiteIcon(); return }
+        val ready = SiteIcons.cached(url)
+        if (ready != null) {
+            setSiteIcon(ready)
+        } else {
+            // WebView's own small icon while the crisp one is fetched, copied
+            // because WebView may recycle the one it holds.
+            web.favicon?.let { f ->
+                try { setSiteIcon(f.copy(f.config ?: Bitmap.Config.ARGB_8888, false)) } catch (e: Exception) { }
+            }
+            SiteIcons.load(this, web, url, nightOwl) { icon ->
+                if (searchMode && SiteIcons.keyOf(tabs.activeTab?.url) == key) setSiteIcon(icon)
+            }
+        }
+    }
+
+    private fun setSiteIcon(icon: Bitmap) {
+        val v = binding.siteIcon
+        if (v.outlineProvider !is SiteIconOutline) {
+            v.outlineProvider = SiteIconOutline
+            v.clipToOutline = true
+        }
+        v.setImageBitmap(icon)
+        if (v.visibility != View.VISIBLE) {
+            v.visibility = View.VISIBLE
+            updateSearchFieldActions()
+        }
+    }
+
+    private fun hideSiteIcon() {
+        val v = binding.siteIcon
+        if (v.visibility == View.GONE) return
+        v.visibility = View.GONE
+        v.setImageDrawable(null)
+        updateSearchFieldActions()
+    }
+
+    /** Rounded corners, as a launcher draws a site's icon. */
+    private object SiteIconOutline : android.view.ViewOutlineProvider() {
+        override fun getOutline(view: View, outline: android.graphics.Outline) {
+            outline.setRoundRect(0, 0, view.width, view.height, view.width * 0.22f)
+        }
     }
 
     /**
@@ -951,6 +1003,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun enterSearchMode() {
         if (searchMode) return
+        showBars(animate = false)
         searchMode = true
         // The bar is non-focusable at rest; make it typable now that the user
         // has deliberately entered search mode. This is the ONLY place focus is
@@ -994,6 +1047,7 @@ class MainActivity : AppCompatActivity() {
         if (onHome) binding.urlBar.setText("") else {
             binding.urlBar.setText(current); binding.urlBar.selectAll()
         }
+        if (onHome) hideSiteIcon() else showSiteIcon(current)
         binding.urlBar.requestFocus()
         val imm = getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
         imm.showSoftInput(binding.urlBar, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
@@ -1014,6 +1068,7 @@ class MainActivity : AppCompatActivity() {
     private fun exitSearchMode() {
         if (!searchMode) return
         searchMode = false
+        hideSiteIcon()
         styleUrlBarForSearch(false)
         animateSearchOut()
         // The bar's own look back.
@@ -1045,6 +1100,7 @@ class MainActivity : AppCompatActivity() {
         }
         // The page may still be scrolled past its pill; re-apply the compact bar.
         if (onHome && homeCompact) applyHomeCompact(true)
+        schedulePageTint(220L)
         androidx.core.view.ViewCompat.requestApplyInsets(binding.root)
     }
 
@@ -1088,6 +1144,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        refreshScrollPrefs()
+        if (!tintBarsPref) setBarTint(null, null, animate = false)
         HealthStats.sessionStarted(this)
         registerNetworkWatch()
         // If a flexible update finished downloading while away, offer to install it.
@@ -1124,11 +1182,11 @@ class MainActivity : AppCompatActivity() {
                 textZoom = zoom
                 javaScriptEnabled = js
                 blockNetworkImage = blockImg
-                mediaPlaybackRequiresUserGesture = blockAutoplay
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                     safeBrowsingEnabled = safeBrowsing
                 }
             }
+            (tab.webView as? BrowserWebView)?.blockAutoplay = blockAutoplay
             // Third-party cookies are a property of the WebView held by the
             // CookieManager, not of its settings object.
             tab.webView?.let {
@@ -1428,16 +1486,19 @@ class MainActivity : AppCompatActivity() {
             @Suppress("DEPRECATION")
             window.navigationBarColor = android.graphics.Color.TRANSPARENT
         }
-        super.onCreate(savedInstanceState)
-        // Apply the saved theme preference before inflating.
-        when (Settings.getTheme(this)) {
-            Settings.THEME_LIGHT -> androidx.appcompat.app.AppCompatDelegate
-                .setDefaultNightMode(androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO)
-            Settings.THEME_DARK -> androidx.appcompat.app.AppCompatDelegate
-                .setDefaultNightMode(androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES)
-            else -> androidx.appcompat.app.AppCompatDelegate
-                .setDefaultNightMode(androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
+        // Debug builds report main-thread disk and network use and leaked
+        // resources to the log - the slow paths that become ANRs on a cheap
+        // phone - so they are seen while testing. Log only: never a crash.
+        if (BuildConfig.DEBUG) {
+            android.os.StrictMode.setThreadPolicy(android.os.StrictMode.ThreadPolicy.Builder()
+                .detectDiskReads().detectDiskWrites().detectNetwork().penaltyLog().build())
+            android.os.StrictMode.setVmPolicy(android.os.StrictMode.VmPolicy.Builder()
+                .detectLeakedClosableObjects().detectActivityLeaks().penaltyLog().build())
         }
+        // The saved theme, before super.onCreate so the browser is built once,
+        // in the chosen theme (Settings.applyNightMode).
+        Settings.applyNightMode(this)
+        super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         // Health numbers (HealthStats): the last session's ending, Android's
@@ -1493,7 +1554,8 @@ class MainActivity : AppCompatActivity() {
             // And the bottom bar steps out of the way while typing into the
             // page, as it does in Chrome, so the keyboard does not cost the
             // page its height twice.
-            val bar = if (pageTyping) View.GONE else View.VISIBLE
+            this.pageTyping = pageTyping
+            val bar = if (pageTyping || barsHidden) View.GONE else View.VISIBLE
             if (binding.bottomBar.visibility != bar) binding.bottomBar.visibility = bar
             // The suggestion list ends where the keyboard starts: padded by
             // whatever the keyboard covers beyond what the root already gives
@@ -2004,6 +2066,7 @@ class MainActivity : AppCompatActivity() {
     @SuppressLint("SetJavaScriptEnabled", "AddJavascriptInterface")
     private fun newWebView(): WebView {
         val web = BrowserWebView(this)
+        web.blockAutoplay = Settings.getBool(this, Settings.SITE_BLOCK_AUTOPLAY, true)
         // Letting go of the page: a pull at the top either refreshes or springs back.
         web.onTouchEnd = { if (web === activeWeb()) releasePull() }
         web.onTopOverscroll = { px -> if (web === activeWeb()) pullBy(px) }
@@ -2025,8 +2088,13 @@ class MainActivity : AppCompatActivity() {
             displayZoomControls = false
             setSupportZoom(true)
             javaScriptCanOpenWindowsAutomatically = true
-            mediaPlaybackRequiresUserGesture =
-                Settings.getBool(this@MainActivity, Settings.SITE_BLOCK_AUTOPLAY, true)
+            // Mixed content as browsers handle it: an http picture, video or
+            // sound on an https page is fetched (Chromium upgrades it to https
+            // where it can), while http scripts and frames stay blocked.
+            // WebView's own default refused all of it, and many video sites
+            // serve their streams from plain http hosts - the player came up
+            // and never played.
+            mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
 
             // Data saver: block images when enabled.
             blockNetworkImage = Settings.getBool(this@MainActivity, Settings.SITE_BLOCK_IMAGES, false)
@@ -2166,6 +2234,16 @@ class MainActivity : AppCompatActivity() {
                     ?: super.shouldInterceptRequest(view, request)
             }
 
+            override fun onReceivedHttpAuthRequest(
+                view: WebView?,
+                handler: android.webkit.HttpAuthHandler?,
+                host: String?,
+                realm: String?
+            ) {
+                val h = handler ?: return
+                askHttpAuth(h, host ?: "this site", realm ?: "")
+            }
+
             override fun onReceivedError(
                 view: WebView?,
                 request: android.webkit.WebResourceRequest?,
@@ -2257,6 +2335,7 @@ class MainActivity : AppCompatActivity() {
             // The page has started to arrive: from here it is loading content,
             // not waiting on the server.
             override fun onPageCommitVisible(view: WebView?, url: String?) {
+                if (view != null && view === activeWeb()) schedulePageTint(150L)
                 super.onPageCommitVisible(view, url)
                 commitLoadWatch(tabOf(view))
             }
@@ -2308,10 +2387,16 @@ class MainActivity : AppCompatActivity() {
                 // shipped inside the app may.
                 (view?.tag as? SearchAppBridge)?.privileged =
                     url != null && url.startsWith("file:///android_asset/")
+                (view as? BrowserWebView)?.notePageSite(url)
                 if (searchMode && url != null && url != homePage && view != null &&
                     view === activeWeb()) exitSearchMode()
                 super.onPageStarted(view, url, favicon)
                 if (view == tabs.activeTab?.webView) {
+                    // A new page arrives with the bars, as in Chrome.
+                    showBars()
+                    // Plain bars for home and pages that are not to be tinted;
+                    // a site's colours arrive once it has painted.
+                    if (!tintAllowed(url)) setBarTint(null, null, animate = true)
                     if (!binding.urlBar.hasFocus()) binding.urlBar.setText(displayUrl(url))
                     refreshOmniboxVisibility(url)
                     tabs.activeTab?.let { beginLoadWatch(it, url) }
@@ -2336,6 +2421,7 @@ class MainActivity : AppCompatActivity() {
                 refreshNav()
             }
             override fun onPageFinished(view: WebView?, url: String?) {
+                if (view != null && view === activeWeb()) schedulePageTint(250L)
                 // The upgrade worked, so nothing needs remembering about it.
                 url?.let { upgradedFrom.remove(it) }
                 // This is also reported for a load that never committed - one
@@ -2733,11 +2819,264 @@ class MainActivity : AppCompatActivity() {
             })
         }
 
-        web.setOnScrollChangeListener { v, _, scrollY, _, _ ->
+        web.setOnScrollChangeListener { v, _, scrollY, _, oldScrollY ->
             lastWebScroll = android.os.SystemClock.uptimeMillis()
             positionAdSlot(v as android.webkit.WebView, scrollY)
+            onPageScrollForBars(v, scrollY, oldScrollY)
+            if (v === activeWeb()) schedulePageTint()
         }
         return web
+    }
+
+    // ---------- Bars hide while scrolling ----------
+    //
+    // Scrolling down a page slides both bars away and gives the page the whole
+    // screen; scrolling up, or reaching the top, brings them back, as Chrome's
+    // toolbar does. On the home page and on websites alike.
+    //
+    // The bars move by translation, and the page is resized only twice: at the
+    // end of a hide and at the start of a show. Each time the page area is
+    // offset by exactly the top bar's height in the same frame, so the text
+    // under the finger never jumps. Resizing on every frame instead would make
+    // a heavy page relayout continuously, and letting the page run under the
+    // bars all the time would hide what sites pin to their bottom edge - the
+    // reason the bar stops the page at its straight edge (applyBarOverlap).
+
+    private var barsHidden = false
+    private var barsHiding = false
+    // Read once per resume rather than on every scroll event (refreshScrollPrefs).
+    private var hideBarsPref = true
+    private var tintBarsPref = true
+    private var touchExploration = false
+
+    private fun refreshScrollPrefs() {
+        hideBarsPref = Settings.getBool(this, Settings.HIDE_BARS_ON_SCROLL, true)
+        tintBarsPref = Settings.getBool(this, Settings.TINT_BARS, true)
+        touchExploration = (getSystemService(ACCESSIBILITY_SERVICE) as?
+            android.view.accessibility.AccessibilityManager)?.isTouchExplorationEnabled == true
+        if (!hideBarsPref || touchExploration) showBars(animate = false)
+    }
+    private var barScrollAcc = 0
+    private var barsTopH = 0
+    private var pageTyping = false
+
+    private fun barsMayHide(web: View): Boolean =
+        web === activeWeb() && !searchMode && !findActive && !deckVisible &&
+            binding.menuScrim.visibility != View.VISIBLE && fullscreenView == null &&
+            pullRaw == 0f && !pullRefreshing && hideBarsPref &&
+            // With TalkBack the bars are found by touch; they stay put.
+            !touchExploration
+
+    private fun onPageScrollForBars(web: View, y: Int, oldY: Int) {
+        val dy = y - oldY
+        if (dy == 0 || web !== activeWeb()) return
+        val density = resources.displayMetrics.density
+        if (y <= (8 * density).toInt()) {          // back at the top
+            barScrollAcc = 0
+            if (barsHidden) showBars()
+            return
+        }
+        if (!barsMayHide(web)) { barScrollAcc = 0; return }
+        // Only the user's own scrolling - a finger on the page, or the fling it
+        // left behind - not a page scrolling itself to an anchor.
+        val b = web as? BrowserWebView ?: return
+        if (!b.touching && android.os.SystemClock.uptimeMillis() - b.lastTouchUp > 1500L) return
+        if ((dy > 0) != (barScrollAcc > 0)) barScrollAcc = 0
+        barScrollAcc += dy
+        val threshold = (24 * density).toInt()
+        if (!barsHidden && barScrollAcc > threshold && y > binding.topBar.height) hideBars()
+        else if (barsHidden && barScrollAcc < -threshold) showBars()
+    }
+
+    private fun hideBars() {
+        val top = binding.topBar
+        val bottom = binding.bottomBar
+        val area = binding.webArea
+        if (barsHidden || top.height <= 0 || top.visibility != View.VISIBLE) return
+        barsHidden = true
+        barsHiding = true
+        barsTopH = top.height
+        val h = barsTopH.toFloat()
+        val drop = (bottom.height + binding.navSheet.bottomInset).toFloat()
+        val ms = 200L
+        val ease = android.view.animation.PathInterpolator(0.3f, 0f, 0.2f, 1f)
+        top.animate().translationY(-h).alpha(0f).setDuration(ms).setInterpolator(ease).withLayer().start()
+        area.animate().translationY(-h).setDuration(ms).setInterpolator(ease).start()
+        bottom.animate().translationY(drop).setDuration(ms).setInterpolator(ease)
+            .withEndAction {
+                if (!barsHidden) return@withEndAction
+                barsHiding = false
+                // Now the page takes the room: the top bar leaves the layout as
+                // the page area's offset is cleared, which cancel out on screen.
+                top.visibility = View.GONE
+                area.translationY = 0f
+                bottom.visibility = View.GONE
+            }.start()
+    }
+
+    /** Whether the phone runs animations (Remove animations / animator scale 0 says not). */
+    private fun animationsOn(): Boolean =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) android.animation.ValueAnimator.areAnimatorsEnabled()
+        else android.provider.Settings.Global.getFloat(contentResolver,
+            android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) != 0f
+
+    /** Brings the bars back; [animate] false puts them straight in place. */
+    private fun showBars(animate: Boolean = true) {
+        if (!barsHidden) return
+        barsHidden = false
+        barScrollAcc = 0
+        val top = binding.topBar
+        val bottom = binding.bottomBar
+        val area = binding.webArea
+        top.animate().cancel(); area.animate().cancel(); bottom.animate().cancel()
+        val h = barsTopH.toFloat()
+        val drop = (bottom.height.takeIf { it > 0 } ?: (86 * resources.displayMetrics.density).toInt()) +
+            binding.navSheet.bottomInset.toFloat()
+        if (top.visibility == View.GONE) {
+            // The page gives the room back at once; it is offset by the bar's
+            // height in the same frame so nothing on it moves yet.
+            top.visibility = View.VISIBLE
+            top.translationY = -h
+            top.alpha = 0f
+            area.translationY = -h
+            bottom.translationY = drop
+        }
+        bottom.visibility = if (pageTyping) View.GONE else View.VISIBLE
+        barsHiding = false
+        if (!animate || !animationsOn()) {
+            top.translationY = 0f; top.alpha = 1f; area.translationY = 0f; bottom.translationY = 0f
+            return
+        }
+        val ms = 200L
+        val ease = android.view.animation.PathInterpolator(0.2f, 0f, 0f, 1f)
+        top.animate().translationY(0f).alpha(1f).setDuration(ms).setInterpolator(ease).withLayer().start()
+        area.animate().translationY(0f).setDuration(ms).setInterpolator(ease).start()
+        bottom.animate().translationY(0f).setDuration(ms).setInterpolator(ease)
+            .withEndAction { schedulePageTint(60L) }.start()
+    }
+
+    // ---------- The page's colours in the bars ----------
+    //
+    // Both bars take on a soft wash of the page they frame - the top bar (and
+    // the status bar strip it paints) the colours along the top of the page,
+    // the bottom bar those along the bottom - as Chrome's and Samsung's
+    // toolbars follow a site's colour, but gentler: each third of the strip is
+    // averaged, calmed and only partly mixed into the bar's own surface
+    // (PageTint), so a red header gives a blush, never a red bar, and the icons
+    // keep their contrast. Re-read when a page appears, finishes and settles
+    // after a scroll, so it follows the page; eased over a third of a second.
+    // Not on the home page (which has its own colours), Night Owl, error pages
+    // or with Settings > Customize > Page colours in the bars off.
+
+    private var topTint: IntArray? = null
+    private var bottomTint: IntArray? = null
+    private var tintAnim: android.animation.ValueAnimator? = null
+    private val tintSample = Runnable { samplePageTint() }
+
+    private fun tintAllowed(url: String?): Boolean =
+        !nightOwl && url != null && url != homePage && !isErrorPage(url) &&
+            (url.startsWith("https://") || url.startsWith("http://")) && tintBarsPref
+
+    private fun schedulePageTint(delay: Long = 300L) {
+        uiHandler.removeCallbacks(tintSample)
+        uiHandler.postDelayed(tintSample, delay)
+    }
+
+    private fun samplePageTint() {
+        val web = activeWeb() ?: return
+        if (!tintAllowed(tabs.activeTab?.url)) { setBarTint(null, null, animate = true); return }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        // Only a settled page with nothing over it: the strips must be the page.
+        if (barsHidden || searchMode || deckVisible || fullscreenView != null ||
+            binding.menuScrim.visibility == View.VISIBLE || binding.loadStatus.visibility == View.VISIBLE ||
+            binding.webContainer.translationX != 0f || !web.isAttachedToWindow ||
+            binding.topBar.translationY != 0f || binding.bottomBar.visibility != View.VISIBLE
+        ) return
+        val d = resources.displayMetrics.density
+        val area = IntArray(2).also { binding.webArea.getLocationInWindow(it) }
+        val bar = IntArray(2).also { binding.bottomBar.getLocationInWindow(it) }
+        val w = binding.webArea.width
+        // Just under the top bar, and just above the bottom bar's frame - clear
+        // of its arc and of the shadows both bars cast on the page.
+        val top = android.graphics.Rect(area[0], area[1] + (2 * d).toInt(), area[0] + w, area[1] + (9 * d).toInt())
+        val bottom = android.graphics.Rect(bar[0], bar[1] - (10 * d).toInt(), bar[0] + w, bar[1] - (2 * d).toInt())
+        captureStrip(top) { t ->
+            captureStrip(bottom) { b ->
+                if (web === activeWeb() && tintAllowed(tabs.activeTab?.url)) applyPageTint(t, b)
+            }
+        }
+    }
+
+    /** The average colour of each third of [rect] on screen, or null. */
+    private fun captureStrip(rect: android.graphics.Rect, done: (IntArray?) -> Unit) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || rect.width() < 3 || rect.height() < 1) {
+            done(null); return
+        }
+        val sw = 48
+        val sh = 4
+        val bmp = try { Bitmap.createBitmap(sw, sh, Bitmap.Config.ARGB_8888) } catch (e: Throwable) { done(null); return }
+        try {
+            PixelCopy.request(window, rect, bmp, { result ->
+                val colours = if (result == PixelCopy.SUCCESS) {
+                    val px = IntArray(sw * sh)
+                    bmp.getPixels(px, 0, sw, 0, 0, sw, sh)
+                    PageTint.thirds(px, sw, sh)
+                } else null
+                bmp.recycle()
+                done(colours)
+            }, uiHandler)
+        } catch (e: Exception) {
+            bmp.recycle()
+            done(null)
+        }
+    }
+
+    private fun applyPageTint(top: IntArray?, bottom: IntArray?) {
+        val dark = (resources.configuration.uiMode and
+            android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
+        val surface = getColor(R.color.barSurface)
+        setBarTint(
+            top?.let { a -> IntArray(3) { PageTint.soften(a[it], surface, dark) } },
+            bottom?.let { a -> IntArray(3) { PageTint.soften(a[it], surface, dark) } },
+            animate = true)
+    }
+
+    /** Eases both bars to [top] / [bottom] (null: their plain surface). */
+    private fun setBarTint(top: IntArray?, bottom: IntArray?, animate: Boolean) {
+        if (top?.contentEquals(topTint) ?: (topTint == null) &&
+            bottom?.contentEquals(bottomTint) ?: (bottomTint == null)) return
+        tintAnim?.cancel()
+        val plainTop = IntArray(3) { binding.topBar.surfaceColor }
+        val plainBottom = IntArray(3) { binding.navSheet.surfaceColor }
+        val fromTop = topTint ?: plainTop
+        val fromBottom = bottomTint ?: plainBottom
+        val toTop = top ?: plainTop
+        val toBottom = bottom ?: plainBottom
+        topTint = top
+        bottomTint = bottom
+        if (!animate || !animationsOn()) {
+            binding.topBar.tint = top
+            binding.navSheet.tint = bottom
+            return
+        }
+        tintAnim = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 340L
+            interpolator = android.view.animation.DecelerateInterpolator()
+            addUpdateListener { a ->
+                val f = a.animatedValue as Float
+                binding.topBar.tint = PageTint.mixAll(fromTop, toTop, f)
+                binding.navSheet.tint = PageTint.mixAll(fromBottom, toBottom, f)
+            }
+            addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) {
+                    // Settled on the plain surface: drop the gradient entirely.
+                    if (topTint == null) binding.topBar.tint = null
+                    if (bottomTint == null) binding.navSheet.tint = null
+                }
+            })
+            start()
+        }
     }
 
     // ---------- HTML5 fullscreen video ----------
@@ -2782,6 +3121,22 @@ class MainActivity : AppCompatActivity() {
         setSystemBarsVisible(false)
         requestedOrientation =
             android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        // A portrait video (a short, a phone-shot clip) is turned upright
+        // again rather than shown sideways in a landscape screen. The page
+        // knows the video's size; landscape stays when it does not say.
+        activeWeb()?.evaluateJavascript(
+            "(function(){var e=document.fullscreenElement||document.webkitFullscreenElement;" +
+                "var v=e&&(e.tagName==='VIDEO'?e:e.querySelector('video'));" +
+                "return v&&v.videoWidth?v.videoWidth+'x'+v.videoHeight:'';})()"
+        ) { r ->
+            val size = r?.trim('"')?.split('x')
+            val w = size?.getOrNull(0)?.toIntOrNull() ?: 0
+            val h = size?.getOrNull(1)?.toIntOrNull() ?: 0
+            if (fullscreenView === view && w > 0 && h > w) {
+                requestedOrientation =
+                    android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+            }
+        }
     }
 
     private fun exitFullscreen() {
@@ -3108,6 +3463,73 @@ class MainActivity : AppCompatActivity() {
 
     private fun imageSaveFailed() {
         runOnUiThread { toast("Couldn't save image") }
+    }
+
+    /**
+     * Print or save as PDF, through Android's print screen, which offers
+     * "Save as PDF" on every phone - as Chrome's Share > Print does. The page
+     * is laid out for paper by the page itself (its print stylesheet).
+     */
+    private fun printPage() {
+        val web = activeWeb() ?: return
+        val url = tabs.activeTab?.url
+        if (url == null || url == homePage || isErrorPage(url)) { toast("Open a page to print it"); return }
+        val pm = getSystemService(PRINT_SERVICE) as? android.print.PrintManager ?: return
+        val name = (web.title?.takeIf { it.isNotBlank() } ?: UrlHelper.siteOf(url) ?: "Page").take(80)
+        try {
+            pm.print(name, web.createPrintDocumentAdapter(name),
+                android.print.PrintAttributes.Builder().build())
+        } catch (e: Exception) {
+            toast("Couldn't print this page")
+        }
+    }
+
+    /**
+     * A site that asks for a user name and password itself (HTTP sign-in: a
+     * router's admin page, a NAS, an office intranet). WebView's default is
+     * to refuse without asking, which left these pages blank with no way in.
+     * The answer goes to exactly one of proceed or cancel.
+     */
+    private fun askHttpAuth(handler: android.webkit.HttpAuthHandler, host: String, realm: String) {
+        if (isFinishing || isDestroyed) { handler.cancel(); return }
+        val d = resources.displayMetrics.density
+        val pad = (20 * d).toInt()
+        val user = android.widget.EditText(this).apply {
+            hint = "User name"
+            isSingleLine = true
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+        }
+        val pass = android.widget.EditText(this).apply {
+            hint = "Password"
+            isSingleLine = true
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
+        val box = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(pad, (8 * d).toInt(), pad, 0)
+            addView(user); addView(pass)
+        }
+        var answered = false
+        fun answer(ok: Boolean) {
+            if (answered) return
+            answered = true
+            if (ok) handler.proceed(user.text.toString(), pass.text.toString()) else handler.cancel()
+        }
+        try {
+            com.google.android.material.dialog.MaterialAlertDialogBuilder(this, R.style.Theme_Search_Dialog)
+                .setTitle("Sign in to $host")
+                .setMessage(if (realm.isBlank()) "This site asks for a user name and password."
+                    else "The site says: \u201c" + realm.take(120) + "\u201d")
+                .setView(box)
+                .setPositiveButton("Sign in") { _, _ -> answer(true) }
+                .setNegativeButton("Cancel") { _, _ -> answer(false) }
+                .setOnDismissListener { answer(false) }
+                .show()
+        } catch (e: Exception) {
+            answer(false)
+        }
     }
 
     private fun toast(msg: String) {
@@ -3793,6 +4215,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun openTab(tab: Tab, loadUrl: String? = null) {
         endPullRefresh(now = true)
+        showBars(animate = false)
+        schedulePageTint(350L)
         // The tab being left keeps a picture of itself for the deck, taken
         // while it is still on screen. PixelCopy reads what the display already
         // shows and asks the page for nothing. freezeTab used to draw the
@@ -4306,6 +4730,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun applyNightOwlChrome(on: Boolean) {
+        // Night Owl tabs always show the owl's night sky.
+        binding.navOwl.privateMode = on
+        // And keep the Night Owl wash: no page colours in its bars.
+        setBarTint(null, null, animate = false)
         // By id, not by binding.homeBtn.parent. The owl now sits inside a
         // FrameLayout so its tab badge can be positioned against it, and the
         // old expression would quietly resolve to that 48dp wrapper - putting
@@ -4341,6 +4769,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openMenu() {
+        showBars()
         // The first row carries both of the jobs the owl's long press used to,
         // and says which one it is about to do. On the home page there is
         // nothing to go home to, so it offers the way out instead.
@@ -4493,6 +4922,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun openFindBar() {
         val web = activeWeb() ?: return
+        showBars()
         findActive = true
         binding.findBar.visibility = View.VISIBLE
         binding.findInput.text?.clear()
@@ -4971,6 +5401,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openDeck() {
+        showBars(animate = false)
         // Always open on the tab view; reset any lingering history/bookmark view.
         historyOpen = false
         bookmarksOpen = false
@@ -6123,6 +6554,7 @@ class MainActivity : AppCompatActivity() {
         // does. It opened a new tab for every search, which only filled the
         // tab list with tabs nobody went back to.
         binding.navNewTab.setOnClickListener {
+            binding.navOwl.pop()
             if (findActive) closeFindBar()
             if (!searchMode) enterSearchMode()
         }
@@ -6502,6 +6934,10 @@ class MainActivity : AppCompatActivity() {
         binding.menuFind.setOnClickListener {
             closeMenuNow()
             openFindBar()
+        }
+        binding.menuPrint.setOnClickListener {
+            closeMenuNow()
+            printPage()
         }
         binding.menuSiteAds.setOnClickListener {
             closeMenuNow()

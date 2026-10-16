@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Print / Save as PDF: a printer, in the other menu icons' outline style
+     (256 grid, the same purple). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="22dp" android:height="22dp"
+    android:viewportWidth="256" android:viewportHeight="256">
+    <path android:strokeColor="#5E44A0" android:strokeWidth="16"
+        android:strokeLineJoin="round" android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M64,80V40h128v40M64,176H40a16,16 0,0 1,-16,-16V96a16,16 0,0 1,16,-16H216a16,16 0,0 1,16,16v64a16,16 0,0 1,-16,16H192M64,152H192v64H64Z" />
+    <path android:fillColor="#5E44A0"
+        android:pathData="M188,116m-12,0a12,12 0,1 0,24 0a12,12 0,1 0,-24 0" />
+</vector>

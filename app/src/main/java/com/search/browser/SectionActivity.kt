@@ -25,6 +25,7 @@ class SectionActivity : AppCompatActivity() {
     private lateinit var content: LinearLayout
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        Settings.applyNightMode(this)
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_section)
@@ -275,6 +276,18 @@ class SectionActivity : AppCompatActivity() {
             Settings.HOME_SHOW_TILES, true
         )
         addNote("Open a new tab to see your changes.")
+
+        addDivider()
+        addToggle(
+            "Hide bars while scrolling",
+            "Scroll down to give the page the whole screen; scroll up to bring the bars back.",
+            Settings.HIDE_BARS_ON_SCROLL, true
+        )
+        addToggle(
+            "Page colours in the bars",
+            "The bars take on a soft wash of the colours at the top and bottom of the page.",
+            Settings.TINT_BARS, true
+        )
     }
 
     private fun addDivider() {
@@ -305,7 +318,7 @@ class SectionActivity : AppCompatActivity() {
         )
         addToggle(
             "Block autoplay",
-            "Stop videos and audio from playing automatically.",
+            "Videos and sound wait until you tap the page.",
             Settings.SITE_BLOCK_AUTOPLAY, true
         )
         addToggle(

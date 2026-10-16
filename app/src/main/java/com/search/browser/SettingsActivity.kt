@@ -7,11 +7,11 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.app.AppCompatDelegate
 
 class SettingsActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        Settings.applyNightMode(this)
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_settings)
@@ -105,21 +105,11 @@ class SettingsActivity : AppCompatActivity() {
             rb.setPadding(8, 20, 8, 20)
             rb.setOnClickListener {
                 Settings.setTheme(this, modes[i])
-                applyTheme(modes[i])
+                // AppCompat recreates the open screens in the new theme.
+                Settings.applyNightMode(this)
             }
             group.addView(rb)
             if (modes[i] == current) group.check(rb.id)
-        }
-    }
-
-    private fun applyTheme(mode: Int) {
-        when (mode) {
-            Settings.THEME_LIGHT ->
-                AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO)
-            Settings.THEME_DARK ->
-                AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
-            else ->
-                AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
         }
     }
 
