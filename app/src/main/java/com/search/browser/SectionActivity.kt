@@ -285,8 +285,8 @@ class SectionActivity : AppCompatActivity() {
         )
         addToggle(
             "Page colours in the bars",
-            "The bars take on a soft wash of the colours at the top and bottom of the page.",
-            Settings.TINT_BARS, true
+            "The bars take on each site's own colour.",
+            Settings.TINT_BARS, false
         )
     }
 
