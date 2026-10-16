@@ -843,6 +843,9 @@ class MainActivity : AppCompatActivity() {
             else -> FIELD_H_NORMAL
         } * d).toInt()
         binding.urlBarContainer.layoutParams = lp
+        // The hint colour was just reset; on a bar the page has darkened the
+        // field keeps its light text.
+        if (topOnDark) paintTopForeground()
     }
 
     private fun styleUrlBarForSearch(searching: Boolean) {
@@ -1077,6 +1080,7 @@ class MainActivity : AppCompatActivity() {
         val pageBg = if (nightOwl) binding.topBar.surfaceColor else getColor(R.color.searchPageBg)
         binding.topBar.flatColor = pageBg
         binding.topBar.flat = true
+        applyBarForeground()
         binding.suggestBackdrop.setBackgroundColor(pageBg)
         animateSearchIn(fieldWasShowing)
         fetchSuggests(binding.urlBar.text.toString())
@@ -1089,6 +1093,7 @@ class MainActivity : AppCompatActivity() {
         animateSearchOut()
         // The bar's own look back.
         binding.topBar.flat = false
+        applyBarForeground()
         // Nothing transient left on the field: applyHomeCompact below may
         // animate it, and it should start from rest rather than from whatever
         // the entrance left behind.
@@ -1572,8 +1577,13 @@ class MainActivity : AppCompatActivity() {
             // page, as it does in Chrome, so the keyboard does not cost the
             // page its height twice.
             this.pageTyping = pageTyping
-            val bar = if (pageTyping || barsHidden) View.GONE else View.VISIBLE
-            if (binding.bottomBar.visibility != bar) binding.bottomBar.visibility = bar
+            // Typing into a page brings the bars back (as in Chrome); the page
+            // then shrinks above the keyboard as it always has.
+            if (pageTyping && barsHidden) showBars(animate = false)
+            if (!barsHidden) {
+                val bar = if (pageTyping) View.GONE else View.VISIBLE
+                if (binding.bottomBar.visibility != bar) binding.bottomBar.visibility = bar
+            }
             // The suggestion list ends where the keyboard starts: padded by
             // whatever the keyboard covers beyond what the root already gives
             // back for the navigation bar. With clipToPadding=false that is
@@ -1593,6 +1603,7 @@ class MainActivity : AppCompatActivity() {
             binding.navSheet.bottomInset = navStrip
             reachUnderNavBar(binding.tabDeck, navStrip)
             reachUnderNavBar(binding.menuScrim, navStrip)
+            if (barsHidden) v.post { if (barsHidden) showEdgeScrims() }
             reachUnderNavBar(binding.suggestBackdrop, navStrip, base + extra)
             insets
         }
@@ -2084,6 +2095,15 @@ class MainActivity : AppCompatActivity() {
     private fun newWebView(): WebView {
         val web = BrowserWebView(this)
         web.blockAutoplay = Settings.getBool(this, Settings.SITE_BLOCK_AUTOPLAY, true)
+        // The page never sits under a system bar - the root keeps them as
+        // padding - but the window's insets reached the WebView anyway, and
+        // recent WebViews hand them to pages as env(safe-area-inset-*). Sites
+        // that honour it (YouTube's bottom bar) then left a band the height of
+        // the navigation bar empty above it. Chrome gives a page no such inset
+        // when nothing covers it, and neither does this.
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(web) { _, _ ->
+            androidx.core.view.WindowInsetsCompat.CONSUMED
+        }
         // Letting go of the page: a pull at the top either refreshes or springs back.
         web.onTouchEnd = { if (web === activeWeb()) releasePull() }
         web.onTopOverscroll = { px -> if (web === activeWeb()) pullBy(px) }
@@ -2880,6 +2900,7 @@ class MainActivity : AppCompatActivity() {
     }
     private var barScrollAcc = 0
     private var barsTopH = 0
+    private var barsBottomPart = 0
     private var pageTyping = false
 
     private fun barsMayHide(web: View): Boolean =
@@ -2917,21 +2938,81 @@ class MainActivity : AppCompatActivity() {
         if (barsHidden || top.height <= 0 || top.visibility != View.VISIBLE) return
         barsHidden = true
         barsTopH = top.height
-        val h = barsTopH.toFloat()
+        val blp = bottom.layoutParams as android.widget.LinearLayout.LayoutParams
+        // The room the bottom bar takes in the layout: its height less the
+        // part of it that already overlaps the page.
+        barsBottomPart = if (bottom.visibility == View.GONE) 0 else (bottom.height + blp.topMargin).coerceAtLeast(0)
+        val h = barsTopH
+        // The page takes the whole screen at once, while both bars still cover
+        // its new edges - so the page has painted them by the time the bars
+        // have moved off. It is offset by the top bar's height in the same
+        // frame, so nothing on it moves yet; then it rises with the bar.
+        // Resizing it afterwards, as this used to, left a white band showing
+        // until the page caught up.
+        setPageMargins(-h, -barsBottomPart)
+        area.translationY = area.translationY + h
+        showEdgeScrims()
+        if (!animationsOn()) {
+            top.translationY = -h.toFloat(); area.translationY = 0f
+            bottom.translationY = (bottom.height + binding.navSheet.bottomInset).toFloat()
+            top.visibility = View.INVISIBLE; bottom.visibility = View.INVISIBLE
+            return
+        }
         val drop = (bottom.height + binding.navSheet.bottomInset).toFloat()
-        val ms = 200L
+        val ms = 220L
         val ease = android.view.animation.PathInterpolator(0.3f, 0f, 0.2f, 1f)
-        top.animate().translationY(-h).alpha(0f).setDuration(ms).setInterpolator(ease).withLayer().start()
-        area.animate().translationY(-h).setDuration(ms).setInterpolator(ease).start()
+        top.animate().translationY(-h.toFloat()).setDuration(ms).setInterpolator(ease).start()
+        area.animate().translationY(0f).setDuration(ms).setInterpolator(ease).start()
         bottom.animate().translationY(drop).setDuration(ms).setInterpolator(ease)
             .withEndAction {
                 if (!barsHidden) return@withEndAction
-                // Now the page takes the room: the top bar leaves the layout as
-                // the page area's offset is cleared, which cancel out on screen.
-                top.visibility = View.GONE
-                area.translationY = 0f
-                bottom.visibility = View.GONE
+                // Off screen and under the strips: nothing to draw or animate
+                // (the owl button stops), and nothing for TalkBack to find.
+                top.visibility = View.INVISIBLE
+                bottom.visibility = View.INVISIBLE
             }.start()
+    }
+
+    /** The page area's margins in the bar layout: negative to run under the bars. */
+    private fun setPageMargins(top: Int, bottom: Int) {
+        val lp = binding.webArea.layoutParams as? android.widget.LinearLayout.LayoutParams ?: return
+        if (lp.topMargin == top && lp.bottomMargin == bottom) return
+        lp.topMargin = top
+        lp.bottomMargin = bottom
+        binding.webArea.layoutParams = lp
+    }
+
+    // The status bar and navigation bar strips, held in the bars' colours
+    // while the bars are away (EdgeScrim). Made on first use.
+    private var statusScrim: EdgeScrim? = null
+    private var navScrim: EdgeScrim? = null
+
+    private fun showEdgeScrims() {
+        val root = binding.rootView
+        // Straight after the browser layer: over the bars, under every sheet
+        // and overlay that opens above them.
+        fun make(gravity: Int): EdgeScrim = EdgeScrim(this).also { v ->
+            v.elevation = 0f
+            root.addView(v, 1, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, gravity))
+        }
+        val status = statusScrim ?: make(android.view.Gravity.TOP).also { statusScrim = it }
+        val nav = navScrim ?: make(android.view.Gravity.BOTTOM).also { navScrim = it }
+        // The root keeps the system bars as padding; the strips sit in it.
+        val topH = root.paddingTop
+        val botH = root.paddingBottom
+        (status.layoutParams as FrameLayout.LayoutParams).let { if (it.height != topH) { it.height = topH; status.layoutParams = it } }
+        (nav.layoutParams as FrameLayout.LayoutParams).let { if (it.height != botH) { it.height = botH; nav.layoutParams = it } }
+        status.translationY = -topH.toFloat()
+        nav.translationY = botH.toFloat()
+        status.colours = binding.topBar.paintColours()
+        nav.colours = binding.navSheet.paintColours()
+        status.visibility = if (topH > 0) View.VISIBLE else View.GONE
+        nav.visibility = if (botH > 0) View.VISIBLE else View.GONE
+    }
+
+    private fun hideEdgeScrims() {
+        statusScrim?.visibility = View.GONE
+        navScrim?.visibility = View.GONE
     }
 
     /** Whether the phone runs animations (Remove animations / animator scale 0 says not). */
@@ -2949,29 +3030,37 @@ class MainActivity : AppCompatActivity() {
         val bottom = binding.bottomBar
         val area = binding.webArea
         top.animate().cancel(); area.animate().cancel(); bottom.animate().cancel()
-        val h = barsTopH.toFloat()
-        val drop = (bottom.height.takeIf { it > 0 } ?: (86 * resources.displayMetrics.density).toInt()) +
-            binding.navSheet.bottomInset.toFloat()
-        if (top.visibility == View.GONE) {
-            // The page gives the room back at once; it is offset by the bar's
-            // height in the same frame so nothing on it moves yet.
-            top.visibility = View.VISIBLE
-            top.translationY = -h
-            top.alpha = 0f
-            area.translationY = -h
-            bottom.translationY = drop
-        }
+        val h = barsTopH
+        top.visibility = View.VISIBLE
         bottom.visibility = if (pageTyping) View.GONE else View.VISIBLE
+        val bottomPart = if (bottom.visibility == View.GONE) 0 else barsBottomPart
         if (!animate || !animationsOn()) {
-            top.translationY = 0f; top.alpha = 1f; area.translationY = 0f; bottom.translationY = 0f
+            setPageMargins(0, 0)
+            top.translationY = 0f; area.translationY = 0f; bottom.translationY = 0f
+            hideEdgeScrims()
+            schedulePageTint(120L)
             return
         }
-        val ms = 200L
+        // The page gives the top back at once, offset by the bar's height so
+        // nothing on it moves, and comes down with the bar. Its bottom stays
+        // under the bottom bar until that bar is back over it, so no gap opens
+        // there; then the page stops at the bar's edge again, out of sight.
+        val lp = area.layoutParams as android.widget.LinearLayout.LayoutParams
+        val shift = 0 - lp.topMargin
+        setPageMargins(0, -(bottomPart + h))
+        area.translationY = area.translationY - shift
+        showEdgeScrims()
+        val ms = 220L
         val ease = android.view.animation.PathInterpolator(0.2f, 0f, 0f, 1f)
-        top.animate().translationY(0f).alpha(1f).setDuration(ms).setInterpolator(ease).withLayer().start()
+        top.animate().translationY(0f).setDuration(ms).setInterpolator(ease).start()
         area.animate().translationY(0f).setDuration(ms).setInterpolator(ease).start()
         bottom.animate().translationY(0f).setDuration(ms).setInterpolator(ease)
-            .withEndAction { schedulePageTint(60L) }.start()
+            .withEndAction {
+                if (barsHidden) return@withEndAction
+                setPageMargins(0, 0)
+                hideEdgeScrims()
+                schedulePageTint(60L)
+            }.start()
     }
 
     // ---------- The page's colours in the bars ----------
@@ -3017,8 +3106,9 @@ class MainActivity : AppCompatActivity() {
             binding.topBar.translationY != 0f || binding.bottomBar.visibility != View.VISIBLE
         ) {
             // Something is in the way for a moment; look again shortly rather
-            // than leave the page untinted until the next scroll.
-            if (tintRetries++ < 20) uiHandler.postDelayed(tintSample, 700L)
+            // than leave the page untinted until the next scroll. Not while
+            // the bars are away: bringing them back looks again.
+            if (!barsHidden && tintRetries++ < 20) uiHandler.postDelayed(tintSample, 700L)
             return
         }
         tintRetries = 0
@@ -3107,14 +3197,59 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun applyPageTint(top: IntArray?, bottom: IntArray?) {
-        val dark = (resources.configuration.uiMode and
-            android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
-            android.content.res.Configuration.UI_MODE_NIGHT_YES
+        val dark = isDarkTheme()
         val surface = getColor(R.color.barSurface)
         setBarTint(
-            top?.let { a -> IntArray(3) { PageTint.soften(a[it], surface, dark) } },
-            bottom?.let { a -> IntArray(3) { PageTint.soften(a[it], surface, dark) } },
+            top?.let { PageTint.barColours(it, surface, dark) },
+            bottom?.let { PageTint.barColours(it, surface, dark) },
             animate = true)
+    }
+
+    private fun isDarkTheme(): Boolean = (resources.configuration.uiMode and
+        android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+        android.content.res.Configuration.UI_MODE_NIGHT_YES
+
+    // Text and icons on a bar the page has turned dark go light, as on
+    // Chrome's toolbar: the address, its pill, the star, the gear and the
+    // bottom bar's icons, and the status and navigation bar icons with them.
+    private var topOnDark = false
+    private var bottomOnDark = false
+    private var urlTextDefault: android.content.res.ColorStateList? = null
+
+    private fun applyBarForeground() {
+        if (!::binding.isInitialized) return
+        val themeDark = isDarkTheme()
+        val top = topTint.takeIf { !searchMode }
+        val bottom = bottomTint
+        val topDark = top?.let { PageTint.isDark(it) } ?: false
+        val bottomDark = bottom?.let { PageTint.isDark(it) } ?: false
+        val controller = androidx.core.view.WindowInsetsControllerCompat(window, window.decorView)
+        controller.isAppearanceLightStatusBars = if (top != null) !topDark else !themeDark
+        controller.isAppearanceLightNavigationBars = if (bottom != null) !bottomDark else !themeDark
+        if (topDark != topOnDark) { topOnDark = topDark; paintTopForeground() }
+        if (bottomDark != bottomOnDark) { bottomOnDark = bottomDark; refreshNav() }
+    }
+
+    private fun paintTopForeground() {
+        val field = binding.urlBar
+        if (urlTextDefault == null) urlTextDefault = field.textColors
+        val light = topOnDark && fieldMode == FIELD_NORMAL
+        val white = android.content.res.ColorStateList.valueOf(android.graphics.Color.WHITE)
+        if (light) {
+            field.setTextColor(android.graphics.Color.WHITE)
+            field.setHintTextColor(0xB3FFFFFF.toInt())
+            // The grey pill becomes a pane of the bar's own colour, lifted.
+            field.backgroundTintList = android.content.res.ColorStateList.valueOf(0x26FFFFFF)
+            binding.starBtn.imageTintList = white
+            binding.clearBtn.imageTintList = white
+        } else {
+            urlTextDefault?.let { field.setTextColor(it) }
+            field.setHintTextColor(androidx.core.content.ContextCompat.getColor(this, R.color.sugMuted))
+            field.backgroundTintList = null
+            binding.starBtn.imageTintList = null
+            binding.clearBtn.imageTintList = null
+        }
+        refreshNav()
     }
 
     /** Eases both bars to [top] / [bottom] (null: their plain surface). */
@@ -3130,6 +3265,7 @@ class MainActivity : AppCompatActivity() {
         val toBottom = bottom ?: plainBottom
         topTint = top
         bottomTint = bottom
+        applyBarForeground()
         if (!animate || !animationsOn()) {
             binding.topBar.tint = top
             binding.navSheet.tint = bottom
@@ -6702,7 +6838,8 @@ class MainActivity : AppCompatActivity() {
         if (!::binding.isInitialized) return
         val web = activeWeb()
         val tab = tabs.activeTab
-        val neutral = android.content.res.ColorStateList.valueOf(navIconColor())
+        val neutral = android.content.res.ColorStateList.valueOf(
+            if (bottomOnDark) android.graphics.Color.WHITE else navIconColor())
         val accent = currentAccent()
         val accentTint = android.content.res.ColorStateList.valueOf(accent)
         val onHome = tab == null || tab.url == homePage
@@ -6715,7 +6852,8 @@ class MainActivity : AppCompatActivity() {
         binding.navTabsIcon.imageTintList = neutral
         binding.navTabsCount.backgroundTintList = accentTint
         binding.navMenu.imageTintList = neutral
-        binding.settingsBtn.imageTintList = neutral
+        binding.settingsBtn.imageTintList = android.content.res.ColorStateList.valueOf(
+            if (topOnDark) android.graphics.Color.WHITE else navIconColor())
         setNavEnabled(binding.menuBack, web?.canGoBack() == true || tab?.openerId != null)
         setNavEnabled(binding.menuForward, web?.canGoForward() == true)
         if (accent != newTabAccent) paintNewTabButton(accent)

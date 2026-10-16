@@ -15,11 +15,12 @@ package com.search.browser
  */
 object PageTint {
 
-    /** How much of the page goes into a light / dark bar. */
-    const val SHARE_LIGHT = 0.30f
-    const val SHARE_DARK = 0.34f
-    /** The most saturation a sampled colour keeps, 0..1. */
-    const val MAX_SATURATION = 0.55f
+    /** How much of the (calmed) page colour the bar takes: nearly all of it, as Chrome's toolbar does. */
+    const val SHARE = 0.9f
+    /** The most saturation a sampled colour keeps, 0..1: a red site gives a muted red, never a hard one. */
+    const val MAX_SATURATION = 0.40f
+    /** Below this luminance a bar is dark, and its text and icons turn light. */
+    const val DARK_BAR = 0.36
 
     /**
      * Averages each third (left, middle, right) of a strip of ARGB pixels,
@@ -44,9 +45,30 @@ object PageTint {
         return out
     }
 
-    /** One page colour as the bar should wear it: calmed, then mixed into [surface]. */
-    fun soften(page: Int, surface: Int, dark: Boolean): Int =
-        mix(surface, calm(page), if (dark) SHARE_DARK else SHARE_LIGHT)
+    /**
+     * A bar's three colours for the page's [thirds] along its edge, or null to
+     * leave the bar as it is. The bar follows the page - a dark page gives a
+     * dark bar, a white page a white one - but calmed, and the thirds drawn
+     * most of the way to their average so the bar reads as one colour with a gentle
+     * drift across it. In the dark theme a light page leaves the bar dark:
+     * a white bar at night is a torch in the face.
+     */
+    fun barColours(thirds: IntArray, surface: Int, darkTheme: Boolean): IntArray? {
+        if (thirds.size < 3) return null
+        val avg = average(thirds)
+        if (darkTheme && luminance(calm(avg)) > 0.35) return null
+        return IntArray(3) { mix(surface, calm(mix(avg, thirds[it], 0.3f)), SHARE) }
+    }
+
+    /** Whether text and icons on a bar painted in [colours] should be light. */
+    fun isDark(colours: IntArray): Boolean = luminance(average(colours)) < DARK_BAR
+
+    fun average(c: IntArray): Int {
+        if (c.isEmpty()) return 0
+        var r = 0; var g = 0; var b = 0
+        for (x in c) { r += (x shr 16) and 0xFF; g += (x shr 8) and 0xFF; b += x and 0xFF }
+        return argb(255, r / c.size, g / c.size, b / c.size)
+    }
 
     /** [c] with its saturation capped at [MAX_SATURATION], in HSL so lightness is kept. */
     fun calm(c: Int): Int {

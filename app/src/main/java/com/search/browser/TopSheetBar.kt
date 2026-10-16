@@ -149,6 +149,15 @@ class TopSheetBar @JvmOverloads constructor(
         if (tint != null) repaint()
     }
 
+    /** What the sheet is painted in right now, left, middle and right (for EdgeScrim). */
+    fun paintColours(): IntArray {
+        if (flat) return IntArray(3) { flatColor }
+        val t = tint
+        if (t != null && t.size == 3) return IntArray(3) { mix(t[it], pageBackground, blend) }
+        val solid = mix(surfaceColor, pageBackground, blend)
+        return IntArray(3) { solid }
+    }
+
     private fun mix(a: Int, b: Int, t: Float): Int = Color.rgb(
         (Color.red(a) + (Color.red(b) - Color.red(a)) * t).toInt(),
         (Color.green(a) + (Color.green(b) - Color.green(a)) * t).toInt(),
