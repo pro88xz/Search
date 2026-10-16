@@ -23,10 +23,9 @@ import java.util.GregorianCalendar
 import java.util.Locale
 import java.util.TimeZone
 import java.util.concurrent.Callable
-import java.util.concurrent.CancellationException
-import java.util.concurrent.ExecutionException
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.ExecutorCompletionService
 import java.util.concurrent.Executors
-import java.util.concurrent.Future
 import java.util.concurrent.TimeUnit
 import java.util.zip.GZIPInputStream
 import kotlin.math.pow
@@ -347,12 +346,17 @@ object NewsFeed {
     private const val MAX_BYTES = 200_000
     /** Items read from one feed. Feeds are newest first; the rest is old. */
     private const val MAX_ITEMS_PER_SOURCE = 20
-    /** Eight at once: thirty publishers in about the time the old six took for twenty-two. */
-    private const val THREADS = 8
+    /** Twelve at once: thirty publishers in about three rounds, each a different host. */
+    private const val THREADS = 12
     /** Wall clock for one source, all candidates included. */
     private const val SOURCE_BUDGET_MS = 20_000L
     /** Wall clock for the whole refresh. Whatever arrived by then ships. */
     private const val REFRESH_BUDGET_MS = 24_000L
+    /**
+     * With no saved feed to show, the stories that have arrived by now are
+     * shown while the slower publishers are still answering.
+     */
+    private const val FIRST_STORIES_MS = 3_000L
     /** A URL that answered 404 or with a web page is not retried for this long. */
     private const val DEAD_MS = 24L * 60 * 60 * 1000
 
@@ -398,6 +402,13 @@ object NewsFeed {
     /** After a thin refresh, the cached feed is served until this time. */
     @Volatile private var retryAt: Long = 0L
     private val lock = Any()
+    /** Requests waiting on the refresh under way (guarded by [lock]). */
+    private val waiting = ArrayList<Delivery>()
+    private var refreshing = false
+    /** Refreshes run here, one at a time, never on a caller's thread. */
+    private val background = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "news-feed").apply { isDaemon = true; priority = Thread.NORM_PRIORITY - 1 }
+    }
 
     // ---------- model ----------
 
@@ -471,26 +482,143 @@ object NewsFeed {
 
     // ---------- entry point ----------
 
-    fun fetch(context: Context): String =
-        fetchWith(context, SOURCES, System.currentTimeMillis())
+    /**
+     * The stories for a home page, as soon as there are any to show.
+     *
+     * A saved feed is returned at once, however old, and when it is due for a
+     * refresh one runs behind it; [later] is handed the new feed if it differs,
+     * for the page to swap in. Only with nothing saved at all - the first run,
+     * or after the app's data was cleared - does the caller wait, and then only
+     * for the first stories: what the publishers that answer within
+     * [FIRST_STORIES_MS] gave is shown while the rest are still coming, and the
+     * full feed follows through [later].
+     *
+     * It used to wait for every publisher whenever the saved feed was more
+     * than half an hour old: up to [REFRESH_BUDGET_MS] of placeholder cards on
+     * a slow connection, nearly every time home was opened after a break.
+     */
+    fun fetch(context: Context, later: (String) -> Unit): String {
+        val app = context.applicationContext
+        val warm = saved(app)
+        if (warm != null && !due(System.currentTimeMillis())) return warm
+        val d = Delivery(later)
+        if (warm != null) d.first(warm)
+        refreshInBackground(app, d)
+        return d.await(REFRESH_BUDGET_MS + 3_000L, warm ?: "[]")
+    }
+
+    /**
+     * Refreshes the saved feed if it is due, so home opens on fresh stories;
+     * called as the app comes to the front. [later] gets the new feed if it
+     * differs from the saved one. Returns at once.
+     */
+    fun refreshIfDue(context: Context, later: (String) -> Unit) {
+        val app = context.applicationContext
+        background.execute {
+            val warm = saved(app)
+            if (warm != null && !due(System.currentTimeMillis())) return@execute
+            val d = Delivery(later)
+            if (warm != null) d.first(warm)
+            refreshInBackground(app, d)
+        }
+    }
+
+    /** The saved feed, read from disk on first use; null when there is none with a story in it. */
+    private fun saved(app: Context): String? = synchronized(lock) {
+        if (cache == null) loadDisk(app)
+        cache?.takeIf { it.length > 2 }
+    }
+
+    private fun due(now: Long) = now - cachedAt >= TTL_MS && now >= retryAt
+
+    /**
+     * One request for the feed. The first feed it is given is the answer
+     * [await] returns; a different one after that goes to [later].
+     */
+    private class Delivery(private val later: (String) -> Unit) {
+        private val answered = CountDownLatch(1)
+        private var answer: String? = null
+
+        fun hasAnswer(): Boolean = synchronized(this) { answer != null }
+
+        /** The saved feed, or the first stories: an answer only if there is none yet. */
+        fun first(json: String) {
+            synchronized(this) {
+                if (answer != null) return
+                answer = json
+            }
+            answered.countDown()
+        }
+
+        /** The refresh's own result. */
+        fun last(json: String) {
+            val push = synchronized(this) {
+                if (answer == null) { answer = json; false } else json != answer
+            }
+            answered.countDown()
+            if (push) try { later(json) } catch (e: Exception) { /* the page is gone */ }
+        }
+
+        /** Waits up to [ms] for an answer; after that [fallback] stands, and the refresh's result goes to [later]. */
+        fun await(ms: Long, fallback: String): String {
+            try { answered.await(ms, TimeUnit.MILLISECONDS) } catch (e: InterruptedException) { }
+            synchronized(this) {
+                if (answer == null) answer = fallback
+                return answer!!
+            }
+        }
+    }
+
+    /** Joins the refresh under way, or starts one. */
+    private fun refreshInBackground(app: Context, d: Delivery) {
+        synchronized(lock) {
+            waiting.add(d)
+            if (refreshing) return
+            refreshing = true
+        }
+        background.execute {
+            var json: String? = null
+            try {
+                json = refresh(app, SOURCES, System.currentTimeMillis()) { early ->
+                    val all = synchronized(lock) { waiting.filter { !it.hasAnswer() } }
+                    if (all.isNotEmpty()) {
+                        val text = toJson(early)
+                        all.forEach { it.first(text) }
+                    }
+                }
+            } catch (t: Throwable) {
+                // Nothing the feed does may take the app down; the saved feed stands.
+                DebugLog.add { "feed  failed: " + t.javaClass.simpleName + ": " + t.message }
+            } finally {
+                val all = synchronized(lock) {
+                    refreshing = false
+                    waiting.toList().also { waiting.clear() }
+                }
+                val out = json ?: cache ?: "[]"
+                all.forEach { it.last(out) }
+            }
+        }
+    }
 
     /**
      * Serialised: two home pages opening at once would otherwise fetch every
      * feed twice. The second caller waits and is served the first one's result
-     * from the cache.
+     * from the cache. Tests only; the app goes through [fetch].
      */
     internal fun fetchWith(context: Context, sources: List<Source>, now: Long): String {
         synchronized(lock) { return refresh(context, sources, now) }
     }
 
-    private fun refresh(context: Context, sources: List<Source>, now: Long): String {
+    /** [early] is handed the first stories, when there are enough, while the rest are still coming. */
+    private fun refresh(context: Context, sources: List<Source>, now: Long,
+                        early: ((List<Item>) -> Unit)? = null): String {
         if (cache == null) loadDisk(context)
 
         val warm = cache
         if (warm != null && (now - cachedAt < TTL_MS || now < retryAt)) return warm
 
         val mem = PrefsMemory(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE))
-        val fresh = build(context, sources, mem, now)
+        val fresh = build(context, sources, mem, now, early)
 
         if (fresh.isEmpty()) {
             // Nothing usable came back - no connection worth the name, or not
@@ -521,53 +649,66 @@ object NewsFeed {
 
     // ---------- gather ----------
 
-    private fun build(context: Context, sources: List<Source>, mem: Memory, now: Long): List<Item> {
+    /** A task that threw: what the source's log line says instead. */
+    private class Failed(val why: String)
+
+    private fun build(context: Context, sources: List<Source>, mem: Memory, now: Long,
+                      early: ((List<Item>) -> Unit)?): List<Item> {
         val pool = Executors.newFixedThreadPool(THREADS)
-        val results = ArrayList<SourceResult>()
-        var youtube: List<Item> = emptyList()
+        val done = ExecutorCompletionService<Pair<Int, Any?>>(pool)
+        val n = sources.size + 1
+        val got = arrayOfNulls<Any?>(n)
+        val finished = BooleanArray(n)
+
+        fun results(): List<SourceResult> = sources.indices.map { i ->
+            got[i] as? SourceResult ?: SourceResult(sources[i], "", emptyList(),
+                (got[i] as? Failed)?.why ?: if (finished[i]) "" else "timed out")
+        }
+        @Suppress("UNCHECKED_CAST")
+        fun youtube(): List<Item> = (got[sources.size] as? List<Item>) ?: emptyList()
+
         try {
             // Wall clock, not [now]: these bound real waiting.
-            val deadline = System.currentTimeMillis() + SOURCE_BUDGET_MS
-            val tasks = ArrayList<Callable<Any?>>()
-            for (s in sources) tasks.add(Callable<Any?> { readSource(s, mem, now, deadline) })
-            tasks.add(Callable<Any?> { fetchYouTube(context, mem, now) })
+            val start = System.currentTimeMillis()
+            val deadline = start + SOURCE_BUDGET_MS
+            val end = start + REFRESH_BUDGET_MS
+            val firstAt = start + FIRST_STORIES_MS
+            // Every task answers, even one that threw - an Error from inside it
+            // (StackOverflowError on a pathological feed, say) included - so
+            // each source still gets its log line.
+            fun task(i: Int, work: () -> Any?) = done.submit(Callable<Pair<Int, Any?>> {
+                i to try { work() } catch (t: Throwable) { Failed("failed: " + t.javaClass.simpleName) }
+            })
+            for ((i, s) in sources.withIndex()) task(i) { readSource(s, mem, now, deadline) }
+            task(sources.size) { fetchYouTube(context, mem, now) }
 
-            val futures: List<Future<Any?>> =
-                pool.invokeAll(tasks, REFRESH_BUDGET_MS, TimeUnit.MILLISECONDS)
-            for ((i, f) in futures.withIndex()) {
-                var failure = ""
-                val value: Any? = try {
-                    f.get()
-                } catch (e: CancellationException) {
-                    failure = "timed out"
-                    null
-                } catch (e: ExecutionException) {
-                    // An Error from inside the task (StackOverflowError on a
-                    // pathological feed, say) lands here rather than in the
-                    // task's own catch blocks.
-                    failure = "failed: " + (e.cause ?: e).javaClass.simpleName
-                    null
-                } catch (e: Exception) {
-                    failure = "failed: " + e.javaClass.simpleName
-                    null
+            var left = n
+            var wantEarly = early != null
+            while (left > 0) {
+                val t = System.currentTimeMillis()
+                if (t >= end) break
+                if (wantEarly && t >= firstAt) {
+                    // The first stories, if there are enough to be a feed;
+                    // otherwise tried again as each further source lands.
+                    val partial = assemble(results(), youtube(), mem, now, early = true)
+                    if (partial.size >= MIN_FRESH) {
+                        early?.invoke(partial)
+                        wantEarly = false
+                    }
                 }
-                if (i < sources.size) {
-                    // Still one log line for the source.
-                    results.add(
-                        value as? SourceResult
-                            ?: SourceResult(sources[i], "", emptyList(), failure)
-                    )
-                } else {
-                    @Suppress("UNCHECKED_CAST")
-                    youtube = (value as? List<Item>) ?: emptyList()
-                }
+                val wait = (if (wantEarly && t < firstAt) firstAt else end) - t
+                val f = done.poll(wait, TimeUnit.MILLISECONDS) ?: continue
+                val (i, v) = f.get()
+                got[i] = v
+                finished[i] = true
+                left--
             }
         } catch (e: Exception) {
             // Interrupted: continue with whatever was collected.
         } finally {
             pool.shutdownNow()
         }
-        return assemble(results, youtube, mem, now)
+        return assemble(results(), youtube(), mem, now)
     }
 
     /**
@@ -743,7 +884,9 @@ object NewsFeed {
         results: List<SourceResult>,
         youtube: List<Item>,
         mem: Memory,
-        now: Long
+        now: Long,
+        /** The first stories of a refresh still under way: nothing logged or remembered. */
+        early: Boolean = false
     ): List<Item> {
         val kept = ArrayList<Item>()
         var parsedTotal = 0
@@ -751,7 +894,7 @@ object NewsFeed {
             val k = gate(r.items, r.source, now)
             kept.addAll(k)
             parsedTotal += r.items.size
-            DebugLog.add {
+            if (!early) DebugLog.add {
                 "feed  " + r.source.name + "  " +
                 (if (r.log.isEmpty()) "no request" else r.log) +
                 "  parsed " + r.items.size + "  kept " + k.size }
@@ -761,6 +904,7 @@ object NewsFeed {
         val stories = rank(kept, now)
         val last = readLead(mem)
         val out = arrange(stories, now, last)
+        if (early) return out
         if (out.isNotEmpty()) writeLead(mem, out[0], last, now)
 
         DebugLog.add {
@@ -829,34 +973,76 @@ object NewsFeed {
     )
 
     /**
-     * Graphic and disturbing stories: violence, killing, war, terror, sexual
-     * violence and self-harm. Top Stories is the first thing on a fresh tab,
-     * looked at by everyone in the house, and a picture of a bombed street or
-     * a headline about a stabbing is not something to be shown unasked. Read
+     * Unpleasant stories: violence, injury and death, war and armed conflict,
+     * terror, crime, abuse, disasters and famine. Top Stories is the first
+     * thing on a fresh tab, looked at by everyone in the house, and a picture
+     * of a bloodied face or a bombed street is not something to be shown
+     * unasked - and those pictures come with exactly these headlines. Read
      * against the headline and the summary, so a story cannot slip through on
-     * a calm headline over a graphic first paragraph.
+     * a calm headline over a grim first paragraph; publishers' own warnings
+     * ("distressing images") count too.
      *
-     * Whole words only, and a few harmless uses of the same words are taken
-     * out first ([GRAPHIC_OK]): Star Wars, a price war, Red Dead, Dead by
-     * Daylight, a killer app. Plain "death", "dies" and "attack" are not here -
-     * they are also obituaries, Death Stranding and cyberattacks.
+     * Deliberately wide: a calm story lost now and then costs nothing, one
+     * grim picture on the home page costs the reader's trust. "Injured" and
+     * "attack" are in - a World story about people injured in an attack got
+     * through without them. Whole words only, and the harmless uses of the
+     * same words are taken out first ([GRAPHIC_OK]): Star Wars, a price war,
+     * Dead Space, a heart attack, a cyberattack, a box-office bomb, a killer
+     * app, a first-person shooter, a graphic novel.
      */
     private val GRAPHIC = Regex(
-        "\\b(kill(s|ed|ing|ings)?|murder(s|ed|er|ers|ing|ous)?|massacres?|slaughter(s|ed)?|bloodshed|bloody|blood-soaked" +
-        "|gore|gory|graphic (video|images?|footage|content)|corpses?|dead bodies|bodies (found|recovered|pulled)" +
-        "|mass graves?|behead(ed|ing|ings)?|decapitat\\w*|executions?|executed|shot dead|shootings?|gunm[ae]n|gunfire" +
-        "|stabb(ed|ing|ings)|knife attacks?|gun attacks?|rape[ds]?|raping|rapists?|sexual (assault|abuse|violence)" +
-        "|tortur(e|ed|es|ing)|genocide|war|wars|warfare|war crimes?|wartime|warzone|war zone|airstrikes?|air strikes?" +
-        "|drone strikes?|missile strikes?|bombings?|bombed|shelling|invasion|invaded|militants?|insurgents?" +
-        "|terror(ism|ist|ists)?|terror attacks?|hostages?|suicides?|suicide bomb\\w*|self-harm|carnage|atrocit(y|ies)" +
-        "|casualt(y|ies)|death tolls?|wounded|abducted|kidnapp(ed|ing|ings)|child abuse|abuse survivors?|overdoses?)\\b",
+        // Killing, injury and death
+        "\\b(kill(s|ed|ing|ings|er|ers)?|murder(s|ed|er|ers|ing|ous)?|homicides?|manslaughter|massacres?" +
+        "|slaughter(s|ed)?|assassinat\\w*|lynch(ed|ing|ings)?|hanged|behead(ed|ing|ings)?|decapitat\\w*" +
+        "|executions?|executed|bloodshed|bloody|bloodied|blood-soaked|blood-stained|bloodstained|covered in blood" +
+        "|gore|gory|gruesome|grisly|corpses?|dead bodies|bodies (found|recovered|pulled)|body (found|of a|of an)" +
+        "|mass graves?|dead|deaths?|died|dies|dying|deadly|fatal(ly)?|fatalit(y|ies)|lethal" +
+        "|injur(y|ies|ed|ing)|wounded|wounds|maim(ed|ing)?|hurt in|victims?" +
+        // Violence and crime
+        "|violen(ce|t|tly)|assault(s|ed|ing)?|abus(e|ed|es|ive|er|ers)|attack(s|ed|er|ers|ing)?" +
+        "|shot dead|fatally shot|(was|were|been|being) shot|shot (at|and|in the)|shootings?|(school|mass|active) shooters?" +
+        "|gunm[ae]n|gunfire|gunshots?|gunpoint|guns?|firearms?|rifles?|stab(s|bed|bing|bings)|knife (attacks?|crime|point)" +
+        "|knifepoint|machetes?|bomb(s|ed|er|ers|ing|ings)?|explosions?|explosives|exploded|grenades?" +
+        "|rape[ds]?|raping|rapists?|sexual (assault|abuse|violence|misconduct)|molest\\w*|paedophil\\w*|pedophil\\w*" +
+        "|trafficking|domestic (abuse|violence)|tortur(e|ed|es|ing)|genocide|ethnic cleansing|atrocit(y|ies)|carnage" +
+        "|arrest(s|ed)?|charged with|convicted|sentenced|jailed|prison|prisoners?|imprison\\w*|manhunt|fugitives?" +
+        "|raided|(police|military|army|deadly) raids?" +
+        // War and armed conflict
+        "|wars?|warfare|wartime|warzone|war zone|war crimes?|warplanes?|warships?|airstrikes?|air strikes?|drone strikes?" +
+        "|missile strikes?|strikes? on|missiles?|rockets? (fire|attacks?|barrages?|strikes?)|artillery|shelling|shelled" +
+        "|barrages?|bombardment|invasion|invaded|invade|occupied|occupation|siege|besieged|troops|soldiers" +
+        "|militar(y|ies)|army|armies|armed (group|groups|men|forces|police)|militias?|militants?|insurgen(ts?|cy)" +
+        "|rebels|rebel (group|groups|forces|fighters)|ceasefires?|truce|hostilit(y|ies)|clashes|clashed" +
+        "|riots?|rioting|rioters|unrest|settlers?|refugee camps?|terror(ism|ist|ists)?|extremists?|jihad\\w*" +
+        "|hostages?|abduct(ed|ion|ions)|kidnapp?(ed|ing|ings)" +
+        "|gaza|west bank|hamas|hezbollah|houthis?|isis|islamic state|taliban|al-?qaeda|al-?shabaab|boko haram|wagner group" +
+        // Self-harm, disaster and want
+        "|suicides?|suicide bomb\\w*|self-harm|overdos(e|es|ed)|famine|starv(e|ed|es|ing|ation)|malnourish\\w*" +
+        "|humanitarian crisis|(plane|car|bus|train|helicopter|jet|boat|ferry|road|motorway|highway) (crash|crashes|collision|accident)" +
+        "|derail\\w*|stampede|child abuse|abuse survivors?" +
+        // The publishers' own warnings
+        "|graphic|distressing|disturbing|harrowing|horrific|horrifying|traumati[sz]\\w*|tragedy|tragic)\\b",
         RegexOption.IGNORE_CASE
     )
     private val GRAPHIC_OK = Regex(
         "\\b(star wars|console wars?|browser wars?|price wars?|streaming wars?|format wars?|bidding wars?|chip wars?" +
-        "|culture wars?|wars of the roses|war of the worlds|warhammer|red dead|dead by daylight|killer apps?" +
-        "|killer features?|kill switch(es)?|killed it|kills it|overkill|killing it|god of war|gears of war" +
-        "|war thunder|world of warcraft|warcraft|warzone \\d|call of duty|battlefield \\d)\\b",
+        "|talent wars?|culture wars?|wars of the roses|war of the worlds|warhammer|warcraft|world of warcraft" +
+        "|god of war|gears of war|war thunder|warzone \\d|call of duty|battlefield \\d|rainbow six siege|siege x" +
+        "|red dead( redemption)?( \\d)?|dead by daylight|dead space|dead island|dead rising|dead cells|walking dead" +
+        "|evil dead|grateful dead|dead pixels?|dead zones?|dead ends?|dead heat|dead ringer|dead simple|dead easy" +
+        "|death stranding|death star|death note|death metal|heat death|dying light|lethal company|lethal weapon" +
+        "|fatal (fury|frame|error)|killer apps?|killer features?|killer deals?|killer instinct|the killers|kill bill" +
+        "|killing floor|kill switch(es)?|kill(s|ed|ing)? off|killed it|kills it|killing it|overkill" +
+        "|(cyber|ransomware|phishing|ddos|malware|hacker|supply[- ]chain|brute[- ]force|side[- ]channel|zero[- ]click" +
+        "|prompt[- ]injection|spoofing|relay|replay|downgrade|credential[- ]stuffing|password[- ]spraying" +
+        "|heart|panic|asthma|migraine)[- ]?attacks?|cyberattack(s|ers?)?|attack (surface|surfaces|vectors?)" +
+        "|attack on titan|attackers? (exploit|abus|target|us|hijack|compromis|breach|steal|deploy|leverag|bypass|gain|can)\\w*" +
+        "|(remote|arbitrary|speculative|code|command) executions?|abuse of (market )?(dominance|power|position)" +
+        "|top gun|(glue|heat|nail|massage|staple|spray|light) guns?|first[- ]person shooters?|(looter|hero|arena" +
+        "|extraction|tactical) shooters?|box[- ]office bombs?|bath bombs?|f-bombs?|bomb cyclones?|bomberman" +
+        "|(supernova|stellar|star|solar|cosmic|cambrian|population|data) explosions?|exploded in popularity" +
+        "|graphic (novels?|design|designers?|cards?|memory|settings|artists?)|military-grade|salvation army|bts army" +
+        "|settlers of catan|the settlers|arrested development|clash of clans|clash royale|barrage of)\\b",
         RegexOption.IGNORE_CASE
     )
 

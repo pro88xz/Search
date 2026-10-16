@@ -1282,7 +1282,7 @@
     storiesEl.innerHTML = html;
   }
 
-  function renderFeed(raw){
+  function renderFeed(raw, mode){
     var items = normalize(raw);
     if (!items.length) {
       feedHost.classList.add('hidden');
@@ -1299,7 +1299,7 @@
     if (!feed.canExpand) feed.expanded = false;
     renderChips();
     chipsEl.classList.toggle('hidden', !chipsVisible());
-    renderStories(first ? 'enter' : null);
+    renderStories(first ? 'enter' : (mode || null));
     syncLabels();
     feedHost.classList.remove('hidden');
     feed.shown = true;
@@ -1453,6 +1453,38 @@
     renderFeed(items);
   };
 
+  // Newer stories than the ones on screen. The app answers with the saved
+  // stories at once and refreshes behind them, and these are what that
+  // refresh found. Taken in straight away unless the reader is among the
+  // stories - swapping them then would move the page under their finger - in
+  // which case they wait until the reader is back at the top, or home is next
+  // brought back into view.
+  var pendingFeed = null;
+  function readingFeed(){
+    return feed.shown && (feed.expanded || feed.cat !== 'All' || window.pageYOffset > 48);
+  }
+  function takePendingFeed(){
+    if (!pendingFeed || readingFeed()) return;
+    var items = pendingFeed;
+    pendingFeed = null;
+    var nodes = storiesEl ? Array.prototype.slice.call(storiesEl.children) : [];
+    if (!feed.shown || !nodes.length) { renderFeed(items); return; }
+    var token = ++feed.token;
+    fadeOut(nodes, 160, function(){
+      if (token !== feed.token) { if (!pendingFeed) pendingFeed = items; return; }
+      renderFeed(items, 'soft');
+    });
+  }
+  window.__onFeedUpdate = function(items){
+    if (nightOwl || !items || !items.length) return;
+    feedLoaded = true;
+    pendingFeed = items;
+    takePendingFeed();
+  };
+  window.addEventListener('scroll', function(){
+    if (pendingFeed && window.pageYOffset <= 48) takePendingFeed();
+  }, { passive: true });
+
   // Called by the app when connectivity is restored, to swap cached/offline
   // content for fresh stories. Forces a fetch even if a feed already loaded.
   window.__reloadFeedOnline = function(){
@@ -1475,7 +1507,7 @@
   document.addEventListener('visibilitychange', function(){
     if (document.visibilityState !== 'visible' || nightOwl) return;
     if (!feedLoaded) loadFeed();
-    else refreshTimes();
+    else { refreshTimes(); takePendingFeed(); }
   });
 
   // ---------- Collapsing header ----------
