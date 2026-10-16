@@ -756,7 +756,7 @@ object NewsFeed {
                 (if (r.log.isEmpty()) "no request" else r.log) +
                 "  parsed " + r.items.size + "  kept " + k.size }
         }
-        kept.addAll(youtube)
+        kept.addAll(youtube.filterNot { isGraphic(it.title, it.summary) })
 
         val stories = rank(kept, now)
         val last = readLead(mem)
@@ -828,6 +828,44 @@ object NewsFeed {
         RegexOption.IGNORE_CASE
     )
 
+    /**
+     * Graphic and disturbing stories: violence, killing, war, terror, sexual
+     * violence and self-harm. Top Stories is the first thing on a fresh tab,
+     * looked at by everyone in the house, and a picture of a bombed street or
+     * a headline about a stabbing is not something to be shown unasked. Read
+     * against the headline and the summary, so a story cannot slip through on
+     * a calm headline over a graphic first paragraph.
+     *
+     * Whole words only, and a few harmless uses of the same words are taken
+     * out first ([GRAPHIC_OK]): Star Wars, a price war, Red Dead, Dead by
+     * Daylight, a killer app. Plain "death", "dies" and "attack" are not here -
+     * they are also obituaries, Death Stranding and cyberattacks.
+     */
+    private val GRAPHIC = Regex(
+        "\\b(kill(s|ed|ing|ings)?|murder(s|ed|er|ers|ing|ous)?|massacres?|slaughter(s|ed)?|bloodshed|bloody|blood-soaked" +
+        "|gore|gory|graphic (video|images?|footage|content)|corpses?|dead bodies|bodies (found|recovered|pulled)" +
+        "|mass graves?|behead(ed|ing|ings)?|decapitat\\w*|executions?|executed|shot dead|shootings?|gunm[ae]n|gunfire" +
+        "|stabb(ed|ing|ings)|knife attacks?|gun attacks?|rape[ds]?|raping|rapists?|sexual (assault|abuse|violence)" +
+        "|tortur(e|ed|es|ing)|genocide|war|wars|warfare|war crimes?|wartime|warzone|war zone|airstrikes?|air strikes?" +
+        "|drone strikes?|missile strikes?|bombings?|bombed|shelling|invasion|invaded|militants?|insurgents?" +
+        "|terror(ism|ist|ists)?|terror attacks?|hostages?|suicides?|suicide bomb\\w*|self-harm|carnage|atrocit(y|ies)" +
+        "|casualt(y|ies)|death tolls?|wounded|abducted|kidnapp(ed|ing|ings)|child abuse|abuse survivors?|overdoses?)\\b",
+        RegexOption.IGNORE_CASE
+    )
+    private val GRAPHIC_OK = Regex(
+        "\\b(star wars|console wars?|browser wars?|price wars?|streaming wars?|format wars?|bidding wars?|chip wars?" +
+        "|culture wars?|wars of the roses|war of the worlds|warhammer|red dead|dead by daylight|killer apps?" +
+        "|killer features?|kill switch(es)?|killed it|kills it|overkill|killing it|god of war|gears of war" +
+        "|war thunder|world of warcraft|warcraft|warzone \\d|call of duty|battlefield \\d)\\b",
+        RegexOption.IGNORE_CASE
+    )
+
+    /** True when the story is about violence, war or other graphic events. */
+    internal fun isGraphic(title: String, summary: String): Boolean {
+        val text = GRAPHIC_OK.replace("$title. $summary", " ")
+        return GRAPHIC.containsMatchIn(text)
+    }
+
     /** Feed logos, avatars and tracking pixels offered as an item's image. */
     private val JUNK_IMAGE = Regex(
         "[-_/]logo[-_]?(\\d+|white|black|dark|light|colou?r|small|large|square)?\\.(png|jpe?g|gif|webp)|/logos?/" +
@@ -857,7 +895,8 @@ object NewsFeed {
             it.title.length >= MIN_TITLE_CHARS &&
             it.link.startsWith("https://") &&
             !JUNK_LINK.containsMatchIn(it.link) &&
-            !JUNK_TITLE.containsMatchIn(it.title)
+            !JUNK_TITLE.containsMatchIn(it.title) &&
+            !isGraphic(it.title, it.summary)
         }.map { if ((imageUses[it.image] ?: 0) >= 3) it.withoutImage() else it }
 
         // No date readable anywhere in this feed means a format nobody here
@@ -2184,13 +2223,28 @@ object NewsFeed {
         try {
             val f = File(context.filesDir, CACHE_FILE)
             if (!f.exists()) return
-            val text = f.readText()
+            val text = withoutGraphic(f.readText())
             if (text.isNotBlank()) {
                 cache = text
                 cachedAt = if (text.contains("\"lead\"")) f.lastModified() else 0L
             }
         } catch (e: Exception) { /* best effort */ }
     }
+
+    /**
+     * The saved feed with any graphic story taken out, so a copy saved before
+     * the filter existed does not show one until the next refresh. Anything
+     * that is not a list of stories is returned as it was.
+     */
+    internal fun withoutGraphic(json: String): String = try {
+        val arr = org.json.JSONArray(json)
+        val out = org.json.JSONArray()
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            if (!isGraphic(o.optString("title"), o.optString("summary"))) out.put(o)
+        }
+        if (out.length() == arr.length()) json else out.toString()
+    } catch (e: Exception) { json }
 
     /** Tests only: forget the in-memory copy, as a cold start would. */
     internal fun resetMemoryCache() {
