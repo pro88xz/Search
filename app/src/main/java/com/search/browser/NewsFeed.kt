@@ -381,7 +381,7 @@ object NewsFeed {
      * Identifies the app honestly. Some publisher CDNs answer 403 to the
      * default "Java/1.8.0" agent, which would look exactly like an outage.
      */
-    private const val UA = "Mozilla/5.0 (Linux; Android) Search/1.3 (+https://mebs.app)"
+    private val UA = "Mozilla/5.0 (Linux; Android) Search/" + BuildConfig.VERSION_NAME + " (+https://mebs.app)"
     private const val ACCEPT =
         "application/rss+xml, application/atom+xml, application/xml;q=0.9, text/xml;q=0.9, */*;q=0.5"
 
