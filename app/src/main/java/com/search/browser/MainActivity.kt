@@ -2223,6 +2223,16 @@ class MainActivity : AppCompatActivity() {
                     ?: super.shouldInterceptRequest(view, request)
             }
 
+            override fun onReceivedHttpAuthRequest(
+                view: WebView?,
+                handler: android.webkit.HttpAuthHandler?,
+                host: String?,
+                realm: String?
+            ) {
+                val h = handler ?: return
+                askHttpAuth(h, host ?: "this site", realm ?: "")
+            }
+
             override fun onReceivedError(
                 view: WebView?,
                 request: android.webkit.WebResourceRequest?,
@@ -3432,6 +3442,73 @@ class MainActivity : AppCompatActivity() {
 
     private fun imageSaveFailed() {
         runOnUiThread { toast("Couldn't save image") }
+    }
+
+    /**
+     * Print or save as PDF, through Android's print screen, which offers
+     * "Save as PDF" on every phone - as Chrome's Share > Print does. The page
+     * is laid out for paper by the page itself (its print stylesheet).
+     */
+    private fun printPage() {
+        val web = activeWeb() ?: return
+        val url = tabs.activeTab?.url
+        if (url == null || url == homePage || isErrorPage(url)) { toast("Open a page to print it"); return }
+        val pm = getSystemService(PRINT_SERVICE) as? android.print.PrintManager ?: return
+        val name = (web.title?.takeIf { it.isNotBlank() } ?: UrlHelper.siteOf(url) ?: "Page").take(80)
+        try {
+            pm.print(name, web.createPrintDocumentAdapter(name),
+                android.print.PrintAttributes.Builder().build())
+        } catch (e: Exception) {
+            toast("Couldn't print this page")
+        }
+    }
+
+    /**
+     * A site that asks for a user name and password itself (HTTP sign-in: a
+     * router's admin page, a NAS, an office intranet). WebView's default is
+     * to refuse without asking, which left these pages blank with no way in.
+     * The answer goes to exactly one of proceed or cancel.
+     */
+    private fun askHttpAuth(handler: android.webkit.HttpAuthHandler, host: String, realm: String) {
+        if (isFinishing || isDestroyed) { handler.cancel(); return }
+        val d = resources.displayMetrics.density
+        val pad = (20 * d).toInt()
+        val user = android.widget.EditText(this).apply {
+            hint = "User name"
+            isSingleLine = true
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+        }
+        val pass = android.widget.EditText(this).apply {
+            hint = "Password"
+            isSingleLine = true
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
+        val box = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(pad, (8 * d).toInt(), pad, 0)
+            addView(user); addView(pass)
+        }
+        var answered = false
+        fun answer(ok: Boolean) {
+            if (answered) return
+            answered = true
+            if (ok) handler.proceed(user.text.toString(), pass.text.toString()) else handler.cancel()
+        }
+        try {
+            com.google.android.material.dialog.MaterialAlertDialogBuilder(this, R.style.Theme_Search_Dialog)
+                .setTitle("Sign in to $host")
+                .setMessage(if (realm.isBlank()) "This site asks for a user name and password."
+                    else "The site says: \u201c" + realm.take(120) + "\u201d")
+                .setView(box)
+                .setPositiveButton("Sign in") { _, _ -> answer(true) }
+                .setNegativeButton("Cancel") { _, _ -> answer(false) }
+                .setOnDismissListener { answer(false) }
+                .show()
+        } catch (e: Exception) {
+            answer(false)
+        }
     }
 
     private fun toast(msg: String) {
@@ -6836,6 +6913,10 @@ class MainActivity : AppCompatActivity() {
         binding.menuFind.setOnClickListener {
             closeMenuNow()
             openFindBar()
+        }
+        binding.menuPrint.setOnClickListener {
+            closeMenuNow()
+            printPage()
         }
         binding.menuSiteAds.setOnClickListener {
             closeMenuNow()

@@ -199,4 +199,9 @@ These were built without a phone to run them on. Check each once:
       a "World" filter chip under See all. Menu > Share debug log, "feed"
       lines: each world source shows the URL that answered and items kept.
       The feed's ad card is where it always was.
+- [ ] Menu > Print or save as PDF on an article: Android's print screen
+      opens; Save as PDF writes a readable PDF. On home it says to open a page.
+- [ ] A page behind HTTP sign-in (a router's admin page, or
+      https://httpbin.org/basic-auth/user/pass): a "Sign in to ..." dialog;
+      right details open the page, Cancel leaves the site's own 401 page.
 

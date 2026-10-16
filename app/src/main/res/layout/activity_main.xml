@@ -701,6 +701,13 @@
                     android:text="Find in page" android:textSize="16sp"
                     android:textColor="?android:attr/textColorPrimary" />
             </LinearLayout>
+            <LinearLayout android:id="@+id/menuPrint" style="@style/MenuRow">
+                <ImageView android:layout_width="22dp" android:layout_height="22dp"
+                    android:src="@drawable/menu_print" android:layout_marginEnd="18dp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="Print or save as PDF" android:textSize="16sp"
+                    android:textColor="?android:attr/textColorPrimary" />
+            </LinearLayout>
             <!-- Ad blocking off or back on for the site on screen. Only while
                  ad blocking is on and a website is showing; set from code
                  (openMenu). -->
