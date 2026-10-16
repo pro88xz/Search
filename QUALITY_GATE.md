@@ -253,3 +253,7 @@ These were built without a phone to run them on. Check each once:
       colour and it does not change while scrolling down past cards or
       pictures. A site with a theme colour (YouTube in dark mode,
       github.com) gives both bars that colour.
+- [ ] (1.6.6) Open a dark site (movieboxpro.app, meshy.ai) and
+      developer.android.com: both bars stay white (dark in dark theme), with
+      dark icons, on every site. Settings > Customize > Page colours in the
+      bars is off; turning it on brings the site colours back.

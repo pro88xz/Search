@@ -2932,12 +2932,14 @@ class MainActivity : AppCompatActivity() {
     private var barsHidden = false
     // Read once per resume rather than on every scroll event (refreshScrollPrefs).
     private var hideBarsPref = true
-    private var tintBarsPref = true
+    // Off unless chosen in Settings > Customize: the bars keep the app's own
+    // surface on every site.
+    private var tintBarsPref = false
     private var touchExploration = false
 
     private fun refreshScrollPrefs() {
         hideBarsPref = Settings.getBool(this, Settings.HIDE_BARS_ON_SCROLL, true)
-        tintBarsPref = Settings.getBool(this, Settings.TINT_BARS, true)
+        tintBarsPref = Settings.getBool(this, Settings.TINT_BARS, false)
         touchExploration = (getSystemService(ACCESSIBILITY_SERVICE) as?
             android.view.accessibility.AccessibilityManager)?.isTouchExplorationEnabled == true
         if (!hideBarsPref || touchExploration) showBars(animate = false)

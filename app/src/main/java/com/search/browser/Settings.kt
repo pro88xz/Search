@@ -124,7 +124,7 @@ object Settings {
     // Customize your Search (home page)
     const val HOME_BACKGROUND = "home_background"      // "clean" | "gradient" | "dark"
     const val HIDE_BARS_ON_SCROLL = "hide_bars_on_scroll" // default true
-    const val TINT_BARS = "tint_bars"                  // default true: bars take the page's colours
+    const val TINT_BARS = "tint_bars"                  // default false: bars keep the app's surface; on, they take the site's colour
     const val HOME_ACCENT = "home_accent"              // hex string
     const val HOME_SHOW_TILES = "home_show_tiles"      // default true
 
