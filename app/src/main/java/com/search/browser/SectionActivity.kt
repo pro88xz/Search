@@ -276,6 +276,18 @@ class SectionActivity : AppCompatActivity() {
             Settings.HOME_SHOW_TILES, true
         )
         addNote("Open a new tab to see your changes.")
+
+        addDivider()
+        addToggle(
+            "Hide bars while scrolling",
+            "Scroll down to give the page the whole screen; scroll up to bring the bars back.",
+            Settings.HIDE_BARS_ON_SCROLL, true
+        )
+        addToggle(
+            "Page colours in the bars",
+            "The bars take on a soft wash of the colours at the top and bottom of the page.",
+            Settings.TINT_BARS, true
+        )
     }
 
     private fun addDivider() {

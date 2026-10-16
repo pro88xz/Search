@@ -951,6 +951,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun enterSearchMode() {
         if (searchMode) return
+        showBars(animate = false)
         searchMode = true
         // The bar is non-focusable at rest; make it typable now that the user
         // has deliberately entered search mode. This is the ONLY place focus is
@@ -1487,7 +1488,8 @@ class MainActivity : AppCompatActivity() {
             // And the bottom bar steps out of the way while typing into the
             // page, as it does in Chrome, so the keyboard does not cost the
             // page its height twice.
-            val bar = if (pageTyping) View.GONE else View.VISIBLE
+            this.pageTyping = pageTyping
+            val bar = if (pageTyping || barsHidden) View.GONE else View.VISIBLE
             if (binding.bottomBar.visibility != bar) binding.bottomBar.visibility = bar
             // The suggestion list ends where the keyboard starts: padded by
             // whatever the keyboard covers beyond what the root already gives
@@ -2313,6 +2315,8 @@ class MainActivity : AppCompatActivity() {
                     view === activeWeb()) exitSearchMode()
                 super.onPageStarted(view, url, favicon)
                 if (view == tabs.activeTab?.webView) {
+                    // A new page arrives with the bars, as in Chrome.
+                    showBars()
                     if (!binding.urlBar.hasFocus()) binding.urlBar.setText(displayUrl(url))
                     refreshOmniboxVisibility(url)
                     tabs.activeTab?.let { beginLoadWatch(it, url) }
@@ -2734,11 +2738,127 @@ class MainActivity : AppCompatActivity() {
             })
         }
 
-        web.setOnScrollChangeListener { v, _, scrollY, _, _ ->
+        web.setOnScrollChangeListener { v, _, scrollY, _, oldScrollY ->
             lastWebScroll = android.os.SystemClock.uptimeMillis()
             positionAdSlot(v as android.webkit.WebView, scrollY)
+            onPageScrollForBars(v, scrollY, oldScrollY)
         }
         return web
+    }
+
+    // ---------- Bars hide while scrolling ----------
+    //
+    // Scrolling down a page slides both bars away and gives the page the whole
+    // screen; scrolling up, or reaching the top, brings them back, as Chrome's
+    // toolbar does. On the home page and on websites alike.
+    //
+    // The bars move by translation, and the page is resized only twice: at the
+    // end of a hide and at the start of a show. Each time the page area is
+    // offset by exactly the top bar's height in the same frame, so the text
+    // under the finger never jumps. Resizing on every frame instead would make
+    // a heavy page relayout continuously, and letting the page run under the
+    // bars all the time would hide what sites pin to their bottom edge - the
+    // reason the bar stops the page at its straight edge (applyBarOverlap).
+
+    private var barsHidden = false
+    private var barsHiding = false
+    private var barScrollAcc = 0
+    private var barsTopH = 0
+    private var pageTyping = false
+
+    private fun barsMayHide(web: View): Boolean =
+        web === activeWeb() && !searchMode && !findActive && !deckVisible &&
+            binding.menuScrim.visibility != View.VISIBLE && fullscreenView == null &&
+            pullRaw == 0f && !pullRefreshing &&
+            Settings.getBool(this, Settings.HIDE_BARS_ON_SCROLL, true) &&
+            // With TalkBack the bars are found by touch; they stay put.
+            (getSystemService(ACCESSIBILITY_SERVICE) as? android.view.accessibility.AccessibilityManager)
+                ?.isTouchExplorationEnabled != true
+
+    private fun onPageScrollForBars(web: View, y: Int, oldY: Int) {
+        val dy = y - oldY
+        if (dy == 0 || web !== activeWeb()) return
+        val density = resources.displayMetrics.density
+        if (y <= (8 * density).toInt()) {          // back at the top
+            barScrollAcc = 0
+            if (barsHidden) showBars()
+            return
+        }
+        if (!barsMayHide(web)) { barScrollAcc = 0; return }
+        // Only the user's own scrolling - a finger on the page, or the fling it
+        // left behind - not a page scrolling itself to an anchor.
+        val b = web as? BrowserWebView ?: return
+        if (!b.touching && android.os.SystemClock.uptimeMillis() - b.lastTouchUp > 1500L) return
+        if ((dy > 0) != (barScrollAcc > 0)) barScrollAcc = 0
+        barScrollAcc += dy
+        val threshold = (24 * density).toInt()
+        if (!barsHidden && barScrollAcc > threshold && y > binding.topBar.height) hideBars()
+        else if (barsHidden && barScrollAcc < -threshold) showBars()
+    }
+
+    private fun hideBars() {
+        val top = binding.topBar
+        val bottom = binding.bottomBar
+        val area = binding.webArea
+        if (barsHidden || top.height <= 0 || top.visibility != View.VISIBLE) return
+        barsHidden = true
+        barsHiding = true
+        barsTopH = top.height
+        val h = barsTopH.toFloat()
+        val drop = (bottom.height + binding.navSheet.bottomInset).toFloat()
+        val ms = 200L
+        val ease = android.view.animation.PathInterpolator(0.3f, 0f, 0.2f, 1f)
+        top.animate().translationY(-h).alpha(0f).setDuration(ms).setInterpolator(ease).withLayer().start()
+        area.animate().translationY(-h).setDuration(ms).setInterpolator(ease).start()
+        bottom.animate().translationY(drop).setDuration(ms).setInterpolator(ease)
+            .withEndAction {
+                if (!barsHidden) return@withEndAction
+                barsHiding = false
+                // Now the page takes the room: the top bar leaves the layout as
+                // the page area's offset is cleared, which cancel out on screen.
+                top.visibility = View.GONE
+                area.translationY = 0f
+                bottom.visibility = View.GONE
+            }.start()
+    }
+
+    /** Brings the bars back; [animate] false puts them straight in place. */
+    private fun animationsOn(): Boolean =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) android.animation.ValueAnimator.areAnimatorsEnabled()
+        else android.provider.Settings.Global.getFloat(contentResolver,
+            android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) != 0f
+
+    private fun showBars(animate: Boolean = true) {
+        if (!barsHidden) return
+        barsHidden = false
+        barScrollAcc = 0
+        val top = binding.topBar
+        val bottom = binding.bottomBar
+        val area = binding.webArea
+        top.animate().cancel(); area.animate().cancel(); bottom.animate().cancel()
+        val h = barsTopH.toFloat()
+        val drop = (bottom.height.takeIf { it > 0 } ?: (86 * resources.displayMetrics.density).toInt()) +
+            binding.navSheet.bottomInset.toFloat()
+        if (top.visibility == View.GONE) {
+            // The page gives the room back at once; it is offset by the bar's
+            // height in the same frame so nothing on it moves yet.
+            top.visibility = View.VISIBLE
+            top.translationY = -h
+            top.alpha = 0f
+            area.translationY = -h
+            bottom.translationY = drop
+        }
+        bottom.visibility = if (pageTyping) View.GONE else View.VISIBLE
+        barsHiding = false
+        if (!animate || !animationsOn()) {
+            top.translationY = 0f; top.alpha = 1f; area.translationY = 0f; bottom.translationY = 0f
+            return
+        }
+        val ms = 200L
+        val ease = android.view.animation.PathInterpolator(0.2f, 0f, 0f, 1f)
+        top.animate().translationY(0f).alpha(1f).setDuration(ms).setInterpolator(ease).withLayer().start()
+        area.animate().translationY(0f).setDuration(ms).setInterpolator(ease).start()
+        bottom.animate().translationY(0f).setDuration(ms).setInterpolator(ease).start()
     }
 
     // ---------- HTML5 fullscreen video ----------
@@ -3810,6 +3930,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun openTab(tab: Tab, loadUrl: String? = null) {
         endPullRefresh(now = true)
+        showBars(animate = false)
         // The tab being left keeps a picture of itself for the deck, taken
         // while it is still on screen. PixelCopy reads what the display already
         // shows and asks the page for nothing. freezeTab used to draw the
@@ -4360,6 +4481,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openMenu() {
+        showBars()
         // The first row carries both of the jobs the owl's long press used to,
         // and says which one it is about to do. On the home page there is
         // nothing to go home to, so it offers the way out instead.
@@ -4512,6 +4634,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun openFindBar() {
         val web = activeWeb() ?: return
+        showBars()
         findActive = true
         binding.findBar.visibility = View.VISIBLE
         binding.findInput.text?.clear()
@@ -4990,6 +5113,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openDeck() {
+        showBars(animate = false)
         // Always open on the tab view; reset any lingering history/bookmark view.
         historyOpen = false
         bookmarksOpen = false

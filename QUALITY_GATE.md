@@ -178,3 +178,10 @@ These were built without a phone to run them on. Check each once:
       "Allow ads on this site" reloads it with its ads; the site appears in
       Settings → Ad blocking; "Block ads on this site" or removing it there
       blocks them again. The home-feed AdMob card is unchanged either way.
+- [ ] Hide bars while scrolling: on a long article and on the home feed,
+      scroll down - both bars slide away and the page fills the screen with
+      no jump in the text; scroll up a little - both come back. At the top of
+      the page, on opening a link, switching tabs, tapping the owl, the menu
+      or the tabs, the bars are there. Typing into a page field still keeps
+      the bottom bar out of the keyboard's way. Settings → Customize → Hide
+      bars while scrolling off: the bars stay. With TalkBack on: the bars stay.

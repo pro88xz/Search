@@ -29,6 +29,10 @@ class BrowserWebView(context: Context) : WebView(context) {
     /** Called after the last finger leaves the page. */
     var onTouchEnd: (() -> Unit)? = null
 
+    /** When the last finger left the page (uptimeMillis); a fling after it is still the user's scroll. */
+    var lastTouchUp = 0L
+        private set
+
     /** The page was pulled down past its top by this many px (positive). */
     var onTopOverscroll: ((Int) -> Unit)? = null
 
@@ -83,6 +87,7 @@ class BrowserWebView(context: Context) : WebView(context) {
         val handled = super.dispatchTouchEvent(ev)
         if (ev.actionMasked == MotionEvent.ACTION_UP || ev.actionMasked == MotionEvent.ACTION_CANCEL) {
             touching = false
+            lastTouchUp = android.os.SystemClock.uptimeMillis()
             onTouchEnd?.invoke()
         }
         return handled
