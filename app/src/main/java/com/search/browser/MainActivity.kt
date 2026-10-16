@@ -2866,7 +2866,6 @@ class MainActivity : AppCompatActivity() {
     // reason the bar stops the page at its straight edge (applyBarOverlap).
 
     private var barsHidden = false
-    private var barsHiding = false
     // Read once per resume rather than on every scroll event (refreshScrollPrefs).
     private var hideBarsPref = true
     private var tintBarsPref = true
@@ -2917,7 +2916,6 @@ class MainActivity : AppCompatActivity() {
         val area = binding.webArea
         if (barsHidden || top.height <= 0 || top.visibility != View.VISIBLE) return
         barsHidden = true
-        barsHiding = true
         barsTopH = top.height
         val h = barsTopH.toFloat()
         val drop = (bottom.height + binding.navSheet.bottomInset).toFloat()
@@ -2928,7 +2926,6 @@ class MainActivity : AppCompatActivity() {
         bottom.animate().translationY(drop).setDuration(ms).setInterpolator(ease)
             .withEndAction {
                 if (!barsHidden) return@withEndAction
-                barsHiding = false
                 // Now the page takes the room: the top bar leaves the layout as
                 // the page area's offset is cleared, which cancel out on screen.
                 top.visibility = View.GONE
@@ -2965,7 +2962,6 @@ class MainActivity : AppCompatActivity() {
             bottom.translationY = drop
         }
         bottom.visibility = if (pageTyping) View.GONE else View.VISIBLE
-        barsHiding = false
         if (!animate || !animationsOn()) {
             top.translationY = 0f; top.alpha = 1f; area.translationY = 0f; bottom.translationY = 0f
             return
@@ -5895,20 +5891,6 @@ class MainActivity : AppCompatActivity() {
             binding.bookmarkList.visibility = View.VISIBLE
         }
         bookmarksOpen = true
-        historyOpen = false
-    }
-
-    private fun hideBookmarks() {
-        binding.bookmarkList.visibility = View.GONE
-        binding.deckEmpty.visibility = View.GONE
-        binding.tabList.visibility = View.VISIBLE
-        bookmarksOpen = false
-    }
-
-    private fun hideHistory() {
-        binding.historyList.visibility = View.GONE
-        binding.deckEmpty.visibility = View.GONE
-        binding.tabList.visibility = View.VISIBLE
         historyOpen = false
     }
 
