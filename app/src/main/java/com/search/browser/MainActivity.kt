@@ -2904,7 +2904,9 @@ class MainActivity : AppCompatActivity() {
             lastWebScroll = android.os.SystemClock.uptimeMillis()
             positionAdSlot(v as android.webkit.WebView, scrollY)
             onPageScrollForBars(v, scrollY, oldScrollY)
-            if (v === activeWeb()) schedulePageTint()
+            // Back at the top, the header that set the bars' colour is in view
+            // again: a header that changed colour since is followed.
+            if (v === activeWeb() && scrollY == 0 && oldScrollY > 0) schedulePageTint()
         }
         return web
     }
@@ -3135,16 +3137,17 @@ class MainActivity : AppCompatActivity() {
 
     // ---------- The page's colours in the bars ----------
     //
-    // Both bars take on a soft wash of the page they frame - the top bar (and
-    // the status bar strip it paints) the colours along the top of the page,
-    // the bottom bar those along the bottom - as Chrome's and Samsung's
-    // toolbars follow a site's colour, but gentler: each third of the strip is
-    // averaged, calmed and only partly mixed into the bar's own surface
-    // (PageTint), so a red header gives a blush, never a red bar, and the icons
-    // keep their contrast. Re-read when a page appears, finishes and settles
-    // after a scroll, so it follows the page; eased over a third of a second.
-    // Not on the home page (which has its own colours), Night Owl, error pages
-    // or with Settings > Customize > Page colours in the bars off.
+    // Both bars take on the site's colour, as Chrome's toolbar does: the
+    // colour the site names for it (<meta name="theme-color">) when it names
+    // one, otherwise the colours along the top of the page - its header.
+    // Calmed (PageTint), so a red header gives a muted red, and the icons keep
+    // their contrast. One colour for both bars, and steady: decided as the
+    // page appears and finishes, and looked at again only at the top of the
+    // page. The bottom bar used to read the page under it, so it changed
+    // colour with every card that scrolled past while the top stayed put.
+    // Eased over a third of a second. Not on the home page (which has its own
+    // colours), Night Owl, error pages or with Settings > Customize > Page
+    // colours in the bars off.
 
     private var topTint: IntArray? = null
     private var bottomTint: IntArray? = null
@@ -3154,6 +3157,8 @@ class MainActivity : AppCompatActivity() {
     private val tintLate = Runnable { samplePageTint() }
     /** Tries while something is briefly in the way (the menu, a bar moving), so a page is never left untinted. */
     private var tintRetries = 0
+    /** The page the bars' colour was taken from; it holds until the page changes or is back at its top. */
+    private var tintedUrl: String? = null
 
     private fun tintAllowed(url: String?): Boolean =
         !nightOwl && url != null && url != homePage && !isErrorPage(url) &&
@@ -3182,28 +3187,54 @@ class MainActivity : AppCompatActivity() {
             return
         }
         tintRetries = 0
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-            jsPageColours(web) { t, b -> if (web === activeWeb()) applyPageTint(t, b) }
-            return
-        }
-        val d = resources.displayMetrics.density
-        val area = IntArray(2).also { binding.webArea.getLocationInWindow(it) }
-        val bar = IntArray(2).also { binding.bottomBar.getLocationInWindow(it) }
-        val w = binding.webArea.width
-        // Just under the top bar, and just above the bottom bar's frame - clear
-        // of its arc and of the shadows both bars cast on the page.
-        val top = android.graphics.Rect(area[0], area[1] + (2 * d).toInt(), area[0] + w, area[1] + (9 * d).toInt())
-        val bottom = android.graphics.Rect(bar[0], bar[1] - (10 * d).toInt(), bar[0] + w, bar[1] - (2 * d).toInt())
-        captureStrip(top) { t ->
-            captureStrip(bottom) { b ->
+        val url = tabs.activeTab?.url
+        // Steady: once this page has its colour, scrolling never changes it.
+        // Only back at the top - where the header that set it is - is it
+        // looked at again, for a header that paints late.
+        if (url != null && url == tintedUrl && web.scrollY > (48 * resources.displayMetrics.density)) return
+        themeColour(web) { theme ->
+            if (web !== activeWeb() || !tintAllowed(tabs.activeTab?.url)) return@themeColour
+            if (theme != null) { applyPageTint(IntArray(3) { theme }, url); return@themeColour }
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+                jsPageColours(web) { t, _ -> if (web === activeWeb()) applyPageTint(t, url) }
+                return@themeColour
+            }
+            val d = resources.displayMetrics.density
+            val area = IntArray(2).also { binding.webArea.getLocationInWindow(it) }
+            val w = binding.webArea.width
+            // Just under the top bar, clear of the shadow it casts on the page.
+            val top = android.graphics.Rect(area[0], area[1] + (2 * d).toInt(), area[0] + w, area[1] + (9 * d).toInt())
+            captureStrip(top) { t ->
                 if (web !== activeWeb() || !tintAllowed(tabs.activeTab?.url)) return@captureStrip
-                if (t != null && b != null) { applyPageTint(t, b); return@captureStrip }
+                if (t != null) { applyPageTint(t, url); return@captureStrip }
                 // The screen could not be read here (some phones refuse a
                 // window copy now and then): ask the page for its colours.
-                jsPageColours(web) { jt, jb ->
-                    if (web === activeWeb()) applyPageTint(t ?: jt, b ?: jb)
-                }
+                jsPageColours(web) { jt, _ -> if (web === activeWeb()) applyPageTint(jt, url) }
             }
+        }
+    }
+
+    /**
+     * The colour the page names for the browser's toolbar - <meta
+     * name="theme-color">, the one for the current light or dark scheme when
+     * it gives both - or null when it names none. Read through a canvas,
+     * which turns any CSS colour into #rrggbb without touching the page.
+     */
+    private fun themeColour(web: WebView, done: (Int?) -> Unit) {
+        val js = "(function(){try{var ms=document.querySelectorAll('meta[name=\"theme-color\"]');" +
+            "for(var i=0;i<ms.length;i++){var m=ms[i],q=m.getAttribute('media');" +
+            "if(q&&!matchMedia(q).matches)continue;var v=(m.getAttribute('content')||'').trim();if(!v)continue;" +
+            "var x=document.createElement('canvas').getContext('2d');x.fillStyle='#010203';x.fillStyle=v;" +
+            "var f=x.fillStyle;if(/^#[0-9a-f]{6}$/i.test(f)&&f!=='#010203')return f;}}catch(e){}return '';})()"
+        try {
+            web.evaluateJavascript(js) { result ->
+                val hex = try { org.json.JSONTokener(result ?: "").nextValue() as? String } catch (e: Exception) { null }
+                done(try {
+                    if (hex.isNullOrEmpty()) null else android.graphics.Color.parseColor(hex)
+                } catch (e: Exception) { null })
+            }
+        } catch (e: Exception) {
+            done(null)
         }
     }
 
@@ -3266,13 +3297,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun applyPageTint(top: IntArray?, bottom: IntArray?) {
-        val dark = isDarkTheme()
-        val surface = getColor(R.color.barSurface)
-        setBarTint(
-            top?.let { PageTint.barColours(it, surface, dark) },
-            bottom?.let { PageTint.barColours(it, surface, dark) },
-            animate = true)
+    /** Both bars in the colour of [edge], the top of the page at [url] (null: their plain surface). */
+    private fun applyPageTint(edge: IntArray?, url: String?) {
+        if (edge == null) return
+        tintedUrl = url
+        val bar = PageTint.barColours(edge, getColor(R.color.barSurface), isDarkTheme())
+        setBarTint(bar, bar, animate = true)
     }
 
     private fun isDarkTheme(): Boolean = (resources.configuration.uiMode and

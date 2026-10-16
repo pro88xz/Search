@@ -249,3 +249,7 @@ These were built without a phone to run them on. Check each once:
       Long-press Via > Remove takes only Via away.
 - [ ] (1.6.4) A dark site (movieboxpro.app, meshy.ai): no light line under the
       top bar; the address pane reads as a lighter pane of the bar.
+- [ ] (1.6.5) developer.android.com and a news site: both bars are the same
+      colour and it does not change while scrolling down past cards or
+      pictures. A site with a theme colour (YouTube in dark mode,
+      github.com) gives both bars that colour.
