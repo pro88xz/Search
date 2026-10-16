@@ -131,7 +131,10 @@ class MediaService : Service() {
         return NotificationCompat.Builder(this, channelId)
             .setContentTitle(title)
             .setContentText(host)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            // The owl silhouette (single colour, as Android requires), in
+            // the owl's purple where the system tints the icon.
+            .setSmallIcon(R.drawable.ic_stat_owl)
+            .setColor(0xFF7436F2.toInt())
             .setContentIntent(openApp)
             .setOnlyAlertOnce(true)
             .setOngoing(playing)
