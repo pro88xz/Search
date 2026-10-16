@@ -1428,16 +1428,10 @@ class MainActivity : AppCompatActivity() {
             @Suppress("DEPRECATION")
             window.navigationBarColor = android.graphics.Color.TRANSPARENT
         }
+        // The saved theme, before super.onCreate so the browser is built once,
+        // in the chosen theme (Settings.applyNightMode).
+        Settings.applyNightMode(this)
         super.onCreate(savedInstanceState)
-        // Apply the saved theme preference before inflating.
-        when (Settings.getTheme(this)) {
-            Settings.THEME_LIGHT -> androidx.appcompat.app.AppCompatDelegate
-                .setDefaultNightMode(androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO)
-            Settings.THEME_DARK -> androidx.appcompat.app.AppCompatDelegate
-                .setDefaultNightMode(androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES)
-            else -> androidx.appcompat.app.AppCompatDelegate
-                .setDefaultNightMode(androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
-        }
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         // Health numbers (HealthStats): the last session's ending, Android's

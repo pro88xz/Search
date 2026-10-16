@@ -22,6 +22,7 @@ class SupportActivity : AppCompatActivity() {
 
     @SuppressLint("SetJavaScriptEnabled", "AddJavascriptInterface")
     override fun onCreate(savedInstanceState: Bundle?) {
+        Settings.applyNightMode(this)
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 

@@ -61,6 +61,28 @@ object Settings {
         prefs(c).edit().putInt(KEY_THEME, mode).apply()
     }
 
+    /**
+     * Hands the saved theme to AppCompat. Every screen calls this before its
+     * super.onCreate, so the first frame is already in the chosen theme.
+     *
+     * MainActivity used to do it after super.onCreate. By then AppCompat had
+     * created the activity in the phone's own mode, so on every launch where
+     * the choice differed from the phone's, the browser was built, thrown
+     * away and built again - a slow cold start - and a screen restored
+     * straight from process death (Settings, a section) came back in the
+     * phone's mode rather than the chosen one. setDefaultNightMode does
+     * nothing when the mode is already set, so calling it often is free.
+     */
+    fun applyNightMode(c: Context) {
+        androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(
+            when (getTheme(c)) {
+                THEME_LIGHT -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO
+                THEME_DARK -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES
+                else -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+            }
+        )
+    }
+
     // ---- Generic counters and timestamps ----
     fun getLong(c: Context, key: String, default: Long): Long =
         prefs(c).getLong(key, default)

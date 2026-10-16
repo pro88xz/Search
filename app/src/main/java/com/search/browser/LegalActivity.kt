@@ -17,6 +17,7 @@ import androidx.core.view.WindowInsetsCompat
 class LegalActivity : AppCompatActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
+        Settings.applyNightMode(this)
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 

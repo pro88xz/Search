@@ -25,6 +25,7 @@ class SectionActivity : AppCompatActivity() {
     private lateinit var content: LinearLayout
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        Settings.applyNightMode(this)
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_section)
