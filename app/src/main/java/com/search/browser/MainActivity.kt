@@ -2956,6 +2956,9 @@ class MainActivity : AppCompatActivity() {
         web === activeWeb() && !searchMode && !findActive && !deckVisible &&
             binding.menuScrim.visibility != View.VISIBLE && fullscreenView == null &&
             pullRaw == 0f && !pullRefreshing && hideBarsPref &&
+            // Not while typing into the page: the keyboard owns the bottom,
+            // and the bars come straight back when it opens anyway.
+            !pageTyping &&
             // With TalkBack the bars are found by touch; they stay put.
             !touchExploration
 
