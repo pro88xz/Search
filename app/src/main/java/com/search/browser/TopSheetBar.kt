@@ -73,6 +73,14 @@ class TopSheetBar @JvmOverloads constructor(
     var surfaceColor: Int = context.getColor(R.color.barSurface)
         set(v) { field = v; repaint() }
 
+    /**
+     * The page's colours across the bar, left to right (PageTint, already
+     * softened into the surface), or null for the plain surface. Ignored
+     * while [flat].
+     */
+    var tint: IntArray? = null
+        set(v) { field = v; repaint() }
+
     /** The home page's background, which [blend] fades toward. */
     private val pageBackground = context.getColor(R.color.appBackground)
 
@@ -109,6 +117,12 @@ class TopSheetBar @JvmOverloads constructor(
         // blended into the home page.
         val own = if (flat) 0f else 1f - blend
         fill.color = if (flat) flatColor else mix(surfaceColor, pageBackground, blend)
+        val t = tint
+        fill.shader = if (!flat && t != null && t.size == 3 && width > 0) {
+            android.graphics.LinearGradient(0f, 0f, width.toFloat(), 0f,
+                IntArray(3) { mix(t[it], pageBackground, blend) }, TINT_STOPS,
+                android.graphics.Shader.TileMode.CLAMP)
+        } else null
         // The bottom bar's shadow, mirrored: same blur and colour, cast down.
         // Only from Android 9, where hardware drawing supports a paint shadow
         // on any shape. NavSheetView falls back to a software layer below
@@ -130,6 +144,11 @@ class TopSheetBar @JvmOverloads constructor(
         invalidate()
     }
 
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        if (tint != null) repaint()
+    }
+
     private fun mix(a: Int, b: Int, t: Float): Int = Color.rgb(
         (Color.red(a) + (Color.red(b) - Color.red(a)) * t).toInt(),
         (Color.green(a) + (Color.green(b) - Color.green(a)) * t).toInt(),
@@ -144,5 +163,10 @@ class TopSheetBar @JvmOverloads constructor(
         // view, so the surface reaches the top of the screen.
         canvas.drawRect(0f, -topInset.toFloat(), w, h, fill)
         if (lineShows) canvas.drawLine(0f, h, w, h, line)
+    }
+
+    private companion object {
+        /** Each third's colour sits at the middle of its third. */
+        val TINT_STOPS = floatArrayOf(1f / 6f, 0.5f, 5f / 6f)
     }
 }

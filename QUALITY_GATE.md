@@ -185,3 +185,13 @@ These were built without a phone to run them on. Check each once:
       or the tabs, the bars are there. Typing into a page field still keeps
       the bottom bar out of the keyboard's way. Settings → Customize → Hide
       bars while scrolling off: the bars stay. With TalkBack on: the bars stay.
+- [ ] Site icon: on a website (e.g. github.com, bbc.com, amazon.com) tap the
+      owl - the search field shows the site's icon, sharp at 24dp, rounded,
+      before the address. A site seen before shows it at once. On home: no icon.
+- [ ] Page colours: on a site with a coloured header (e.g. a red or blue
+      news site), the top bar and the status bar strip take a soft wash of
+      it, not a solid block; a site with a dark footer tints the bottom bar.
+      Scroll to a differently coloured part: the bars ease to it. Icons stay
+      readable in light and dark theme. Home, Night Owl and the offline page:
+      plain bars. Settings → Customize → Page colours in the bars off: plain.
+

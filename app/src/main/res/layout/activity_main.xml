@@ -82,6 +82,18 @@
                     android:textSize="15sp"
                     android:background="@drawable/urlbar_bg" />
 
+                <!-- The site's own icon, crisp (SiteIcons), while searching
+                     from a website: which page the search starts from. -->
+                <ImageView
+                    android:id="@+id/siteIcon"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:layout_gravity="start|center_vertical"
+                    android:layout_marginStart="16dp"
+                    android:scaleType="fitCenter"
+                    android:visibility="gone"
+                    android:importantForAccessibility="no" />
+
                 <ImageButton
                     android:id="@+id/starBtn"
                     android:layout_width="48dp"
