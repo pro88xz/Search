@@ -4306,6 +4306,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun applyNightOwlChrome(on: Boolean) {
+        // Night Owl tabs always show the owl's night sky.
+        binding.navOwl.privateMode = on
         // By id, not by binding.homeBtn.parent. The owl now sits inside a
         // FrameLayout so its tab badge can be positioned against it, and the
         // old expression would quietly resolve to that 48dp wrapper - putting
@@ -6123,6 +6125,7 @@ class MainActivity : AppCompatActivity() {
         // does. It opened a new tab for every search, which only filled the
         // tab list with tabs nobody went back to.
         binding.navNewTab.setOnClickListener {
+            binding.navOwl.pop()
             if (findActive) closeFindBar()
             if (!searchMode) enterSearchMode()
         }

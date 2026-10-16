@@ -156,7 +156,12 @@ These were built without a phone to run them on. Check each once:
       page is cut (the logo and the cart are whole). The bottom bar sits
       close above Android's buttons, its icons centred in it.
 - [ ] Change the accent (Settings → Customize): the loading ring takes it.
-- [ ] The bottom bar's centre button shows a search glass with a sparkle.
+- [ ] The bottom bar's centre button shows the owl in a sky that matches the
+      clock: blue sky, sun and clouds by day; orange horizon and the sun
+      sinking from 18:15; stars and the moon (in tonight's phase - compare
+      with the real moon) from 19:15; the reverse from 05:45. Night Owl tabs
+      show the night. Tapping it bounces the owl. With animations off
+      (Developer options or Remove animations) it holds still.
       Tapping it - from home, a website, find in page - opens search in the
       same tab, as tapping the search box does: no new tab, the tab count
       does not change. Back closes search and leaves the page as it was.

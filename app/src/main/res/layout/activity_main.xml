@@ -358,14 +358,14 @@
                 android:foreground="@drawable/nav_ripple"
                 android:contentDescription="Search">
 
-                <!-- A search glass with a sparkle: the button opens search in
-                     the tab on screen, as a tap on the search box does. -->
-                <ImageView
-                    android:layout_width="28dp"
-                    android:layout_height="28dp"
-                    android:layout_gravity="center"
-                    android:src="@drawable/nav_search_spark"
-                    android:tint="#FFFFFF"
+                <!-- The owl peeking up into a sky that follows the clock: day,
+                     sunset, night with the moon in its real phase
+                     (OwlButtonView). The button opens search in the tab on
+                     screen, as a tap on the search box does. -->
+                <com.search.browser.OwlButtonView
+                    android:id="@+id/navOwl"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
                     android:importantForAccessibility="no" />
             </FrameLayout>
 
