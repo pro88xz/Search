@@ -811,8 +811,10 @@ class MainActivity : AppCompatActivity() {
         } else {
             binding.clearBtn.visibility = View.GONE
             binding.searchActions.visibility = View.GONE
-            // 48dp star + its 8dp margin. Was 38 for a 30dp star.
-            binding.urlBar.setPaddingRelative((14 * d).toInt(), top, (56 * d).toInt(), bottom)
+            // 48dp star + its 8dp margin. Was 38 for a 30dp star. The site's
+            // icon, when it shows, sits before the text.
+            val start = if (binding.siteIcon.visibility == View.VISIBLE) 48 else 14
+            binding.urlBar.setPaddingRelative((start * d).toInt(), top, (56 * d).toInt(), bottom)
         }
 
         val lp = binding.urlBarContainer.layoutParams
@@ -877,23 +879,29 @@ class MainActivity : AppCompatActivity() {
 
     // ---------- The site's icon in the search field ----------
 
-    /** Shows [url]'s crisp icon in the field while searching from it; nothing for home or non-web pages. */
-    private fun showSiteIcon(url: String?) {
+    /**
+     * The site's crisp icon at the start of the address box: there as soon as
+     * the page has loaded, and kept while a search is typed from it. Nothing
+     * on the home page or on pages that are not websites. [fetch]: the page
+     * has loaded, so its declared icons can be asked for; before that only an
+     * icon already known for the site is shown, never the last site's.
+     */
+    private fun showSiteIcon(url: String?, fetch: Boolean = true) {
         val key = SiteIcons.keyOf(url)
         val web = activeWeb()
-        if (url == null || key == null || web == null || url == homePage) { hideSiteIcon(); return }
+        if (url == null || key == null || web == null || url == homePage || isErrorPage(url)) {
+            hideSiteIcon(); return
+        }
         val ready = SiteIcons.cached(url)
-        if (ready != null) {
-            setSiteIcon(ready)
-        } else {
-            // WebView's own small icon while the crisp one is fetched, copied
-            // because WebView may recycle the one it holds.
-            web.favicon?.let { f ->
-                try { setSiteIcon(f.copy(f.config ?: Bitmap.Config.ARGB_8888, false)) } catch (e: Exception) { }
-            }
-            SiteIcons.load(this, web, url, nightOwl) { icon ->
-                if (searchMode && SiteIcons.keyOf(tabs.activeTab?.url) == key) setSiteIcon(icon)
-            }
+        if (ready != null) { setSiteIcon(ready); return }
+        if (!fetch) { hideSiteIcon(); return }
+        // WebView's own small icon while the crisp one is fetched, copied
+        // because WebView may recycle the one it holds.
+        web.favicon?.let { f ->
+            try { setSiteIcon(f.copy(f.config ?: Bitmap.Config.ARGB_8888, false)) } catch (e: Exception) { }
+        }
+        SiteIcons.load(this, web, url, nightOwl) { icon ->
+            if (SiteIcons.keyOf(tabs.activeTab?.url) == key) setSiteIcon(icon)
         }
     }
 
@@ -906,7 +914,7 @@ class MainActivity : AppCompatActivity() {
         v.setImageBitmap(icon)
         if (v.visibility != View.VISIBLE) {
             v.visibility = View.VISIBLE
-            updateSearchFieldActions()
+            padFieldForIcon()
         }
     }
 
@@ -915,7 +923,16 @@ class MainActivity : AppCompatActivity() {
         if (v.visibility == View.GONE) return
         v.visibility = View.GONE
         v.setImageDrawable(null)
-        updateSearchFieldActions()
+        padFieldForIcon()
+    }
+
+    /** Moves the field's text clear of the icon, or back, for whichever look the field has. */
+    private fun padFieldForIcon() {
+        if (fieldMode != FIELD_NORMAL) { updateSearchFieldActions(); return }
+        val d = resources.displayMetrics.density
+        val start = if (binding.siteIcon.visibility == View.VISIBLE) 48 else 14
+        binding.urlBar.setPaddingRelative((start * d).toInt(), binding.urlBar.paddingTop,
+            (56 * d).toInt(), binding.urlBar.paddingBottom)
     }
 
     /** Rounded corners, as a launcher draws a site's icon. */
@@ -1068,7 +1085,6 @@ class MainActivity : AppCompatActivity() {
     private fun exitSearchMode() {
         if (!searchMode) return
         searchMode = false
-        hideSiteIcon()
         styleUrlBarForSearch(false)
         animateSearchOut()
         // The bar's own look back.
@@ -1100,6 +1116,7 @@ class MainActivity : AppCompatActivity() {
         }
         // The page may still be scrolled past its pill; re-apply the compact bar.
         if (onHome && homeCompact) applyHomeCompact(true)
+        if (onHome) hideSiteIcon() else showSiteIcon(current, fetch = false)
         schedulePageTint(220L)
         androidx.core.view.ViewCompat.requestApplyInsets(binding.root)
     }
@@ -2421,7 +2438,13 @@ class MainActivity : AppCompatActivity() {
                 refreshNav()
             }
             override fun onPageFinished(view: WebView?, url: String?) {
-                if (view != null && view === activeWeb()) schedulePageTint(250L)
+                if (view != null && view === activeWeb()) {
+                    schedulePageTint(250L)
+                    uiHandler.removeCallbacks(tintLate)
+                    uiHandler.postDelayed(tintLate, 1600L)
+                    // The page's own icon list exists now.
+                    showSiteIcon(tabs.activeTab?.url ?: url)
+                }
                 // The upgrade worked, so nothing needs remembering about it.
                 url?.let { upgradedFrom.remove(it) }
                 // This is also reported for a load that never committed - one
@@ -2843,7 +2866,6 @@ class MainActivity : AppCompatActivity() {
     // reason the bar stops the page at its straight edge (applyBarOverlap).
 
     private var barsHidden = false
-    private var barsHiding = false
     // Read once per resume rather than on every scroll event (refreshScrollPrefs).
     private var hideBarsPref = true
     private var tintBarsPref = true
@@ -2894,7 +2916,6 @@ class MainActivity : AppCompatActivity() {
         val area = binding.webArea
         if (barsHidden || top.height <= 0 || top.visibility != View.VISIBLE) return
         barsHidden = true
-        barsHiding = true
         barsTopH = top.height
         val h = barsTopH.toFloat()
         val drop = (bottom.height + binding.navSheet.bottomInset).toFloat()
@@ -2905,7 +2926,6 @@ class MainActivity : AppCompatActivity() {
         bottom.animate().translationY(drop).setDuration(ms).setInterpolator(ease)
             .withEndAction {
                 if (!barsHidden) return@withEndAction
-                barsHiding = false
                 // Now the page takes the room: the top bar leaves the layout as
                 // the page area's offset is cleared, which cancel out on screen.
                 top.visibility = View.GONE
@@ -2942,7 +2962,6 @@ class MainActivity : AppCompatActivity() {
             bottom.translationY = drop
         }
         bottom.visibility = if (pageTyping) View.GONE else View.VISIBLE
-        barsHiding = false
         if (!animate || !animationsOn()) {
             top.translationY = 0f; top.alpha = 1f; area.translationY = 0f; bottom.translationY = 0f
             return
@@ -2972,12 +2991,17 @@ class MainActivity : AppCompatActivity() {
     private var bottomTint: IntArray? = null
     private var tintAnim: android.animation.ValueAnimator? = null
     private val tintSample = Runnable { samplePageTint() }
+    /** A second look a moment after a page finishes: hero pictures and dark sections paint late. */
+    private val tintLate = Runnable { samplePageTint() }
+    /** Tries while something is briefly in the way (the menu, a bar moving), so a page is never left untinted. */
+    private var tintRetries = 0
 
     private fun tintAllowed(url: String?): Boolean =
         !nightOwl && url != null && url != homePage && !isErrorPage(url) &&
             (url.startsWith("https://") || url.startsWith("http://")) && tintBarsPref
 
     private fun schedulePageTint(delay: Long = 300L) {
+        tintRetries = 0
         uiHandler.removeCallbacks(tintSample)
         uiHandler.postDelayed(tintSample, delay)
     }
@@ -2985,13 +3009,23 @@ class MainActivity : AppCompatActivity() {
     private fun samplePageTint() {
         val web = activeWeb() ?: return
         if (!tintAllowed(tabs.activeTab?.url)) { setBarTint(null, null, animate = true); return }
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         // Only a settled page with nothing over it: the strips must be the page.
+        // (The loading pill sits lower than the top strip, so it does not count.)
         if (barsHidden || searchMode || deckVisible || fullscreenView != null ||
-            binding.menuScrim.visibility == View.VISIBLE || binding.loadStatus.visibility == View.VISIBLE ||
+            binding.menuScrim.visibility == View.VISIBLE ||
             binding.webContainer.translationX != 0f || !web.isAttachedToWindow ||
             binding.topBar.translationY != 0f || binding.bottomBar.visibility != View.VISIBLE
-        ) return
+        ) {
+            // Something is in the way for a moment; look again shortly rather
+            // than leave the page untinted until the next scroll.
+            if (tintRetries++ < 20) uiHandler.postDelayed(tintSample, 700L)
+            return
+        }
+        tintRetries = 0
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            jsPageColours(web) { t, b -> if (web === activeWeb()) applyPageTint(t, b) }
+            return
+        }
         val d = resources.displayMetrics.density
         val area = IntArray(2).also { binding.webArea.getLocationInWindow(it) }
         val bar = IntArray(2).also { binding.bottomBar.getLocationInWindow(it) }
@@ -3002,8 +3036,49 @@ class MainActivity : AppCompatActivity() {
         val bottom = android.graphics.Rect(bar[0], bar[1] - (10 * d).toInt(), bar[0] + w, bar[1] - (2 * d).toInt())
         captureStrip(top) { t ->
             captureStrip(bottom) { b ->
-                if (web === activeWeb() && tintAllowed(tabs.activeTab?.url)) applyPageTint(t, b)
+                if (web !== activeWeb() || !tintAllowed(tabs.activeTab?.url)) return@captureStrip
+                if (t != null && b != null) { applyPageTint(t, b); return@captureStrip }
+                // The screen could not be read here (some phones refuse a
+                // window copy now and then): ask the page for its colours.
+                jsPageColours(web) { jt, jb ->
+                    if (web === activeWeb()) applyPageTint(t ?: jt, b ?: jb)
+                }
             }
+        }
+    }
+
+    /**
+     * The page's own colours along its top and bottom edges, left, middle and
+     * right: the background of whatever sits at each point, walking up to the
+     * first element that paints one (a gradient counts by its first colour).
+     */
+    private fun jsPageColours(web: WebView, done: (IntArray?, IntArray?) -> Unit) {
+        val js = "(function(){function c(e){while(e&&e.nodeType===1){var s=getComputedStyle(e);" +
+            "var m=(s.backgroundColor||'').match(/rgba?\\(([^)]+)\\)/);" +
+            "if(m){var p=m[1].split(',').map(parseFloat);if(p.length<4||p[3]>0.5)return[p[0],p[1],p[2]];}" +
+            "var g=(s.backgroundImage||'').indexOf('gradient')>=0&&s.backgroundImage.match(/rgba?\\(([^)]+)\\)/);" +
+            "if(g){var q=g[1].split(',').map(parseFloat);return[q[0],q[1],q[2]];}e=e.parentElement;}" +
+            "return null;}var w=innerWidth,h=innerHeight,o=[];" +
+            "[[.17,4],[.5,4],[.83,4],[.17,h-30],[.5,h-30],[.83,h-30]].forEach(function(p){" +
+            "var e=document.elementFromPoint(w*p[0],p[1]);o.push(e?c(e):null);});" +
+            "var d=c(document.body)||c(document.documentElement)||[255,255,255];" +
+            "return JSON.stringify(o.map(function(x){return x||d;}));})()"
+        try {
+            web.evaluateJavascript(js) { result ->
+                val colours = try {
+                    val text = org.json.JSONTokener(result ?: "").nextValue() as? String
+                    val arr = org.json.JSONArray(text ?: "[]")
+                    IntArray(arr.length()) { i ->
+                        val c = arr.getJSONArray(i)
+                        android.graphics.Color.rgb(c.getDouble(0).toInt().coerceIn(0, 255),
+                            c.getDouble(1).toInt().coerceIn(0, 255), c.getDouble(2).toInt().coerceIn(0, 255))
+                    }
+                } catch (e: Exception) { null }
+                if (colours == null || colours.size < 6) done(null, null)
+                else done(colours.copyOfRange(0, 3), colours.copyOfRange(3, 6))
+            }
+        } catch (e: Exception) {
+            done(null, null)
         }
     }
 
@@ -4513,6 +4588,8 @@ class MainActivity : AppCompatActivity() {
         // typed into.
         binding.urlBarContainer.visibility =
             if (isHome && !homeCompact && !searchMode) View.INVISIBLE else View.VISIBLE
+        if (isHome) hideSiteIcon()
+        else showSiteIcon(url, fetch = (activeWeb()?.progress ?: 0) >= 100)
         applyBarOverlap(isHome)
         refreshNav()
         refreshAdSlot()
@@ -5814,20 +5891,6 @@ class MainActivity : AppCompatActivity() {
             binding.bookmarkList.visibility = View.VISIBLE
         }
         bookmarksOpen = true
-        historyOpen = false
-    }
-
-    private fun hideBookmarks() {
-        binding.bookmarkList.visibility = View.GONE
-        binding.deckEmpty.visibility = View.GONE
-        binding.tabList.visibility = View.VISIBLE
-        bookmarksOpen = false
-    }
-
-    private fun hideHistory() {
-        binding.historyList.visibility = View.GONE
-        binding.deckEmpty.visibility = View.GONE
-        binding.tabList.visibility = View.VISIBLE
         historyOpen = false
     }
 

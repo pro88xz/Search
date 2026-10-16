@@ -204,4 +204,14 @@ These were built without a phone to run them on. Check each once:
 - [ ] A page behind HTTP sign-in (a router's admin page, or
       https://httpbin.org/basic-auth/user/pass): a "Sign in to ..." dialog;
       right details open the page, Cancel leaves the site's own 401 page.
+- [ ] (1.6.1) On a website the address box shows the site's icon once the
+      page has loaded, before the address; it stays while typing a search.
+- [ ] (1.6.1) On a dark site (e.g. meshy.ai) both bars turn a soft grey-green
+      within a second or two of the page loading, even on mobile data.
+- [ ] (1.6.1) Top Stories has no stories about killings, war, terror or other
+      graphic events; Star Wars, game and tech stories still appear.
+- [ ] (1.6.1) Play music or a video, leave the app: the media notification
+      shows the owl silhouette (purple or white), not a white square.
+- [ ] (1.6.1) Launcher icon, owl on error/offline pages and suggestion icons
+      look exactly as before (they are now WebP).
 

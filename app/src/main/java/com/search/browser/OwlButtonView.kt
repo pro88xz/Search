@@ -117,6 +117,9 @@ class OwlButtonView @JvmOverloads constructor(
     private var targetAt = 0L
     private var frameMs = FRAME_MS
     private var powerAt = 0L
+    /** Until when the owl moves at its full rate; after that it settles into a calmer one. */
+    private var livelyUntil = 0L
+    private var powerSave = false
 
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
     private val shaded = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -183,6 +186,7 @@ class OwlButtonView @JvmOverloads constructor(
     fun pop() {
         if (!animationsOn()) return
         popV += 9f
+        livelyUntil = SystemClock.uptimeMillis() + LIVELY_MS
         kick()
     }
 
@@ -212,6 +216,7 @@ class OwlButtonView @JvmOverloads constructor(
 
     private fun kick() {
         if (running || !isAttachedToWindow || windowVisibility != VISIBLE) return
+        livelyUntil = SystemClock.uptimeMillis() + LIVELY_MS
         running = true
         lastFrame = 0L
         postOnAnimation(tick)
@@ -255,10 +260,19 @@ class OwlButtonView @JvmOverloads constructor(
             }
             targetAt = now
         }
-        if (now - powerAt > 5000L || powerAt == 0L) {    // Battery Saver: a calmer 12fps
+        // Battery: full 30fps for half a minute after the owl appears or is
+        // tapped, then a calm 15fps for as long as it simply sits there, and
+        // 8fps in Battery Saver - the sky moves slowly, so it still looks
+        // alive, at a fraction of the drawing.
+        if (now - powerAt > 5000L || powerAt == 0L) {
             val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
-            frameMs = if (pm?.isPowerSaveMode == true) 83L else FRAME_MS
+            powerSave = pm?.isPowerSaveMode == true
             powerAt = now
+        }
+        frameMs = when {
+            powerSave -> 125L
+            now < livelyUntil || pop > 0.01f || popV > 0.01f -> FRAME_MS
+            else -> CALM_FRAME_MS
         }
         if (shownDay < 0f || !moving) {
             shownDay = target[0]; shownTwilight = target[1]
@@ -472,6 +486,8 @@ class OwlButtonView @JvmOverloads constructor(
 
     private companion object {
         const val FRAME_MS = 33L
+        const val CALM_FRAME_MS = 66L
+        const val LIVELY_MS = 30_000L
         const val SUN_R = 10.5f
         const val MOON_R = 10f
 
