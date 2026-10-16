@@ -2914,12 +2914,13 @@ class MainActivity : AppCompatActivity() {
             }.start()
     }
 
-    /** Brings the bars back; [animate] false puts them straight in place. */
+    /** Whether the phone runs animations (Remove animations / animator scale 0 says not). */
     private fun animationsOn(): Boolean =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) android.animation.ValueAnimator.areAnimatorsEnabled()
         else android.provider.Settings.Global.getFloat(contentResolver,
             android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) != 0f
 
+    /** Brings the bars back; [animate] false puts them straight in place. */
     private fun showBars(animate: Boolean = true) {
         if (!barsHidden) return
         barsHidden = false
