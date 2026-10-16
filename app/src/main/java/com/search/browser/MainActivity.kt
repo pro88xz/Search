@@ -1144,6 +1144,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        refreshScrollPrefs()
+        if (!tintBarsPref) setBarTint(null, null, animate = false)
         HealthStats.sessionStarted(this)
         registerNetworkWatch()
         // If a flexible update finished downloading while away, offer to install it.
@@ -1483,6 +1485,15 @@ class MainActivity : AppCompatActivity() {
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             @Suppress("DEPRECATION")
             window.navigationBarColor = android.graphics.Color.TRANSPARENT
+        }
+        // Debug builds report main-thread disk and network use and leaked
+        // resources to the log - the slow paths that become ANRs on a cheap
+        // phone - so they are seen while testing. Log only: never a crash.
+        if (BuildConfig.DEBUG) {
+            android.os.StrictMode.setThreadPolicy(android.os.StrictMode.ThreadPolicy.Builder()
+                .detectDiskReads().detectDiskWrites().detectNetwork().penaltyLog().build())
+            android.os.StrictMode.setVmPolicy(android.os.StrictMode.VmPolicy.Builder()
+                .detectLeakedClosableObjects().detectActivityLeaks().penaltyLog().build())
         }
         // The saved theme, before super.onCreate so the browser is built once,
         // in the chosen theme (Settings.applyNightMode).
@@ -2833,6 +2844,18 @@ class MainActivity : AppCompatActivity() {
 
     private var barsHidden = false
     private var barsHiding = false
+    // Read once per resume rather than on every scroll event (refreshScrollPrefs).
+    private var hideBarsPref = true
+    private var tintBarsPref = true
+    private var touchExploration = false
+
+    private fun refreshScrollPrefs() {
+        hideBarsPref = Settings.getBool(this, Settings.HIDE_BARS_ON_SCROLL, true)
+        tintBarsPref = Settings.getBool(this, Settings.TINT_BARS, true)
+        touchExploration = (getSystemService(ACCESSIBILITY_SERVICE) as?
+            android.view.accessibility.AccessibilityManager)?.isTouchExplorationEnabled == true
+        if (!hideBarsPref || touchExploration) showBars(animate = false)
+    }
     private var barScrollAcc = 0
     private var barsTopH = 0
     private var pageTyping = false
@@ -2840,11 +2863,9 @@ class MainActivity : AppCompatActivity() {
     private fun barsMayHide(web: View): Boolean =
         web === activeWeb() && !searchMode && !findActive && !deckVisible &&
             binding.menuScrim.visibility != View.VISIBLE && fullscreenView == null &&
-            pullRaw == 0f && !pullRefreshing &&
-            Settings.getBool(this, Settings.HIDE_BARS_ON_SCROLL, true) &&
+            pullRaw == 0f && !pullRefreshing && hideBarsPref &&
             // With TalkBack the bars are found by touch; they stay put.
-            (getSystemService(ACCESSIBILITY_SERVICE) as? android.view.accessibility.AccessibilityManager)
-                ?.isTouchExplorationEnabled != true
+            !touchExploration
 
     private fun onPageScrollForBars(web: View, y: Int, oldY: Int) {
         val dy = y - oldY
@@ -2953,8 +2974,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun tintAllowed(url: String?): Boolean =
         !nightOwl && url != null && url != homePage && !isErrorPage(url) &&
-            (url.startsWith("https://") || url.startsWith("http://")) &&
-            Settings.getBool(this, Settings.TINT_BARS, true)
+            (url.startsWith("https://") || url.startsWith("http://")) && tintBarsPref
 
     private fun schedulePageTint(delay: Long = 300L) {
         uiHandler.removeCallbacks(tintSample)

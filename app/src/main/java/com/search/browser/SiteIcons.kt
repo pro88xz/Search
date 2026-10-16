@@ -45,6 +45,9 @@ object SiteIcons {
     private val main = Handler(Looper.getMainLooper())
     /** Hosts being looked up now (main thread only), so a second ask does not start a second fetch. */
     private val inFlight = HashMap<String, MutableList<(Bitmap) -> Unit>>()
+    /** When each lookup started: one whose page was closed mid-way never answers, so it expires. */
+    private val startedAt = HashMap<String, Long>()
+    private const val STALE_LOOKUP_MS = 15_000L
 
     /** The page's declared icons as [[href, size], ...], size 0 when not given. */
     private const val COLLECT_JS = "(function(){try{var o=[];var ls=document.querySelectorAll('link[rel]');" +
@@ -78,8 +81,11 @@ object SiteIcons {
     fun load(context: Context, web: WebView, pageUrl: String, private: Boolean, onIcon: (Bitmap) -> Unit) {
         val key = keyOf(pageUrl) ?: return
         memory.get(key)?.let { onIcon(it); return }
-        inFlight[key]?.let { it.add(onIcon); return }
+        val now = android.os.SystemClock.uptimeMillis()
+        val pending = inFlight[key]
+        if (pending != null && now - (startedAt[key] ?: 0L) < STALE_LOOKUP_MS) { pending.add(onIcon); return }
         inFlight[key] = mutableListOf(onIcon)
+        startedAt[key] = now
         val file = File(File(context.cacheDir, "site_icons"), sha1(key) + ".png")
         val origin = Uri.parse(pageUrl).let { it.scheme + "://" + it.host + (if (it.port > 0) ":" + it.port else "") }
         val ua = try { android.webkit.WebSettings.getDefaultUserAgent(context) } catch (e: Exception) { null }
@@ -107,6 +113,7 @@ object SiteIcons {
 
     private fun deliver(key: String, icon: Bitmap) {
         memory.put(key, icon)
+        startedAt.remove(key)
         inFlight.remove(key)?.forEach { cb -> try { cb(icon) } catch (_: Exception) { } }
     }
 

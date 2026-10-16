@@ -23,7 +23,10 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
     <uses-feature android:name="android.hardware.location" android:required="false" />
+    <!-- enableOnBackInvokedCallback: predictive back (Android 13+). Every back
+         path goes through OnBackPressedDispatcher, which already speaks it. -->
     <application
+        android:enableOnBackInvokedCallback="true"
         android:allowBackup="true"
         android:fullBackupContent="@xml/backup_rules"
         android:dataExtractionRules="@xml/data_extraction_rules"
