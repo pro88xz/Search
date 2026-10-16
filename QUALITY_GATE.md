@@ -240,3 +240,12 @@ These were built without a phone to run them on. Check each once:
       under you; they update once you are back at the top.
 - [ ] (1.6.3) First run after Clear data: stories appear within about 3-5
       seconds, then fill out when the slower publishers answer.
+- [ ] (1.6.4) Menu > History: every row is a name over a site ("cats" over
+      "Google search", a page title over "youtube.com"); no row shows an
+      address. Same for Bookmarks and for history rows in suggestions.
+- [ ] (1.6.4) Home: no Reddit tile; Amazon is there with its icon; Via sits
+      last before Add with the Via app icon (after a moment on first run, a
+      "V" until then). Tapping Via opens the Play Store app on Via's listing.
+      Long-press Via > Remove takes only Via away.
+- [ ] (1.6.4) A dark site (movieboxpro.app, meshy.ai): no light line under the
+      top bar; the address pane reads as a lighter pane of the bar.

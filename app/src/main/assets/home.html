@@ -756,6 +756,9 @@
     // The captured icon wins whenever there is one: it came from the site
     // itself, it is already on the device, and it costs no request.
     if (t.local) { img.src = t.local; return; }
+    // An app's icon comes from the app (getAppIcon), which redraws the row
+    // once it has it; until then, the letter.
+    if (t.app) return;
 
     // Nothing captured yet. Only a tile the user chose on purpose may ask for
     // one - the built-ins, and anything they pinned themselves. A site that is
@@ -777,12 +780,20 @@
      that do not belong in a browser's shortcut row: Bing, because a second
      search engine is redundant when the whole top bar is search, and
      WhatsApp, because web.whatsapp.com is the QR-pairing desktop client and
-     is useless on a phone. Wikipedia is kept at the end on merit. */
+     is useless on a phone. Amazon, the biggest marketplace, sits high; Reddit
+     made way for it. Wikipedia is kept at the end on merit.
+
+     pinned: always in the row, in the last place before the plus, however
+     much history pushes the others off - Via, the music player, whose tile
+     opens its Play Store listing (in the Play Store app; MainActivity) and
+     wears the app's own icon, fetched from that listing once and kept
+     (app, getAppIcon). */
   var DEFAULTS = [
     {label:'Google',    url:'https://www.google.com'},
     // Drawn hard to the edge of its square, so it read a size larger than
     // everything beside it.
     {label:'YouTube',   url:'https://m.youtube.com',    scale:0.82},
+    {label:'Amazon',    url:'https://www.amazon.com'},
     // A circle inside a squircle leaves four white corners. 1.2 pushes the
     // blue past the frame's corner arc, so the clip takes a sliver off the
     // circle's edge and the white goes. The white f is untouched.
@@ -790,8 +801,9 @@
     {label:'Instagram', url:'https://www.instagram.com'},
     {label:'ChatGPT',   url:'https://chatgpt.com'},
     {label:'X',         url:'https://x.com'},
-    {label:'Reddit',    url:'https://www.reddit.com'},
-    {label:'Wikipedia', url:'https://m.wikipedia.org'}
+    {label:'Wikipedia', url:'https://m.wikipedia.org'},
+    {label:'Via',       url:'https://play.google.com/store/apps/details?id=app.devbangs.media',
+     app:'app.devbangs.media', pinned:true}
   ];
 
   var tilesSig = null, tilesAnimated = false;
@@ -823,16 +835,22 @@
     // rest, the built-ins falling off the right as real history takes their
     // places. One comparison key for all three sources, so a site cannot
     // appear twice under two spellings and a removal actually catches it.
-    function keyOf(u){ return domainOf(u).toLowerCase(); }
+    // A Play Store listing is the app, not the store: its key carries the
+    // app's id (Shortcuts.keyOf), so removing it leaves the rest of Play be.
+    function keyOf(u){
+      var d = domainOf(u).toLowerCase();
+      var m = d === 'play.google.com' ? /[?&]id=([\w.]+)/.exec(u) : null;
+      return m ? d + '/' + m[1].toLowerCase() : d;
+    }
 
-    var combined = [], seenKeys = [];
-    function consider(t){
+    var combined = [], pinned = [], seenKeys = [];
+    function consider(t, into){
       var k = keyOf(t.url);
       if (!k) return;
       if (hidden.indexOf(k) >= 0) return;      // removed by the user
       if (seenKeys.indexOf(k) >= 0) return;    // already in from a better source
       seenKeys.push(k);
-      combined.push(t);
+      (into || combined).push(t);
     }
     // Order of authority: what the user put there, then where they have been,
     // then what shipped with the app. canFetch, not builtIn: a shortcut the
@@ -844,15 +862,18 @@
       consider({label:labelFromDomain(r.domain), url:r.url, canFetch:false});
     });
     DEFAULTS.forEach(function(d){
-      consider({label:d.label, url:d.url, canFetch:true, scale:d.scale});
+      consider({label:d.label, url:d.url, canFetch:true, scale:d.scale, app:d.app},
+        d.pinned ? pinned : combined);
     });
 
-    // Eight sites and the plus: nine in a five-wide grid.
-    var list = combined.slice(0, 8);
+    // Eight sites and the plus: nine in a five-wide grid, the pinned ones last.
+    var list = combined.slice(0, Math.max(0, 8 - pinned.length)).concat(pinned).slice(0, 8);
     list.forEach(function(t){
       t.local = '';
       try {
-        if (A && A.getCachedFavicon) t.local = A.getCachedFavicon(domainOf(t.url)) || '';
+        // An app's tile wears the app's icon, never the store's favicon.
+        if (t.app) { if (A && A.getAppIcon) t.local = A.getAppIcon(t.app) || ''; }
+        else if (A && A.getCachedFavicon) t.local = A.getCachedFavicon(domainOf(t.url)) || '';
       } catch(e){}
     });
 

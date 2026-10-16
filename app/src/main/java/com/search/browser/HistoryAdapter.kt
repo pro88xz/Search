@@ -26,8 +26,10 @@ class HistoryAdapter(
 
     override fun onBindViewHolder(holder: VH, position: Int) {
         val e = entries[position]
-        holder.title.text = e.title
-        holder.url.text = e.url
+        // A name and a site, never an address: a search reads as what was
+        // searched, a page with no title of its own gets one (PageLabel).
+        holder.title.text = PageLabel.title(e.title, e.url)
+        holder.url.text = PageLabel.sub(e.url)
         holder.itemView.setOnClickListener { onSelect(e) }
         holder.itemView.setOnLongClickListener { anchor ->
             val menu = PopupMenu(anchor.context, anchor)

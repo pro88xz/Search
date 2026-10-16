@@ -32,6 +32,22 @@ object Shortcuts {
             .lowercase()
     } catch (e: Exception) { "" }
 
+    /**
+     * What a tile is remembered by: its site, except that a Play Store
+     * listing is the app it lists - so removing the Via tile does not also
+     * take away a Play Store shortcut, or another app's. Matches keyOf in
+     * home.html.
+     */
+    fun keyOf(url: String): String {
+        val dom = domainOf(url)
+        if (dom != "play.google.com") return dom
+        val id = try { android.net.Uri.parse(url).getQueryParameter("id") } catch (e: Exception) { null }
+        return if (id != null && PLAY_ID.matches(id)) dom + "/" + id.lowercase() else dom
+    }
+
+    /** An Android application id: "app.devbangs.media". */
+    val PLAY_ID = Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+")
+
     // ---- custom ----------------------------------------------------------
 
     fun loadCustom(c: Context): List<Entry> {
@@ -48,10 +64,10 @@ object Shortcuts {
 
     fun addCustom(c: Context, label: String, url: String) {
         if (url.isBlank()) return
-        val dom = domainOf(url)
+        val dom = keyOf(url)
         val list = loadCustom(c).toMutableList()
         // Same site twice is not two shortcuts.
-        list.removeAll { domainOf(it.url) == dom }
+        list.removeAll { keyOf(it.url) == dom }
         list.add(Entry(label.ifBlank { dom }, url))
         saveCustom(c, list)
         // Adding something back is an undo of having removed it.
@@ -59,8 +75,8 @@ object Shortcuts {
     }
 
     fun removeCustom(c: Context, url: String) {
-        val dom = domainOf(url)
-        saveCustom(c, loadCustom(c).filterNot { domainOf(it.url) == dom })
+        val dom = keyOf(url)
+        saveCustom(c, loadCustom(c).filterNot { keyOf(it.url) == dom })
     }
 
     private fun saveCustom(c: Context, list: List<Entry>) {

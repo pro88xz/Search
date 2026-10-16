@@ -688,7 +688,7 @@ class MainActivity : AppCompatActivity() {
             .map { t ->
                 JSONObject()
                     .put("kind", "tab")
-                    .put("title", t.title.ifBlank { siteNameOf(t.url) })
+                    .put("title", PageLabel.title(t.title, t.url).ifBlank { siteNameOf(t.url) })
                     .put("url", t.url)
                     .put("sub", "Switch to tab \u00B7 " + siteNameOf(t.url))
                     .put("tabId", t.id)
@@ -725,7 +725,7 @@ class MainActivity : AppCompatActivity() {
             } else {
                 val text = readClipboardText() ?: return null
                 if (!looksLikeLink(text)) return null
-                offer.put("url", text).put("sub", text)
+                offer.put("url", text).put("sub", PageLabel.siteOf(text).ifEmpty { text })
             }
         } catch (e: Exception) { null }
     }
@@ -1770,7 +1770,20 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun open(url: String) {
             if (!privileged) return
-            runOnUiThread { loadInto(activeWeb(), url) }
+            runOnUiThread { if (!openPlayListing(url)) loadInto(activeWeb(), url) }
+        }
+
+        /**
+         * The icon of the app a home tile stands for (Via), as a data: URL,
+         * or "" while it is being fetched - the row is redrawn when it lands.
+         */
+        @JavascriptInterface
+        fun getAppIcon(appId: String): String {
+            if (!privileged) return ""
+            return AppIcons.cached(this@MainActivity, appId) ?: run {
+                AppIcons.fetch(this@MainActivity, appId) { runOnUiThread { refreshHomeTiles() } }
+                ""
+            }
         }
         @JavascriptInterface
         fun focusSearch() {
@@ -2070,16 +2083,9 @@ class MainActivity : AppCompatActivity() {
         android.os.SystemClock.uptimeMillis() - lastSuggestScroll < 250L
 
     // Recognises a stored results page, so a past search can be offered as the
-    // query that was typed rather than as the engine's URL.
-    private fun searchQueryOf(url: String): String? = try {
-        val u = android.net.Uri.parse(url)
-        val host = u.host ?: ""
-        val engine = listOf("google.", "bing.", "duckduckgo.", "search.yahoo.",
-            "ecosia.", "startpage.", "search.brave.").any { host.contains(it) }
-        if (engine) u.getQueryParameter("q")?.takeIf { it.isNotBlank() } else null
-    } catch (e: Exception) {
-        null
-    }
+    // query that was typed rather than as the engine's URL - on every engine
+    // in Settings, not only the ones whose query is called "q" (PageLabel).
+    private fun searchQueryOf(url: String): String? = PageLabel.searchOf(url)?.first
 
     private fun buildSuggestions(query: String): List<JSONObject> {
         // On focus, offer recents. While typing, hold local matches back until
@@ -2095,7 +2101,8 @@ class MainActivity : AppCompatActivity() {
         val out = mutableListOf<JSONObject>()
         local.forEach { (kind, title, url) ->
             val q = searchQueryOf(url)
-            val shown = q ?: title
+            // A page saved under its address gets a name made from it.
+            val shown = q ?: PageLabel.title(title, url)
             if (!seen.add(shown.lowercase())) return@forEach
             val o = JSONObject().put("kind", kind).put("title", shown).put("url", url)
             // A past search reads as a query: no page title, no results URL.
@@ -2257,6 +2264,15 @@ class MainActivity : AppCompatActivity() {
                         }
                         return true
                     }
+                }
+                // A tapped link to an app's Play Store listing opens the Play
+                // Store app on it, as Chrome does - that is where it can be
+                // installed. Only for a tap: a page cannot send the user off
+                // to the store by itself.
+                if (scheme == "https" && request.isForMainFrame && request.hasGesture() &&
+                    openPlayListing(uri.toString())) {
+                    closeIfNeverLoaded(view)
+                    return true
                 }
                 // Web content and our own asset pages: load here as normal.
                 if (scheme == "http" || scheme == "https" || scheme == "file" ||
@@ -3293,7 +3309,7 @@ class MainActivity : AppCompatActivity() {
             field.setTextColor(android.graphics.Color.WHITE)
             field.setHintTextColor(0xB3FFFFFF.toInt())
             // The grey pill becomes a pane of the bar's own colour, lifted.
-            field.backgroundTintList = android.content.res.ColorStateList.valueOf(0x26FFFFFF)
+            field.backgroundTintList = android.content.res.ColorStateList.valueOf(0x33FFFFFF)
             binding.starBtn.imageTintList = white
             binding.clearBtn.imageTintList = white
         } else {
@@ -3890,12 +3906,12 @@ class MainActivity : AppCompatActivity() {
             .setTitle("Remove " + label.ifBlank { "this shortcut" } + "?")
             .setMessage("It comes off the home page. Your history and bookmarks are not touched.")
             .setPositiveButton("Remove") { _, _ ->
-                val dom = Shortcuts.domainOf(url)
+                val dom = Shortcuts.keyOf(url)
                 // One the user added is simply forgotten. A built-in or a site
                 // from history is generated every render, so the only way to
                 // keep it gone is to remember that it was removed.
                 val wasCustom = Shortcuts.loadCustom(this)
-                    .any { Shortcuts.domainOf(it.url) == dom }
+                    .any { Shortcuts.keyOf(it.url) == dom }
                 if (wasCustom) Shortcuts.removeCustom(this, url)
                 else Shortcuts.hide(this, dom)
                 refreshHomeTiles()
@@ -7361,6 +7377,26 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             android.widget.Toast.makeText(this,
                 "Voice search not available", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * Opens a Play Store listing (play.google.com/store/apps/details?id=...)
+     * in the Play Store app. False when [url] is not one, or there is no Play
+     * Store on the phone - the listing then opens as a web page.
+     */
+    private fun openPlayListing(url: String): Boolean {
+        val uri = try { android.net.Uri.parse(url) } catch (e: Exception) { return false }
+        if (uri.host?.lowercase() != "play.google.com" || uri.path != "/store/apps/details") return false
+        val id = uri.getQueryParameter("id")?.takeIf { Shortcuts.PLAY_ID.matches(it) } ?: return false
+        return try {
+            startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,
+                android.net.Uri.parse("market://details?id=$id"))
+                .setPackage("com.android.vending")
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+            true
+        } catch (e: Exception) {
+            false
         }
     }
 

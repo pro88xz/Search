@@ -136,8 +136,18 @@ class TopSheetBar @JvmOverloads constructor(
                 if (dark) Color.argb((110 * own).toInt(), 0, 0, 0)
                 else Color.argb((26 * own).toInt(), 60, 48, 112))
         }
-        val base = if (dark) Color.argb(18, 255, 255, 255)
-            else mix(surfaceColor, accent, 0.12f)
+        // The hairline follows the page's colours too. It was the plain bar's
+        // pale lavender on every bar, so a dark page's bar ended in a bright
+        // line across the screen. A dark bar meets its page with no line, as
+        // Chrome's does; a light one with a shade of itself.
+        val t2 = tint
+        val tinted = !flat && t2 != null && t2.size == 3
+        val base = when {
+            tinted && PageTint.isDark(t2!!) -> Color.TRANSPARENT
+            tinted -> mix(t2!![1], Color.BLACK, 0.10f)
+            dark -> Color.argb(18, 255, 255, 255)
+            else -> mix(surfaceColor, accent, 0.12f)
+        }
         line.color = base
         line.alpha = (Color.alpha(base) * own).toInt()
         lineShows = own > 0f
