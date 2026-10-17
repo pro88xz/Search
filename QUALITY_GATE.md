@@ -257,3 +257,35 @@ These were built without a phone to run them on. Check each once:
       developer.android.com: both bars stay white (dark in dark theme), with
       dark icons, on every site. Settings > Customize > Page colours in the
       bars is off; turning it on brings the site colours back.
+- [ ] (1.7.0) Home feed: scroll to the ad card at the end, scroll up a little so
+      the bars come back, then down again: the card never shows lower than
+      its place for a moment, and near the end of the feed the bars stay.
+      The card still loads, shows "Ad" and opens on tap as before.
+- [ ] (1.7.0) Settings and every section (Security, Customize, Site settings,
+      Accessibility, Browsing data, Performance & health, Ad blocking): the
+      same light grey page as home and search (no lavender), white cards
+      under accent labels, in light and dark. Change the accent: switches,
+      radio buttons, icons, labels and dialog buttons follow it. Night Owl:
+      the bars keep their purple wash.
+- [ ] (1.7.0) Page colours in the bars on: on a dark site (meshy.ai,
+      movieboxpro.app) the address box is a visible lighter pane with white
+      text; on a coloured light site it is a shade darker than the bar. It
+      eases with the bar when the colour changes.
+- [ ] (1.7.0) Menu > Share, Translate page (and Show original on the
+      translated page), Reader view (on a news article; again to go back;
+      on home it says to open a page), Add to Home screen (the icon opens the
+      page in Search).
+- [ ] (1.7.0) Tabs: close one in the deck - "Tab closed · Undo" brings it
+      back in its place with Back still working; Menu > Reopen closed tab
+      later does the same. Not offered in Night Owl.
+- [ ] (1.7.0) Settings > Make Search your default browser: Android's own
+      dialog (Android 10+) or Default apps; the row goes once Search is the
+      default. On the fourth launch the one-time offer appears once.
+- [ ] (1.7.0) Downloads: a multi-GB file (a Linux ISO) downloads with
+      "45% · x of y GB · z MB/s" in the list, survives Wi-Fi off/on, and the
+      app stays smooth. A web app export of a few hundred MB (a blob: link)
+      saves with a progress notification and lands in Downloads.
+- [ ] (1.7.0) Search suggestions off (Security): typing shows history and
+      bookmarks only. Dark websites on (dark theme, Android 13+): a white
+      site is darkened. Force enable zoom on: a site that blocks pinch-zoom
+      zooms.

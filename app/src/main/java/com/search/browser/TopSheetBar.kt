@@ -97,7 +97,13 @@ class TopSheetBar @JvmOverloads constructor(
             repaint()
         }
 
-    private val accent = Color.parseColor("#8B6BD8")
+    /**
+     * The bar's own surface. Any other [surfaceColor] is Night Owl's purple
+     * wash, which keeps its lavender line and shadow; the plain bar's are
+     * neutral.
+     */
+    private val plainSurface = context.getColor(R.color.barSurface)
+    private val owlAccent = Color.parseColor("#8B6BD8")
 
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val line = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -130,23 +136,27 @@ class TopSheetBar @JvmOverloads constructor(
         // holds the address field, and rendering all of it in software to gain
         // a shadow on an old phone is the wrong trade. The hairline still
         // draws there, so the edge still reads.
+        val owlWash = surfaceColor != plainSurface
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             if (own <= 0f) fill.clearShadowLayer()
             else fill.setShadowLayer(14f * dp, 0f, 1f * dp,
                 if (dark) Color.argb((110 * own).toInt(), 0, 0, 0)
-                else Color.argb((26 * own).toInt(), 60, 48, 112))
+                else if (owlWash) Color.argb((26 * own).toInt(), 60, 48, 112)
+                else Color.argb((24 * own).toInt(), 0, 0, 0))
         }
-        // The hairline follows the page's colours too. It was the plain bar's
-        // pale lavender on every bar, so a dark page's bar ended in a bright
-        // line across the screen. A dark bar meets its page with no line, as
-        // Chrome's does; a light one with a shade of itself.
+        // The hairline follows the page's colours too. A dark bar meets its
+        // page with no line, as Chrome's does; a light one with a shade of
+        // itself. The plain bar's line and shadow are neutral: they were a
+        // pale lavender, a purple tint no other surface carried. Night Owl's
+        // wash keeps its lavender ones.
         val t2 = tint
         val tinted = !flat && t2 != null && t2.size == 3
         val base = when {
             tinted && PageTint.isDark(t2!!) -> Color.TRANSPARENT
             tinted -> mix(t2!![1], Color.BLACK, 0.10f)
             dark -> Color.argb(18, 255, 255, 255)
-            else -> mix(surfaceColor, accent, 0.12f)
+            owlWash -> mix(surfaceColor, owlAccent, 0.12f)
+            else -> mix(surfaceColor, Color.BLACK, 0.09f)
         }
         line.color = base
         line.alpha = (Color.alpha(base) * own).toInt()

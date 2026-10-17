@@ -59,6 +59,14 @@ class MainActivity : AppCompatActivity() {
         private val historyIo = java.util.concurrent.Executors.newSingleThreadExecutor()
 
         /**
+         * One thread for suggestions: each keystroke used to start a thread of
+         * its own with a network request in it, so fast typing had a dozen
+         * requests in flight at once, most of them for queries already typed
+         * past. A query superseded before its turn is skipped.
+         */
+        private val suggestIo = java.util.concurrent.Executors.newSingleThreadExecutor()
+
+        /**
          * How long a sign-in pop-up may sit on the site's own page, back from
          * the provider and showing nothing, before it is taken to have
          * stalled. A callback page that works closes itself well inside this.
@@ -144,12 +152,16 @@ class MainActivity : AppCompatActivity() {
     // spent on first use - the bridge is on every page, so without this any
     // site could write to the gallery unprompted.
     @Volatile private var blobSaveToken: String? = null
-    // Same one-shot idea for a blob: download. The bridge is reachable from
-    // every page, so without a ticket any site could drop a file into the
-    // user's Downloads folder unprompted.
-    @Volatile private var blobDownloadToken: String? = null
-    private var blobDownloadName: String = "download"
-    private var blobDownloadMime: String? = null
+    // Same one-shot idea for a blob: download, one ticket per file being
+    // saved. The bridge is reachable from every page, so without a ticket any
+    // site could drop a file into the user's Downloads folder unprompted.
+    private class BlobSave(val name: String, val mime: String?) {
+        @Volatile var sink: DownloadSink? = null
+        @Volatile var total = -1L
+        @Volatile var progress: SaveProgress? = null
+        @Volatile var checkedAt = 0L
+    }
+    private val blobSaves = java.util.concurrent.ConcurrentHashMap<String, BlobSave>()
     private val storagePermLauncher = registerForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -266,7 +278,11 @@ class MainActivity : AppCompatActivity() {
             val uris: Array<android.net.Uri>? = when {
                 data?.clipData != null -> {
                     val cd = data.clipData!!
-                    Array(cd.itemCount) { i -> cd.getItemAt(i).uri }
+                    // A picked item can come back with no uri (a text-only
+                    // item from some pickers); a null handed to the page's
+                    // file input is a crash inside WebView, so it is dropped.
+                    (0 until cd.itemCount).mapNotNull { i -> cd.getItemAt(i)?.uri }
+                        .toTypedArray().takeIf { it.isNotEmpty() }
                 }
                 data?.data != null -> arrayOf(data.data!!)
                 else -> null
@@ -539,11 +555,13 @@ class MainActivity : AppCompatActivity() {
             // WebView, not of the page in it.
             Settings.getBool(this, Settings.SEC_SAFE_BROWSING, true),
             Settings.getBool(this, Settings.SEC_BLOCK_3P_COOKIES, false),
-            Settings.getTextScale(this)
+            Settings.getTextScale(this),
+            Settings.getBool(this, Settings.DARK_WEB, false)
         ).joinToString("|")
     }
     private var suggestAdapter: SuggestAdapter? = null
-    private var suggestSeq = 0
+    @Volatile private var suggestSeq = 0
+
     // The suggestion backdrop's own bottom padding from the layout, kept so
     // the keyboard inset can be added on top of it rather than replacing it.
     // Each overlay's own bottom padding, before reachUnderNavBar adds to it.
@@ -664,12 +682,15 @@ class MainActivity : AppCompatActivity() {
         copiedLinkSuggestion(q)?.let { first += it }
         first += openTabSuggestions(q)
         val firstUrls = first.map { it.optString("url") }.filter { it.isNotBlank() }.toSet()
-        Thread {
-            val items = first + buildSuggestions(q).filter { it.optString("url") !in firstUrls }
-            runOnUiThread {
-                if (id == suggestSeq && searchMode) suggestAdapter?.submit(items, q)
+        try {
+            suggestIo.execute {
+                if (id != suggestSeq) return@execute
+                val items = first + buildSuggestions(q).filter { it.optString("url") !in firstUrls }
+                runOnUiThread {
+                    if (id == suggestSeq && searchMode) suggestAdapter?.submit(items, q)
+                }
             }
-        }.start()
+        } catch (e: java.util.concurrent.RejectedExecutionException) { /* closing down */ }
     }
 
     /**
@@ -843,9 +864,9 @@ class MainActivity : AppCompatActivity() {
             else -> FIELD_H_NORMAL
         } * d).toInt()
         binding.urlBarContainer.layoutParams = lp
-        // The hint colour was just reset; on a bar the page has darkened the
-        // field keeps its light text.
-        if (topOnDark) paintTopForeground()
+        // The hint colour was just reset; on a bar the page has coloured the
+        // field keeps its pane and its readable text.
+        if (fieldPaneFor != null || topOnDark) paintTopForeground()
     }
 
     private fun styleUrlBarForSearch(searching: Boolean) {
@@ -1183,6 +1204,8 @@ class MainActivity : AppCompatActivity() {
                 appUpdateManager.completeUpdate()
             }
         }
+        // An accent changed in Settings reaches the dialogs opened from here on.
+        Settings.applyAccent(this)
         applyAccentTints()
         // Back from the supporter page, possibly having just bought the ads
         // away. Above the early return below, which fires whenever the site
@@ -1211,6 +1234,7 @@ class MainActivity : AppCompatActivity() {
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                     safeBrowsingEnabled = safeBrowsing
                 }
+                applyDarkWeb(this)
             }
             (tab.webView as? BrowserWebView)?.blockAutoplay = blockAutoplay
             // Third-party cookies are a property of the WebView held by the
@@ -1525,6 +1549,8 @@ class MainActivity : AppCompatActivity() {
         // in the chosen theme (Settings.applyNightMode).
         Settings.applyNightMode(this)
         super.onCreate(savedInstanceState)
+        // The chosen accent over the theme, for dialogs and text handles.
+        Settings.applyAccent(this)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         // The bottom bar's overlap as laid out (the home page's), before
@@ -1615,12 +1641,20 @@ class MainActivity : AppCompatActivity() {
             insets
         }
         setupSuggestOverlay()
-        // The page changes height when the keyboard comes and goes, and with
-        // it the bottom bar. The feed ad card is placed against the page's
-        // bottom and only re-placed on scroll, so it is re-seated here too.
+        // The page changes height when the keyboard comes and goes, and when
+        // the bars leave or come back (setPageUnderBars). The feed ad card is
+        // placed against the page's bottom and only re-placed on scroll, so it
+        // is re-seated here too - in this same layout pass, before the frame
+        // is drawn. It used to be posted, so for one frame after each resize
+        // the card kept the offset worked out for the old height: at the end
+        // of the bars' return the page lost 86dp (58 of top bar, 28 of bottom
+        // bar) and the card flashed 86dp too low before snapping into place.
+        // The posted pass stays as a second look, for a WebView that settles
+        // its scroll a moment after its size.
         binding.webArea.addOnLayoutChangeListener { _, _, top, _, bottom, _, oldTop, _, oldBottom ->
             if (bottom - top != oldBottom - oldTop) {
                 activeWeb()?.let { w ->
+                    if (isLiveWeb(w)) positionAdSlot(w, w.scrollY)
                     binding.adSlot.post { if (isLiveWeb(w)) positionAdSlot(w, w.scrollY) }
                 }
             }
@@ -1689,6 +1723,8 @@ class MainActivity : AppCompatActivity() {
             // up. A few seconds in, the app is idle and the home page is
             // there - which is the only moment this is not an interruption.
             binding.root.postDelayed({ maybeAskForReview() }, 6000L)
+            // Later, and never in the same launch as a review: one ask at a time.
+            binding.root.postDelayed({ maybeOfferDefaultBrowser() }, 9000L)
         }
 
         // A recreation must not re-handle the intent that launched the app, or
@@ -1711,6 +1747,10 @@ class MainActivity : AppCompatActivity() {
             openTab(first, startUrl)
         }
         updateTabCount()
+        // Started from a "Saved" notification (SaveProgress): straight to Downloads.
+        if (fresh && intent?.getStringExtra(BrowsingData.EXTRA_OPEN) == BrowsingData.OPEN_DOWNLOADS) {
+            binding.root.post { if (!isFinishing && !isDestroyed) openDownloads() }
+        }
 
     }
 
@@ -1877,22 +1917,84 @@ class MainActivity : AppCompatActivity() {
             imageSaveFailed()
         }
 
+        // A blob: download, streamed in pieces (requestBlobDownload). These
+        // run on WebView's bridge thread, never the main one, and the page
+        // waits for each to return before it reads the next piece - so the
+        // file is written as fast as the disk takes it and no faster, and
+        // only one piece is ever held in memory.
+
+        /** The page has the file and its size (-1 unknown); false stops it. */
         @JavascriptInterface
-        fun saveBlobFile(token: String?, dataUrl: String?) {
-            if (token == null || token != blobDownloadToken) return
-            blobDownloadToken = null
-            val name = blobDownloadName
-            val mime = blobDownloadMime
-            if (dataUrl == null || !dataUrl.startsWith("data:")) {
-                downloadFailed(); return
+        fun blobFileBegin(token: String?, length: String?, type: String?): Boolean {
+            val save = token?.let { blobSaves[it] } ?: return false
+            if (save.sink != null) return false
+            val total = length?.toLongOrNull()?.takeIf { it > 0 } ?: -1L
+            val free = freeDownloadSpace()
+            if (downloadRoom(total, free) == ROOM_NONE) {
+                blobSaves.remove(token)
+                runOnUiThread { if (!isFinishing && !isDestroyed) showNoRoomForDownload(save.name, total, free) }
+                return false
             }
-            Thread { saveDataDownload(dataUrl, name, mime) }.start()
+            val declared = save.mime?.takeIf { !isGenericMime(it) }
+                ?: type?.substringBefore(';')?.trim()?.takeIf { !isGenericMime(it) }
+            val mime = downloadMime(save.name, declared) ?: "application/octet-stream"
+            val sink = DownloadSink.open(this@MainActivity, save.name, mime)
+            if (sink == null) { blobSaves.remove(token); downloadFailed(); return false }
+            save.total = total
+            save.progress = SaveProgress(this@MainActivity, sink.name)
+            save.sink = sink
+            return true
+        }
+
+        /** One piece of the file, base64; false stops the page sending more. */
+        @JavascriptInterface
+        fun blobFileChunk(token: String?, b64: String?): Boolean {
+            val save = token?.let { blobSaves[it] } ?: return false
+            val sink = save.sink ?: return false
+            return try {
+                val bytes = android.util.Base64.decode(b64 ?: "", android.util.Base64.DEFAULT)
+                sink.write(bytes)
+                // A file of unknown size can still run the phone out of
+                // room: looked at again every 64MB, and stopped while there is
+                // still space for Android to keep running.
+                if (sink.written - save.checkedAt >= 64L * 1024 * 1024) {
+                    save.checkedAt = sink.written
+                    val free = freeDownloadSpace()
+                    if (free in 0 until 200L * 1024 * 1024) throw java.io.IOException("storage full")
+                }
+                save.progress?.update(sink.written, save.total)
+                true
+            } catch (t: Throwable) {
+                // Out of memory on a modest phone, or the disk refusing: a
+                // clear failure and the half file removed, never the app dying.
+                blobSaves.remove(token)
+                sink.abort()
+                save.progress?.done(false)
+                downloadFailed()
+                false
+            }
+        }
+
+        /** The last piece has arrived. */
+        @JavascriptInterface
+        fun blobFileEnd(token: String?) {
+            val save = token?.let { blobSaves.remove(it) } ?: return
+            val sink = save.sink ?: return
+            val uri = if (sink.written > 0) sink.finish() else { sink.abort(); null }
+            if (uri == null) { save.progress?.done(false); downloadFailed(); return }
+            SavedFiles.add(this@MainActivity, sink.name, uri, sink.mime, sink.written)
+            save.progress?.done(true)
+            runOnUiThread {
+                HealthStats.count(this@MainActivity, HealthStats.DOWNLOADS)
+                toast("Saved to Downloads: " + sink.name)
+                if (downloadsOpen) refreshDownloads()
+            }
         }
 
         @JavascriptInterface
-        fun saveBlobFileFailed(token: String?) {
-            if (token == null || token != blobDownloadToken) return
-            blobDownloadToken = null
+        fun blobFileFailed(token: String?) {
+            val save = token?.let { blobSaves.remove(it) } ?: return
+            save.sink?.let { it.abort(); save.progress?.done(false) }
             downloadFailed()
         }
 
@@ -2035,6 +2137,9 @@ class MainActivity : AppCompatActivity() {
         // because they never leave the device.
         if (nightOwl) return emptyList()
         if (query.isEmpty()) return emptyList()
+        // Settings > Search Security > Search suggestions off: what is typed
+        // stays on the phone until it is searched for.
+        if (!Settings.getBool(this, Settings.SEARCH_SUGGESTIONS, true)) return emptyList()
         val q = URLEncoder.encode(query, "UTF-8")
         val endpoint = when (Settings.getEngineName(this)) {
             "DuckDuckGo" -> "https://duckduckgo.com/ac/?type=list&q=$q"
@@ -2120,6 +2225,30 @@ class MainActivity : AppCompatActivity() {
 
     // ---------- WebView creation / lifecycle ----------
 
+    /**
+     * Settings > Customize > Dark websites: in the dark theme, a site with no
+     * dark look of its own is darkened by WebView itself, as Chrome's "Dark
+     * mode for web contents" does. Sites that have a dark look use it either
+     * way. Android 13 and up (WebView darkens only for an app in a dark theme,
+     * and the older switch does nothing for an app targeting Android 13+).
+     */
+    private fun applyDarkWeb(s: android.webkit.WebSettings) {
+        if (Build.VERSION.SDK_INT < 33) return
+        try {
+            s.setAlgorithmicDarkeningAllowed(Settings.getBool(this, Settings.DARK_WEB, false))
+        } catch (e: Throwable) { /* an older WebView without the switch */ }
+    }
+
+    /**
+     * Settings > Accessibility > Force zoom: a page that turns pinch-zoom off
+     * in its viewport (user-scalable=no, maximum-scale=1) can be zoomed all
+     * the same, as Chrome's "Force enable zoom" allows.
+     */
+    private val FORCE_ZOOM_JS = "(function(){var v=document.querySelector('meta[name=viewport]');" +
+        "if(!v)return;var c=v.getAttribute('content')||'';" +
+        "var n=c.replace(/\\s*,?\\s*(user-scalable|maximum-scale|minimum-scale)\\s*=\\s*[^,]*/gi,'').replace(/^\\s*,/,'');" +
+        "v.setAttribute('content',(n?n+',':'')+'user-scalable=yes,maximum-scale=10');})()"
+
     @SuppressLint("SetJavaScriptEnabled", "AddJavascriptInterface")
     private fun newWebView(): WebView {
         val web = BrowserWebView(this)
@@ -2204,6 +2333,7 @@ class MainActivity : AppCompatActivity() {
                 safeBrowsingEnabled = Settings.getBool(
                     this@MainActivity, Settings.SEC_SAFE_BROWSING, true)
             }
+            applyDarkWeb(this)
         }
         // Let the system password manager (Google) offer saved logins in web
         // forms, so sign-ins autofill like Chrome.
@@ -2529,6 +2659,8 @@ class MainActivity : AppCompatActivity() {
                 ) {
                     view?.evaluateJavascript(AdBlocker.hideCss(), null)
                 }
+                if (Settings.getBool(this@MainActivity, Settings.A11Y_FORCE_ZOOM, false) &&
+                    shownHost != null) view?.evaluateJavascript(FORCE_ZOOM_JS, null)
                 // Desktop mode: force a desktop-width viewport so responsive
                 // sites render their desktop layout.
                 if (Settings.getBool(this@MainActivity, Settings.DESKTOP_MODE, false)) {
@@ -2568,7 +2700,9 @@ class MainActivity : AppCompatActivity() {
                     // whole 200-entry list as JSON, on every page load.
                     val title = view?.title ?: ""
                     val ctx = applicationContext
-                    historyIo.execute { History.add(ctx, title, url) }
+                    historyIo.execute {
+                        try { History.add(ctx, title, url) } catch (t: Throwable) { /* one visit unrecorded */ }
+                    }
                 } else if (url != null && nightOwl) {
                     // Noted so leaving can clear these hosts and only these.
                     // Held in memory only: a list of privately visited sites
@@ -2987,8 +3121,13 @@ class MainActivity : AppCompatActivity() {
         // one that would then fit, there would be no scrolling up to bring
         // the bars back.
         val grow = binding.topBar.height + binding.bottomBar.height
+        // Nor near the page's end. Growing the page there pulls its scroll
+        // back by as much as it grew, so the end of the page - the home feed's
+        // ad card, a site's footer - jumps under the finger. Within the bars'
+        // height of the end they stay.
+        val left = b.scrollRange() - web.height - y
         if (!barsHidden && barScrollAcc > threshold && y > binding.topBar.height &&
-            b.scrollRange() - web.height - grow > threshold * 2) hideBars()
+            b.scrollRange() - web.height - grow > threshold * 2 && left > grow + threshold) hideBars()
         else if (barsHidden && barScrollAcc < -threshold) showBars()
     }
 
@@ -3331,31 +3470,65 @@ class MainActivity : AppCompatActivity() {
         val controller = androidx.core.view.WindowInsetsControllerCompat(window, window.decorView)
         controller.isAppearanceLightStatusBars = if (top != null) !topDark else !themeDark
         controller.isAppearanceLightNavigationBars = if (bottom != null) !bottomDark else !themeDark
-        if (topDark != topOnDark) { topOnDark = topDark; paintTopForeground() }
+        val pane = top?.getOrNull(1)
+        if (topDark != topOnDark || pane != fieldPaneFor) {
+            topOnDark = topDark
+            fieldPaneFor = pane
+            paintTopForeground()
+        }
         if (bottomDark != bottomOnDark) { bottomOnDark = bottomDark; refreshNav() }
     }
 
+    /** The bar colour the address field's pane was last worked out for (null: the plain bar). */
+    private var fieldPaneFor: Int? = null
+
+    /**
+     * The address field on a bar the page has coloured: a solid pane worked
+     * out from the bar's own colour - a shade darker on a light bar, a few
+     * shades lighter on a dark one, as Chrome's omnibox does - with text and
+     * icons that read on it.
+     *
+     * The pane used to come from tinting the field's own see-through fill
+     * (7% black, or 13% white in dark mode) with 20% white. A tint keeps the
+     * fill's alpha and multiplies the tint's into it, so the pane came out at
+     * 1-3% white: on every dark site's bar the search box all but vanished.
+     * Now the tint replaces the colour outright (SRC), so the pane is exactly
+     * the colour asked for.
+     */
     private fun paintTopForeground() {
         val field = binding.urlBar
         if (urlTextDefault == null) urlTextDefault = field.textColors
-        val light = topOnDark && fieldMode == FIELD_NORMAL
+        val bar = if (fieldMode == FIELD_NORMAL) fieldPaneFor else null
+        val light = topOnDark && bar != null
         val white = android.content.res.ColorStateList.valueOf(android.graphics.Color.WHITE)
+        if (bar != null) {
+            field.backgroundTintMode = android.graphics.PorterDuff.Mode.SRC
+            field.backgroundTintList = android.content.res.ColorStateList.valueOf(fieldPane(bar, light))
+        } else {
+            field.backgroundTintList = null
+            field.backgroundTintMode = android.graphics.PorterDuff.Mode.SRC_IN
+        }
         if (light) {
             field.setTextColor(android.graphics.Color.WHITE)
             field.setHintTextColor(0xB3FFFFFF.toInt())
-            // The grey pill becomes a pane of the bar's own colour, lifted.
-            field.backgroundTintList = android.content.res.ColorStateList.valueOf(0x33FFFFFF)
             binding.starBtn.imageTintList = white
             binding.clearBtn.imageTintList = white
         } else {
             urlTextDefault?.let { field.setTextColor(it) }
-            field.setHintTextColor(androidx.core.content.ContextCompat.getColor(this, R.color.sugMuted))
-            field.backgroundTintList = null
+            // On a coloured light bar the plain grey hint can sink into the
+            // pane; a share of black keeps it readable on any of them.
+            field.setHintTextColor(if (bar != null) 0x99000000.toInt()
+                else androidx.core.content.ContextCompat.getColor(this, R.color.sugMuted))
             binding.starBtn.imageTintList = null
             binding.clearBtn.imageTintList = null
         }
         refreshNav()
     }
+
+    /** The address field's pane on a bar of colour [bar]: a shade darker, or on a dark bar lighter. */
+    private fun fieldPane(bar: Int, onDark: Boolean): Int =
+        if (onDark) PageTint.mix(bar, android.graphics.Color.WHITE, 0.18f)
+        else PageTint.mix(bar, android.graphics.Color.BLACK, 0.075f)
 
     /** Eases both bars to [top] / [bottom] (null: their plain surface). */
     private fun setBarTint(top: IntArray?, bottom: IntArray?, animate: Boolean) {
@@ -3376,13 +3549,24 @@ class MainActivity : AppCompatActivity() {
             binding.navSheet.tint = bottom
             return
         }
+        // The pane starts where the bar starts, not where it is going.
+        if (fieldPaneFor != null && fieldMode == FIELD_NORMAL && fromTop.size == 3) {
+            binding.urlBar.backgroundTintList =
+                android.content.res.ColorStateList.valueOf(fieldPane(fromTop[1], topOnDark))
+        }
         tintAnim = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
             duration = 340L
             interpolator = android.view.animation.DecelerateInterpolator()
             addUpdateListener { a ->
                 val f = a.animatedValue as Float
-                binding.topBar.tint = PageTint.mixAll(fromTop, toTop, f)
+                val nowTop = PageTint.mixAll(fromTop, toTop, f)
+                binding.topBar.tint = nowTop
                 binding.navSheet.tint = PageTint.mixAll(fromBottom, toBottom, f)
+                // The field's pane eases with the bar it sits on.
+                if (fieldPaneFor != null && fieldMode == FIELD_NORMAL && nowTop.size == 3) {
+                    binding.urlBar.backgroundTintList =
+                        android.content.res.ColorStateList.valueOf(fieldPane(nowTop[1], topOnDark))
+                }
             }
             addListener(object : android.animation.AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: android.animation.Animator) {
@@ -3678,10 +3862,28 @@ class MainActivity : AppCompatActivity() {
             c.connect()
             if (c.responseCode !in 200..299) { imageSaveFailed(); return }
             val mime = c.contentType?.substringBefore(';')?.trim()
-            val bytes = c.inputStream.use { it.readBytes() }
+            // An "image" can be anything a server says it is, and it is read
+            // whole into memory here: past 64MB it is refused rather than
+            // risking the app being killed for memory part-way through.
+            val max = 64L * 1024 * 1024
+            if (c.contentLengthLong > max) { imageSaveFailed(); return }
+            val bytes = c.inputStream.use { input ->
+                val out = java.io.ByteArrayOutputStream()
+                val buf = ByteArray(64 * 1024)
+                var total = 0L
+                while (true) {
+                    val n = input.read(buf)
+                    if (n < 0) break
+                    total += n
+                    if (total > max) { imageSaveFailed(); return }
+                    out.write(buf, 0, n)
+                }
+                out.toByteArray()
+            }
             if (bytes.isEmpty()) { imageSaveFailed(); return }
             writeImage(bytes, if (mime.isNullOrBlank()) "image/jpeg" else mime)
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
+            // OutOfMemoryError included: a failed save, never a dead app.
             imageSaveFailed()
         } finally {
             try { conn?.disconnect() } catch (e: Exception) {}
@@ -3725,7 +3927,7 @@ class MainActivity : AppCompatActivity() {
             else java.net.URLDecoder.decode(body, "UTF-8").toByteArray()
             if (bytes.isEmpty()) { imageSaveFailed(); return }
             writeImage(bytes, mime)
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             imageSaveFailed()
         }
     }
@@ -4527,6 +4729,10 @@ class MainActivity : AppCompatActivity() {
         if (low) HealthStats.count(this, HealthStats.MEMORY_LOW)
         DebugLog.add { "memory trim level " + level + ": freezing background tabs" }
         tabs.trimLive(1)
+        // What only saves a moment: icons are on disk too, and a closed tab
+        // can still come back by its address without its history.
+        SiteIcons.trimMemory()
+        closedTabs.forEach { it.state = null }
     }
 
     private fun openTab(tab: Tab, loadUrl: String? = null) {
@@ -4998,7 +5204,9 @@ class MainActivity : AppCompatActivity() {
         // for an answer, two per host visited, and on the main thread a long
         // private session made leaving it an ANR.
         cookieIo.execute {
-            val cookies = android.webkit.CookieManager.getInstance()
+            // A WebView being updated by Play can refuse getInstance; on this
+            // thread an uncaught throw would end the app.
+            val cookies = try { android.webkit.CookieManager.getInstance() } catch (e: Throwable) { return@execute }
             hosts.forEach { host ->
                 listOf("https://" + host, "http://" + host).forEach { origin ->
                     try {
@@ -5105,6 +5313,12 @@ class MainActivity : AppCompatActivity() {
         // Reflect current Night Owl state in the menu label.
         (binding.menuNightOwl.getChildAt(1) as? android.widget.TextView)?.text =
             if (nightOwl) "Exit Night Owl" else "Night Owl"
+        // The last closed tab, while there is one (never in Night Owl).
+        binding.menuReopen.visibility =
+            if (closedTabs.isNotEmpty() && !nightOwl) View.VISIBLE else View.GONE
+        // A page Google Translate is showing offers the way back.
+        (binding.menuTranslate.getChildAt(1) as? android.widget.TextView)?.text =
+            if (PageTranslate.isTranslated(menuUrl)) "Show original" else "Translate page"
         // Ads on this site: only while ad blocking is on and a website is on
         // screen, labelled with what tapping it will do.
         val adsHost = siteForAds()
@@ -5647,7 +5861,7 @@ class MainActivity : AppCompatActivity() {
             // of the tab being left, and refuses while the deck is still up -
             // closed first, the last frame on screen would be the deck itself.
             onSelect = { tab -> openTab(tab); closeDeck() },
-            onClose = { tab -> closeTabFromDeck(tab) },
+            onClose = { tab -> closeTabByUser(tab) },
             // Lambdas, not values: the deck rebinds on every open, so these
             // stay current through tab switches and accent changes without the
             // adapter being rebuilt.
@@ -5677,7 +5891,7 @@ class MainActivity : AppCompatActivity() {
 
             override fun onSwiped(vh: androidx.recyclerview.widget.RecyclerView.ViewHolder, direction: Int) {
                 val tab = tabs.tabs.getOrNull(vh.bindingAdapterPosition)
-                if (tab == null) tabAdapter.notifyDataSetChanged() else closeTabFromDeck(tab)
+                if (tab == null) tabAdapter.notifyDataSetChanged() else closeTabByUser(tab)
             }
 
             override fun onChildDraw(
@@ -5797,6 +6011,157 @@ class MainActivity : AppCompatActivity() {
         // in a state that already allowed it.
         refreshAdSlot()
     }
+
+    // ---------- Closed tabs come back ----------
+    //
+    // A tab closed by hand - flicked away or closed in the deck - is
+    // remembered with its address, its title and, for the last few, its
+    // back/forward history, so "Undo" right after, or Menu > Reopen closed
+    // tab later, brings it back where it was, as in Chrome. Pop-ups closing
+    // themselves are not remembered, and Night Owl tabs never are.
+
+    private class ClosedTab(val url: String, val title: String, var state: Bundle?, val index: Int)
+    private val closedTabs = ArrayDeque<ClosedTab>()
+
+    private fun rememberClosed(tab: Tab): Boolean {
+        if (tab.isPrivate || nightOwl) return false
+        val url = tab.url
+        if (!(url.startsWith("https://") || url.startsWith("http://"))) return false
+        val state = tab.webView?.let { w ->
+            try { Bundle().also { w.saveState(it) } } catch (e: Exception) { null }
+        } ?: tab.savedState
+        closedTabs.addLast(ClosedTab(url, tab.title, state, tabs.tabs.indexOf(tab)))
+        while (closedTabs.size > 10) closedTabs.removeFirst()
+        // History kept for the newest three only; older ones keep their address.
+        closedTabs.toList().dropLast(3).forEach { it.state = null }
+        return true
+    }
+
+    /** A tab the user closed in the deck: remembered, closed, and offered back. */
+    private fun closeTabByUser(tab: Tab) {
+        val remembered = rememberClosed(tab)
+        closeTabFromDeck(tab)
+        if (remembered && deckVisible) {
+            try {
+                com.google.android.material.snackbar.Snackbar
+                    .make(binding.tabDeck, "Tab closed", com.google.android.material.snackbar.Snackbar.LENGTH_LONG)
+                    .setAction("Undo") { reopenClosedTab(inDeck = true) }
+                    .setActionTextColor(currentAccent())
+                    .show()
+            } catch (e: Exception) { /* no window to show it in */ }
+        }
+    }
+
+    /** The last closed tab, back in its place: in the deck if it is open, otherwise on screen. */
+    private fun reopenClosedTab(inDeck: Boolean) {
+        if (nightOwl) { toast("Not in Night Owl"); return }
+        val c = closedTabs.removeLastOrNull() ?: return
+        val tab = tabs.createTab(c.url)
+        tab.title = c.title
+        tab.savedState = c.state
+        tabs.tabs.remove(tab)
+        tabs.tabs.add(c.index.coerceIn(0, tabs.tabs.size), tab)
+        if (inDeck && deckVisible) {
+            tabAdapter.notifyDataSetChanged()
+            updateTabCount()
+            scheduleSessionSave()
+        } else {
+            leaveTransientUi()
+            openTab(tab)
+        }
+    }
+
+    // ---------- Page tools: share, translate, reader view, home screen ----------
+
+    /** The website on screen, or null on home, an error page or a page of the app's own. */
+    private fun webPageUrl(): String? {
+        val url = activeWeb()?.url ?: tabs.activeTab?.url ?: return null
+        if (url == homePage || isErrorPage(url)) return null
+        return url.takeIf { it.startsWith("https://") || it.startsWith("http://") }
+    }
+
+    private fun needAPage() = toast("Open a page first")
+
+    /**
+     * The page in the phone's language, through Google Translate's page
+     * proxy, which keeps it a working page; on a translated page, the original.
+     */
+    private fun translatePage() {
+        val web = activeWeb() ?: return
+        val url = webPageUrl() ?: run { needAPage(); return }
+        if (PageTranslate.isTranslated(url)) {
+            PageTranslate.originalUrl(url)?.let { loadInto(web, it) }
+            return
+        }
+        val lang = resources.configuration.locales.get(0)?.language?.ifBlank { null } ?: "en"
+        loadInto(web, PageTranslate.translatedUrl(url, lang))
+    }
+
+    /** The article on its own, in clean type (ReaderView); again, the page as it was. */
+    private fun toggleReaderView() {
+        val web = activeWeb() ?: return
+        if (webPageUrl() == null) { needAPage(); return }
+        web.evaluateJavascript(ReaderView.JS) { result ->
+            when (result?.trim('"')) {
+                "on" -> { showBars(); schedulePageTint(400L) }
+                "none" -> toast("Reader view needs an article - there isn't one on this page")
+            }
+        }
+    }
+
+    /** The page as its own icon on the home screen, opening in Search. */
+    private fun addToHomeScreen() {
+        val url = webPageUrl() ?: run { needAPage(); return }
+        val web = activeWeb()
+        val title = web?.title?.takeIf { it.isNotBlank() } ?: siteNameOf(url)
+        val icon = SiteIcons.cached(url) ?: web?.favicon
+        if (!HomeShortcut.pin(this, url, title, icon)) toast("This home screen doesn't take shortcuts")
+    }
+
+    // ---------- Default browser ----------
+
+    private val defaultBrowserLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    ) {
+        if (DefaultBrowser.isDefault(this)) toast("Search is now your default browser")
+    }
+
+    /** Android's own request to make Search the default browser, or its Default apps screen. */
+    private fun askToBeDefaultBrowser() {
+        val ask = DefaultBrowser.requestIntent(this)
+        try {
+            if (ask != null) defaultBrowserLauncher.launch(ask)
+            else startActivity(DefaultBrowser.settingsIntent())
+        } catch (e: Exception) {
+            try { startActivity(DefaultBrowser.settingsIntent()) } catch (e2: Exception) {
+                toast("Pick Search under Settings > Apps > Default apps > Browser")
+            }
+        }
+    }
+
+    /**
+     * Offered once, on the fourth launch or later, on the home page with
+     * nothing else going on - never on a first run and never twice. A browser
+     * that is not the default is only ever opened on purpose; as the default,
+     * every link tapped in another app comes here.
+     */
+    private fun maybeOfferDefaultBrowser() {
+        if (isFinishing || isDestroyed || offeredThisLaunch) return
+        if (nightOwl || searchMode || deckVisible || AdConsent.formShowing) return
+        if (binding.menuScrim.visibility == View.VISIBLE) return
+        val current = tabs.activeTab?.url
+        if (!(current == null || current == homePage)) return
+        if (!DefaultBrowser.shouldOffer(this)) return
+        offeredThisLaunch = true
+        DefaultBrowser.noteOffered(this)
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(this, R.style.Theme_Search_Dialog)
+            .setTitle("Make Search your default browser?")
+            .setMessage("Links you tap in other apps will open in Search. You can change this any time in Settings.")
+            .setPositiveButton("Set as default") { _, _ -> askToBeDefaultBrowser() }
+            .setNegativeButton("Not now", null)
+            .show()
+    }
+    private var offeredThisLaunch = false
 
     private fun closeTabFromDeck(tab: Tab) {
         val wasActive = tab == tabs.activeTab
@@ -6001,6 +6366,8 @@ class MainActivity : AppCompatActivity() {
                 android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
             request.setDestinationInExternalPublicDir(
                 android.os.Environment.DIRECTORY_DOWNLOADS, name)
+            request.setAllowedOverMetered(true)
+            request.setAllowedOverRoaming(true)
             val dm = getSystemService(DOWNLOAD_SERVICE) as android.app.DownloadManager
             cookieIo.execute {
                 val ok = try {
@@ -6421,7 +6788,14 @@ class MainActivity : AppCompatActivity() {
             request.setDestinationInExternalPublicDir(
                 android.os.Environment.DIRECTORY_DOWNLOADS, fileName
             )
+            // Stated outright: on any network, roaming included. A large file
+            // is fetched by DownloadManager in its own process, so it neither
+            // holds this app's memory nor stops when the app is closed, and it
+            // resumes by itself after the network drops.
+            request.setAllowedOverMetered(true)
+            request.setAllowedOverRoaming(true)
             val dm = getSystemService(DOWNLOAD_SERVICE) as android.app.DownloadManager
+            val referer = activeWeb()?.url
             // DownloadManager fetches in its own process, with none of the
             // WebView's state. Without the session cookie, anything behind a
             // sign-in hands back the sign-in page instead of the file, and the
@@ -6431,21 +6805,35 @@ class MainActivity : AppCompatActivity() {
             // the cookie thread's queue here rather than on the main thread,
             // and the enqueue follows it there.
             cookieIo.execute {
+                val cookie = try {
+                    android.webkit.CookieManager.getInstance().getCookie(url)
+                } catch (e: Exception) { null }
                 val ok = try {
-                    android.webkit.CookieManager.getInstance().getCookie(url)?.let {
-                        if (it.isNotBlank()) request.addRequestHeader("Cookie", it)
-                    }
+                    cookie?.let { if (it.isNotBlank()) request.addRequestHeader("Cookie", it) }
                     dm.enqueue(request)
                     true
                 } catch (e: Exception) { false }
                 runOnUiThread {
-                    HealthStats.count(this,
-                        if (ok) HealthStats.DOWNLOADS else HealthStats.DOWNLOAD_FAILURES)
-                    android.widget.Toast.makeText(
-                        this,
-                        if (ok) "Downloading $fileName" else "Download failed",
-                        android.widget.Toast.LENGTH_SHORT
-                    ).show()
+                    if (ok) {
+                        HealthStats.count(this, HealthStats.DOWNLOADS)
+                        toast("Downloading $fileName")
+                        return@runOnUiThread
+                    }
+                    // DownloadManager would not take it (switched off on this
+                    // phone, or refusing the address): the app fetches it
+                    // itself, streamed to Downloads, rather than giving up.
+                    ensureNotifPermission()
+                    toast("Downloading $fileName")
+                    HttpSave.start(this, url, userAgent, referer, cookie, fileName,
+                        downloadMime(fileName, mimeType) ?: "application/octet-stream") { saved ->
+                        runOnUiThread {
+                            if (isFinishing || isDestroyed) return@runOnUiThread
+                            HealthStats.count(this,
+                                if (saved) HealthStats.DOWNLOADS else HealthStats.DOWNLOAD_FAILURES)
+                            toast(if (saved) "Saved to Downloads: $fileName" else "Download failed")
+                            if (downloadsOpen) refreshDownloads()
+                        }
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -6705,97 +7093,79 @@ class MainActivity : AppCompatActivity() {
 
     /**
      * Only the page that minted a blob: URL can read it, so the page is asked
-     * to: fetch it, turn it into a data: URL and hand that back.
+     * to: fetch it and hand the bytes back.
      *
-     * Capped at 16MB because the whole thing crosses the bridge in one piece,
-     * and base64 inflates it by a third on the way. A larger file is refused
-     * outright rather than risking an out-of-memory kill on a modest phone -
-     * a clear "too large" beats the browser dying mid-save.
+     * In pieces of about 2MB, each base64 across the bridge and written to the
+     * file as it arrives (blobFileBegin, blobFileChunk, blobFileEnd), read
+     * off the response as a stream so the page never makes a second copy of
+     * the file either. It used to come across whole, as one data: URL, which
+     * took several times the file's size in memory - capped at 16MB for that
+     * reason, so any larger export simply failed. Now a file of several GB
+     * saves with no more memory than one piece, with a progress notification
+     * while it is written.
      */
     private fun requestBlobDownload(url: String, name: String, mime: String?) {
         val web = activeWeb() ?: run { downloadFailed(); return }
         val token = java.util.UUID.randomUUID().toString()
-        blobDownloadToken = token
-        blobDownloadName = name
-        blobDownloadMime = mime
-        val js = "(function(u,t){try{" +
-            "fetch(u).then(function(r){if(!r.ok)throw 0;return r.blob();})" +
-            ".then(function(b){if(b.size>16777216)throw 0;" +
-            "var fr=new FileReader();" +
-            "fr.onloadend=function(){SearchApp.saveBlobFile(t,fr.result);};" +
-            "fr.onerror=function(){SearchApp.saveBlobFileFailed(t);};" +
-            "fr.readAsDataURL(b);})" +
-            ".catch(function(){SearchApp.saveBlobFileFailed(t);});" +
-            "}catch(e){SearchApp.saveBlobFileFailed(t);}})(" +
-            JSONObject.quote(url) + "," + JSONObject.quote(token) + ");"
-        web.evaluateJavascript(js, null)
+        blobSaves[token] = BlobSave(name, mime)
+        ensureNotifPermission()
+        web.evaluateJavascript(BLOB_STREAM_JS + "(" +
+            JSONObject.quote(url) + "," + JSONObject.quote(token) + ");", null)
     }
 
-    private fun saveDataDownload(dataUrl: String, name: String, mime: String?) {
-        try {
-            val comma = dataUrl.indexOf(',')
-            if (comma < 0) { downloadFailed(); return }
-            val header = dataUrl.substring(5, comma)
-            val body = dataUrl.substring(comma + 1)
-            val bytes = if (header.contains("base64"))
-                android.util.Base64.decode(body, android.util.Base64.DEFAULT)
-            else java.net.URLDecoder.decode(body, "UTF-8").toByteArray()
-            if (bytes.isEmpty()) { downloadFailed(); return }
-            val type = mime?.takeIf { it.isNotBlank() }
-                ?: header.substringBefore(';').ifBlank { "application/octet-stream" }
-            writeDownloadBytes(bytes, type, name)
-        } catch (e: Exception) {
-            downloadFailed()
-        }
-    }
+    private val BLOB_STREAM_JS = "(function(u,t){var A=window.SearchApp,CH=2097152;" +
+        "function fail(){try{A.blobFileFailed(t);}catch(e){}}" +
+        "function b64(parts,done){var fr=new FileReader();fr.onload=function(){var s=fr.result;" +
+        "done(s.substring(s.indexOf(',')+1));};fr.onerror=fail;fr.readAsDataURL(new Blob(parts));}" +
+        "try{fetch(u).then(function(r){if(!r.ok)throw 0;" +
+        "var len=r.headers.get('Content-Length')||'-1',type=r.headers.get('Content-Type')||'';" +
+        "if(!r.body||!r.body.getReader){return r.blob().then(function(b){" +
+        "if(!A.blobFileBegin(t,String(b.size),b.type||type))return;var off=0;(function next(){" +
+        "if(off>=b.size){A.blobFileEnd(t);return;}b64([b.slice(off,off+CH)],function(s){" +
+        "if(A.blobFileChunk(t,s)){off+=CH;setTimeout(next,0);}});})();});}" +
+        "if(!A.blobFileBegin(t,String(len),type)){try{r.body.cancel();}catch(e){}return;}" +
+        "var rd=r.body.getReader(),parts=[],size=0;" +
+        "function flush(then){if(!size){then();return;}var p=parts;parts=[];size=0;" +
+        "b64(p,function(s){if(A.blobFileChunk(t,s))then();else{try{rd.cancel();}catch(e){}}});}" +
+        "(function pump(){rd.read().then(function(x){" +
+        "if(x.done){flush(function(){A.blobFileEnd(t);});return;}" +
+        "parts.push(x.value);size+=x.value.byteLength;if(size>=CH)flush(pump);else pump();" +
+        "}).catch(fail);})();" +
+        "}).catch(fail);}catch(e){fail();}})"
 
     /**
-     * Writes into the public Downloads folder, the same place DownloadManager
-     * puts everything else, so a file saved this way is where the user will
-     * look for it rather than somewhere only this app knows about.
+     * A data: address, decoded a piece at a time straight into the file. The
+     * address itself is already in memory (the page handed it over whole),
+     * but decoding it whole as well doubled that.
      */
-    private fun writeDownloadBytes(bytes: ByteArray, mime: String, name: String) {
-        // Where it ended up, so it can be listed and opened later.
-        var savedUri: String? = null
+    private fun saveDataDownload(dataUrl: String, name: String, mime: String?) {
+        val comma = dataUrl.indexOf(',')
+        if (comma < 5) { downloadFailed(); return }
+        val header = dataUrl.substring(5, comma)
+        val type = mime?.takeIf { it.isNotBlank() }
+            ?: header.substringBefore(';').ifBlank { "application/octet-stream" }
+        val sink = DownloadSink.open(this, name, type) ?: run { downloadFailed(); return }
         try {
-            if (android.os.Build.VERSION.SDK_INT >= 29) {
-                val values = android.content.ContentValues().apply {
-                    put(android.provider.MediaStore.Downloads.DISPLAY_NAME, name)
-                    put(android.provider.MediaStore.Downloads.MIME_TYPE, mime)
-                    put(android.provider.MediaStore.Downloads.IS_PENDING, 1)
+            if (header.contains("base64", true)) {
+                var body = dataUrl.substring(comma + 1)
+                if (body.any { it.isWhitespace() }) body = body.filterNot { it.isWhitespace() }
+                // A multiple of four characters, so every piece decodes on its own.
+                val step = 4 * 1024 * 1024
+                var i = 0
+                while (i < body.length) {
+                    val j = minOf(i + step, body.length)
+                    sink.write(android.util.Base64.decode(body.substring(i, j), android.util.Base64.DEFAULT))
+                    i = j
                 }
-                val uri = contentResolver.insert(
-                    android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values
-                ) ?: run { downloadFailed(); return }
-                contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
-                values.clear()
-                values.put(android.provider.MediaStore.Downloads.IS_PENDING, 0)
-                contentResolver.update(uri, values, null, null)
-                savedUri = uri.toString()
             } else {
-                val dir = android.os.Environment.getExternalStoragePublicDirectory(
-                    android.os.Environment.DIRECTORY_DOWNLOADS)
-                if (!dir.exists()) dir.mkdirs()
-                // Never overwrite a file already sitting there.
-                val stem = name.substringBeforeLast('.', name)
-                val ext = name.substringAfterLast('.', "")
-                var f = java.io.File(dir, name)
-                var n = 1
-                while (f.exists()) {
-                    val alt = stem + "(" + n + ")" + if (ext.isBlank()) "" else "." + ext
-                    f = java.io.File(dir, alt)
-                    n++
-                }
-                java.io.FileOutputStream(f).use { it.write(bytes) }
-                // Without the scan the file is on disk but nothing lists it,
-                // which reads to the user as another failed save.
-                android.media.MediaScannerConnection.scanFile(
-                    this, arrayOf(f.absolutePath), arrayOf(mime), null)
-                savedUri = android.net.Uri.fromFile(f).toString()
+                sink.write(java.net.URLDecoder.decode(dataUrl.substring(comma + 1), "UTF-8").toByteArray())
             }
-            SavedFiles.add(this, name, savedUri, mime, bytes.size.toLong())
-            runOnUiThread { toast("Saved to Downloads: " + name) }
-        } catch (e: Exception) {
+            val uri = if (sink.written > 0) sink.finish() else { sink.abort(); null }
+            if (uri == null) { downloadFailed(); return }
+            SavedFiles.add(this, sink.name, uri, sink.mime, sink.written)
+            runOnUiThread { toast("Saved to Downloads: " + sink.name) }
+        } catch (t: Throwable) {
+            sink.abort()
             downloadFailed()
         }
     }
@@ -7143,6 +7513,10 @@ class MainActivity : AppCompatActivity() {
         }
         pullRefreshing = true
         pullStartedAt = android.os.SystemClock.uptimeMillis()
+        // A small tick in the hand as the refresh takes, as Chrome gives.
+        binding.pullIndicator.performHapticFeedback(
+            if (Build.VERSION.SDK_INT >= 30) android.view.HapticFeedbackConstants.CONFIRM
+            else android.view.HapticFeedbackConstants.VIRTUAL_KEY)
         pullSpring.animate(y, pullHold)
         val disc = binding.pullIndicator
         pullSpin = android.animation.ObjectAnimator.ofFloat(disc, View.ROTATION, disc.rotation, disc.rotation + 360f).apply {
@@ -7249,6 +7623,27 @@ class MainActivity : AppCompatActivity() {
             closeMenuNow()
             printPage()
         }
+        binding.menuReopen.setOnClickListener {
+            closeMenuNow()
+            reopenClosedTab(inDeck = false)
+        }
+        binding.menuShare.setOnClickListener {
+            closeMenuNow()
+            val url = webPageUrl() ?: run { needAPage(); return@setOnClickListener }
+            shareLink(url, activeWeb()?.title ?: "")
+        }
+        binding.menuTranslate.setOnClickListener {
+            closeMenuNow()
+            translatePage()
+        }
+        binding.menuReader.setOnClickListener {
+            closeMenuNow()
+            toggleReaderView()
+        }
+        binding.menuAddHome.setOnClickListener {
+            closeMenuNow()
+            addToHomeScreen()
+        }
         binding.menuSiteAds.setOnClickListener {
             closeMenuNow()
             val host = siteForAds() ?: return@setOnClickListener
@@ -7331,6 +7726,8 @@ class MainActivity : AppCompatActivity() {
         val current = tabs.activeTab?.url
         if (!(current == null || current == homePage)) return
         if (!Reviews.eligible(this)) return
+        // One ask per launch: the default-browser offer stands aside.
+        offeredThisLaunch = true
 
         // FakeReviewManager runs the whole flow and shows nothing, which is
         // the only way to prove the plumbing works: the real dialog cannot be
@@ -7589,6 +7986,11 @@ class MainActivity : AppCompatActivity() {
         val tint = android.content.res.ColorStateList.valueOf(accent)
         binding.micBtn.imageTintList = tint
         binding.scanBtn.imageTintList = tint
+        // The deck's "+ New" and "Done" too; they were a fixed blue.
+        Settings.accentInk(this).let { ink ->
+            binding.deckNewTab.setTextColor(ink)
+            binding.deckClose.setTextColor(ink)
+        }
         // Selected Home wears the accent, so the bars follow it too.
         refreshNav()
         applyArtAccent(accent)
@@ -7662,6 +8064,7 @@ class MainActivity : AppCompatActivity() {
      * and drawables loaded from one resource share it.
      */
     private fun applyOwlArtIn(root: View) {
+        applyAccentIn(root)
         val art = owlArt ?: return
         val ref = androidx.core.content.ContextCompat
             .getDrawable(this, R.drawable.ic_owl)?.constantState ?: return
@@ -7670,6 +8073,33 @@ class MainActivity : AppCompatActivity() {
                 for (i in 0 until v.childCount) walk(v.getChildAt(i))
             } else if (v is android.widget.ImageView && v.drawable?.constantState == ref) {
                 v.setImageBitmap(art)
+            }
+        }
+        walk(root)
+    }
+
+    /**
+     * The owl's dialogs in the accent the user picked: the filled button (deep
+     * ink and white text on light, light ink and dark text on dark, so it
+     * reads either way) and the text buttons beside it. They were a fixed
+     * purple whatever the accent.
+     */
+    private fun applyAccentIn(root: View) {
+        val ink = Settings.accentInk(this)
+        val brand = 0xFF5E44A0.toInt()
+        val filled = androidx.core.content.ContextCompat
+            .getDrawable(this, R.drawable.dialog_btn_filled)?.constantState
+        fun walk(v: View) {
+            if (v is android.view.ViewGroup) {
+                for (i in 0 until v.childCount) walk(v.getChildAt(i))
+                return
+            }
+            val t = v as? android.widget.TextView ?: return
+            if (filled != null && t.background?.constantState == filled) {
+                t.backgroundTintList = android.content.res.ColorStateList.valueOf(ink)
+                t.setTextColor(if (isDarkTheme()) 0xFF141416.toInt() else android.graphics.Color.WHITE)
+            } else if (t.currentTextColor == brand) {
+                t.setTextColor(ink)
             }
         }
         walk(root)

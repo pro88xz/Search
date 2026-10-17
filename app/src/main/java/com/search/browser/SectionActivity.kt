@@ -28,6 +28,7 @@ class SectionActivity : AppCompatActivity() {
         Settings.applyNightMode(this)
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        Settings.applyAccent(this)
         setContentView(R.layout.activity_section)
         androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(
             findViewById(R.id.sectionRoot)) { v, insets ->
@@ -36,6 +37,9 @@ class SectionActivity : AppCompatActivity() {
             insets
         }
         content = findViewById(R.id.sectionContent)
+        // The same page as Settings itself: cards on the page's background,
+        // 16dp in from either edge, each under a label in the accent.
+        content.setPadding(dp(16), dp(4), dp(16), dp(28))
         findViewById<android.widget.ImageButton>(R.id.sectionBack)
             .setOnClickListener { finish() }
 
@@ -57,6 +61,7 @@ class SectionActivity : AppCompatActivity() {
     // ---- Security section ----
 
     private fun buildSecurity() {
+        group("Protection")
         addToggle(
             "HTTPS-only mode",
             "Always try to connect securely and warn on insecure sites.",
@@ -81,6 +86,13 @@ class SectionActivity : AppCompatActivity() {
             "Confirm every download",
             "Ask before any file downloads, so nothing saves without your OK.",
             Settings.SEC_CONFIRM_DOWNLOADS, true
+        )
+        group("Privacy")
+        addToggle(
+            "Search suggestions",
+            "Suggestions from your search engine as you type. Off, nothing you " +
+                "type leaves the phone until you search for it.",
+            Settings.SEARCH_SUGGESTIONS, true
         )
         // Answers about camera, microphone and location are remembered per
         // site, so without this there is no way to change your mind.
@@ -112,26 +124,17 @@ class SectionActivity : AppCompatActivity() {
     }
 
     private fun buildAdblock() {
+        group()
         addToggle(
             "Block ads and trackers",
             "Blocks common ad networks and trackers for faster, cleaner browsing.",
             Settings.ADBLOCK_ENABLED, false
         )
         addNote("Reload open pages after changing this for it to take full effect.")
-        addDivider()
-        val head = TextView(this)
-        head.text = "Sites where ads are allowed"
-        head.textSize = 16f
-        head.setTextColor(resolveTextColor())
-        head.setPadding(dp(20), dp(12), dp(20), dp(2))
-        content.addView(head)
+        allowedSitesList = group("Sites where ads are allowed")
+        fillAllowedSites()
         addNote("Turn blocking off for one site from the menu while you're on it: " +
             "\u201CAllow ads on this site\u201D. Tap a site here to block its ads again.")
-        allowedSitesList = LinearLayout(this).also {
-            it.orientation = LinearLayout.VERTICAL
-            content.addView(it)
-        }
-        fillAllowedSites()
     }
 
     // ---- Ad blocking: sites allowed ----
@@ -147,7 +150,7 @@ class SectionActivity : AppCompatActivity() {
             t.text = "None. Ads are blocked on every site while blocking is on."
             t.textSize = 14f
             t.setTextColor(0xFF8A8A8F.toInt())
-            t.setPadding(dp(20), dp(4), dp(20), dp(16))
+            t.setPadding(dp(18), dp(16), dp(18), dp(16))
             list.addView(t)
             return
         }
@@ -156,7 +159,7 @@ class SectionActivity : AppCompatActivity() {
             t.text = site
             t.textSize = 16f
             t.setTextColor(resolveTextColor())
-            t.setPadding(dp(20), dp(14), dp(20), dp(14))
+            t.setPadding(dp(18), dp(15), dp(18), dp(15))
             val outValue = android.util.TypedValue()
             theme.resolveAttribute(android.R.attr.selectableItemBackground, outValue, true)
             t.setBackgroundResource(outValue.resourceId)
@@ -172,7 +175,7 @@ class SectionActivity : AppCompatActivity() {
                     .setNegativeButton("Cancel", null)
                     .show()
             }
-            list.addView(t)
+            addInto(list, t)
         }
     }
 
@@ -187,9 +190,10 @@ class SectionActivity : AppCompatActivity() {
         )
         val current = Settings.getTextScale(this)
         val textColor = resolveTextColor()
-        val group = android.widget.RadioGroup(this)
-        group.setPadding(dp(16), 0, dp(16), dp(12))
-        content.addView(group)
+        val radios = android.widget.RadioGroup(this)
+        radios.setPadding(dp(10), dp(6), dp(10), dp(6))
+        group("Text size").addView(radios)
+        endGroup()
 
         var checkId = -1
         options.forEach { (label, pct, desc) ->
@@ -203,7 +207,7 @@ class SectionActivity : AppCompatActivity() {
             rb.text = "$label  ($pct%)"
             rb.textSize = 16f
             rb.setTextColor(textColor)
-            group.addView(rb)
+            radios.addView(rb)
             if (pct == current) checkId = rb.id
             rb.setOnClickListener { applyTextSize(label, pct) }
 
@@ -227,9 +231,17 @@ class SectionActivity : AppCompatActivity() {
 
             block.addView(sample)
             block.addView(d)
-            group.addView(block)
+            radios.addView(block)
         }
-        if (checkId != -1) group.check(checkId)
+        if (checkId != -1) radios.check(checkId)
+
+        group("Zoom")
+        addToggle(
+            "Force enable zoom",
+            "Pinch to zoom on every page, even where a site turns zooming off.",
+            Settings.A11Y_FORCE_ZOOM, false
+        )
+        addNote("Takes effect as pages load.")
     }
 
     private fun applyTextSize(label: String, pct: Int) {
@@ -239,15 +251,11 @@ class SectionActivity : AppCompatActivity() {
     }
 
     private fun buildCustomize() {
-        addNote("Accent color")
-        val accents = listOf(
-            "#2B6CF0" to "Blue", "#8B6BD8" to "Purple", "#2FB170" to "Green",
-            "#F5A623" to "Amber", "#E5556E" to "Rose", "#0E0E10" to "Ink"
-        )
+        val accents = Settings.ACCENTS.map { it.hex to it.name }
         val curAccent = Settings.getHomeAccent(this)
         val row = LinearLayout(this)
         row.orientation = LinearLayout.HORIZONTAL
-        row.setPadding(dp(20), dp(4), dp(20), dp(12))
+        row.setPadding(dp(18), dp(16), dp(18), dp(16))
         accents.forEach { (hex, name) ->
             val sw = android.view.View(this)
             val size = dp(40)
@@ -264,12 +272,16 @@ class SectionActivity : AppCompatActivity() {
                 android.widget.Toast.makeText(this, "Accent: $name", android.widget.Toast.LENGTH_SHORT).show()
                 recreate()
             }
+            sw.contentDescription = name
             row.addView(sw)
         }
-        content.addView(row)
+        val scroll = android.widget.HorizontalScrollView(this)
+        scroll.isHorizontalScrollBarEnabled = false
+        scroll.addView(row)
+        group("Accent colour").addView(scroll)
+        addNote("Buttons, switches, the owl and the loading ring all take it.")
 
-        addDivider()
-
+        group("Home page")
         addToggle(
             "Show shortcut tiles",
             "Display the quick links (Google, YouTube, etc.) on the home page.",
@@ -277,7 +289,7 @@ class SectionActivity : AppCompatActivity() {
         )
         addNote("Open a new tab to see your changes.")
 
-        addDivider()
+        group("Bars")
         addToggle(
             "Hide bars while scrolling",
             "Scroll down to give the page the whole screen; scroll up to bring the bars back.",
@@ -285,22 +297,25 @@ class SectionActivity : AppCompatActivity() {
         )
         addToggle(
             "Page colours in the bars",
-            "The bars take on each site's own colour.",
+            "The bars and the search box take on each site's own colour, as Chrome's do.",
             Settings.TINT_BARS, false
         )
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            group("Websites")
+            addToggle(
+                "Dark websites",
+                "In dark theme, sites with no dark look of their own are darkened too.",
+                Settings.DARK_WEB, false
+            )
+            addNote("Applies to pages as they load. Sites that have their own dark look use it either way.")
+        }
     }
 
-    private fun addDivider() {
-        val div = TextView(this)
-        div.layoutParams = LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, dp(1))
-        div.setBackgroundColor(0x22808080)
-        (div.layoutParams as LinearLayout.LayoutParams).apply {
-            topMargin = dp(8); bottomMargin = dp(8) }
-        content.addView(div)
-    }
+    /** Ends the card being filled; whatever comes next starts a new one. */
+    private fun addDivider() = endGroup()
 
     private fun buildSite() {
+        group("What sites may do")
         addToggle(
             "JavaScript",
             "Let websites run scripts. Turning this off breaks many sites but boosts privacy.",
@@ -327,19 +342,9 @@ class SectionActivity : AppCompatActivity() {
             Settings.SITE_BLOCK_IMAGES, false
         )
         addNote("Reload open pages for changes to take effect.")
-        addDivider()
-        val head = TextView(this)
-        head.text = "Permissions by site"
-        head.textSize = 16f
-        head.setTextColor(resolveTextColor())
-        head.setPadding(dp(20), dp(12), dp(20), dp(2))
-        content.addView(head)
-        addNote("What each site may use. Tap a site to change it.")
-        sitePermList = LinearLayout(this).also {
-            it.orientation = LinearLayout.VERTICAL
-            content.addView(it)
-        }
+        sitePermList = group("Permissions by site")
         fillSitePermissions()
+        addNote("What each site may use. Tap a site to change it.")
     }
 
     // ---- Permissions by site ----
@@ -371,14 +376,14 @@ class SectionActivity : AppCompatActivity() {
             t.text = "No site has asked yet."
             t.textSize = 14f
             t.setTextColor(0xFF8A8A8F.toInt())
-            t.setPadding(dp(20), dp(4), dp(20), dp(16))
+            t.setPadding(dp(18), dp(16), dp(18), dp(16))
             list.addView(t)
             return
         }
         sites.forEach { (origin, answers) ->
             val row = LinearLayout(this)
             row.orientation = LinearLayout.VERTICAL
-            row.setPadding(dp(20), dp(12), dp(20), dp(12))
+            row.setPadding(dp(18), dp(13), dp(18), dp(13))
             row.isClickable = true
             val outValue = android.util.TypedValue()
             theme.resolveAttribute(android.R.attr.selectableItemBackground, outValue, true)
@@ -398,7 +403,7 @@ class SectionActivity : AppCompatActivity() {
             d.setPadding(0, dp(2), 0, 0)
             row.addView(t)
             row.addView(d)
-            list.addView(row)
+            addInto(list, row)
         }
     }
 
@@ -457,6 +462,7 @@ class SectionActivity : AppCompatActivity() {
 
     private fun buildData() {
         addNote("What Search keeps on this phone. Tap one to clear just that.")
+        group("Stored on this phone")
         addDataRow("cache", "Cached files",
             "Copies of pages and pictures, so sites open faster. Safe to clear; " +
                 "sites just load a little slower the first time.") {
@@ -496,10 +502,10 @@ class SectionActivity : AppCompatActivity() {
                     android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP))
             finish()
         }
-        addDivider()
+        group()
         addAction("Clear all browsing data",
             "History, cookies, cached files and site data. Bookmarks and " +
-                "downloads are kept.") {
+                "downloads are kept.", danger = true) {
             com.google.android.material.dialog.MaterialAlertDialogBuilder(
                 this, R.style.Theme_Search_Dialog)
                 .setTitle("Clear browsing data")
@@ -539,8 +545,9 @@ class SectionActivity : AppCompatActivity() {
     private fun refreshSizes(delayMs: Long) {
         sizeViews.values.forEach { if (delayMs > 0) it.text = "\u2026" }
         content.postDelayed({
+            if (isFinishing || isDestroyed || dataIo.isShutdown) return@postDelayed
             dataIo.execute {
-                val sizes = BrowsingData.measure(this)
+                val sizes = try { BrowsingData.measure(this) } catch (t: Throwable) { return@execute }
                 runOnUiThread {
                     if (isFinishing || isDestroyed) return@runOnUiThread
                     fun show(key: String, bytes: Long) {
@@ -567,7 +574,7 @@ class SectionActivity : AppCompatActivity() {
         val row = LinearLayout(this)
         row.orientation = LinearLayout.HORIZONTAL
         row.gravity = Gravity.CENTER_VERTICAL
-        row.setPadding(dp(20), dp(14), dp(20), dp(14))
+        row.setPadding(dp(18), dp(15), dp(18), dp(15))
         row.isClickable = true
         row.setOnClickListener { onTap() }
         val outValue = android.util.TypedValue()
@@ -601,13 +608,7 @@ class SectionActivity : AppCompatActivity() {
 
         row.addView(textCol)
         row.addView(size)
-        content.addView(row)
-
-        val div = TextView(this)
-        div.layoutParams = LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, dp(1))
-        div.setBackgroundColor(0x22808080)
-        content.addView(div)
+        addRow(row)
     }
 
     // ---- Performance & health section ----
@@ -623,23 +624,20 @@ class SectionActivity : AppCompatActivity() {
         val versions = HealthStats.versions(this)
         if (versions.isEmpty()) addNote("Nothing measured yet.")
         versions.forEachIndexed { i, v ->
-            addDivider()
-            val head = TextView(this)
-            head.text = "Version " + v.name + (if (i == 0) " (this version)" else "")
-            head.textSize = 16f
-            head.setTextColor(resolveTextColor())
-            head.setPadding(dp(20), dp(12), dp(20), dp(6))
-            content.addView(head)
-            HealthStats.lines(v).forEach { line ->
+            val card = group("Version " + v.name + (if (i == 0) " (this version)" else ""))
+            val lines = HealthStats.lines(v)
+            lines.forEachIndexed { n, line ->
                 val t = TextView(this)
                 t.text = line
                 t.textSize = 13f
                 t.setTextColor(0xFF8A8A8F.toInt())
-                t.setPadding(dp(20), dp(2), dp(20), dp(2))
-                content.addView(t)
+                t.setPadding(dp(18), if (n == 0) dp(12) else dp(2), dp(18),
+                    if (n == lines.size - 1) dp(12) else dp(2))
+                card.addView(t)
             }
+            endGroup()
         }
-        addDivider()
+        group()
         addAction("Share report",
             "Send these numbers, with your Android version and phone model.") {
             val send = android.content.Intent(android.content.Intent.ACTION_SEND)
@@ -656,11 +654,68 @@ class SectionActivity : AppCompatActivity() {
 
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
 
+    // ---- Cards ----
+    //
+    // Every section is built of the cards the main Settings page uses: a
+    // label in the accent, then a rounded card of rows with a hairline
+    // between them, on the page's own background. Notes sit under the card
+    // they explain. The sections used to be one flat list ruled across with
+    // dividers, a different look from the page they were opened from.
+
+    /** The card rows are added to now, or null before the first and after endGroup. */
+    private var card: LinearLayout? = null
+
+    /** Starts a new card, under [label] in the accent when one is given. */
+    private fun group(label: String? = null): LinearLayout {
+        if (label != null) {
+            val t = TextView(this)
+            t.text = label
+            t.textSize = 13f
+            t.setTypeface(t.typeface, android.graphics.Typeface.BOLD)
+            t.letterSpacing = 0.02f
+            t.setTextColor(Settings.accentInk(this))
+            t.setPadding(dp(14), dp(16), dp(14), dp(8))
+            content.addView(t)
+        }
+        val c = LinearLayout(this)
+        c.orientation = LinearLayout.VERTICAL
+        c.setBackgroundResource(R.drawable.settings_card_bg)
+        c.elevation = dp(1).toFloat()
+        c.clipToOutline = true
+        val lp = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        lp.topMargin = if (label == null) dp(16) else 0
+        lp.bottomMargin = dp(4)
+        c.layoutParams = lp
+        content.addView(c)
+        card = c
+        return c
+    }
+
+    private fun endGroup() { card = null }
+
+    /** A row into the current card (one is started if there is none), after a hairline. */
+    private fun addRow(v: android.view.View) = addInto(card ?: group(), v)
+
+    private fun addInto(list: LinearLayout, v: android.view.View) {
+        if (list.childCount > 0) {
+            val line = android.view.View(this)
+            val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                maxOf(1, (resources.displayMetrics.density * 0.75f).toInt()))
+            lp.marginStart = dp(18)
+            lp.marginEnd = dp(18)
+            line.layoutParams = lp
+            line.setBackgroundColor(0x24808080)
+            list.addView(line)
+        }
+        list.addView(v)
+    }
+
     private fun addToggle(title: String, desc: String, key: String, default: Boolean) {
         val row = LinearLayout(this)
         row.orientation = LinearLayout.HORIZONTAL
         row.gravity = Gravity.CENTER_VERTICAL
-        row.setPadding(dp(20), dp(14), dp(20), dp(14))
+        row.setPadding(dp(18), dp(15), dp(14), dp(15))
         row.layoutParams = LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
         )
@@ -690,32 +745,33 @@ class SectionActivity : AppCompatActivity() {
         sw.setOnCheckedChangeListener { _, checked ->
             Settings.setBool(this, key, checked)
         }
+        // The whole row flips the switch, not only the switch itself.
+        row.isClickable = true
+        val ripple = android.util.TypedValue()
+        theme.resolveAttribute(android.R.attr.selectableItemBackground, ripple, true)
+        row.setBackgroundResource(ripple.resourceId)
+        row.setOnClickListener { sw.toggle() }
 
         row.addView(textCol)
         row.addView(sw)
-        content.addView(row)
-
-        // divider
-        val div = TextView(this)
-        div.layoutParams = LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, dp(1)
-        )
-        div.setBackgroundColor(0x22808080)
-        content.addView(div)
+        addRow(row)
     }
 
     /** A tappable row that reads like the toggles above it, minus the switch. */
-    private fun addAction(title: String, desc: String, onTap: () -> Unit) {
+    private fun addAction(title: String, desc: String, danger: Boolean = false, onTap: () -> Unit) {
         val col = LinearLayout(this)
         col.orientation = LinearLayout.VERTICAL
-        col.setPadding(dp(20), dp(14), dp(20), dp(14))
+        col.setPadding(dp(18), dp(15), dp(18), dp(15))
         col.isClickable = true
         col.setOnClickListener { onTap() }
+        val ripple = android.util.TypedValue()
+        theme.resolveAttribute(android.R.attr.selectableItemBackground, ripple, true)
+        col.setBackgroundResource(ripple.resourceId)
 
         val t = TextView(this)
         t.text = title
         t.textSize = 16f
-        t.setTextColor(resolveTextColor())
+        t.setTextColor(if (danger) getColor(R.color.dangerFg) else resolveTextColor())
 
         val d = TextView(this)
         d.text = desc
@@ -725,21 +781,18 @@ class SectionActivity : AppCompatActivity() {
 
         col.addView(t)
         col.addView(d)
-        content.addView(col)
-
-        val div = TextView(this)
-        div.layoutParams = LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, dp(1))
-        div.setBackgroundColor(0x22808080)
-        content.addView(div)
+        addRow(col)
     }
 
+    /** A note under the card it explains (or at the top of the page); the next row starts a new card. */
     private fun addNote(text: String) {
+        endGroup()
         val t = TextView(this)
         t.text = text
-        t.textSize = 15f
+        t.textSize = 13f
+        t.setLineSpacing(0f, 1.15f)
         t.setTextColor(0xFF8A8A8F.toInt())
-        t.setPadding(dp(20), dp(16), dp(20), dp(16))
+        t.setPadding(dp(14), dp(8), dp(14), dp(6))
         content.addView(t)
     }
 

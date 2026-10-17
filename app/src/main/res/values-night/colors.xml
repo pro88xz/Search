@@ -16,7 +16,7 @@
     <color name="feedCard">#17171A</color>
     <color name="feedFg">#FAFAFA</color>
     <color name="settingsPageBg">#0E0E10</color>
-    <color name="settingsCard">#1C1C20</color>
+    <color name="settingsCard">#17171A</color>
     <color name="settingsIconTint">#B39DF0</color>
     <color name="sugSheet">#17171A</color>
     <color name="sugFg">#FAFAFA</color>
@@ -24,7 +24,13 @@
     <color name="sugTitle">#9A9A9A</color>
     <color name="dangerFg">#F2B8B5</color>
     <!-- Bottom bar and top bar glyphs at rest. Selected Home takes the accent. -->
-    <color name="navIcon">#CFC9DB</color>
+    <color name="navIcon">#C4C4C9</color>
     <!-- The bottom bar's sheet. -->
     <color name="barSurface">#17171A</color>
+    <color name="accentBlue">#8AB4F8</color>
+    <color name="accentPurple">#B39DF0</color>
+    <color name="accentGreen">#6DD5A0</color>
+    <color name="accentAmber">#F5B94E</color>
+    <color name="accentRose">#F28B9D</color>
+    <color name="accentInk">#E8E8EA</color>
 </resources>

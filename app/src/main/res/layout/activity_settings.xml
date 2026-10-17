@@ -46,6 +46,13 @@
             android:paddingTop="12dp"
             android:paddingBottom="28dp">
 
+            <!-- Default browser: hidden once Search is the default (SettingsActivity). -->
+            <LinearLayout android:id="@+id/defaultCard" style="@style/SettingsCard">
+                <TextView android:id="@+id/rowDefault" style="@style/SettingsRow"
+                    android:text="Make Search your default browser"
+                    android:drawableStart="@drawable/set_default" />
+            </LinearLayout>
+
             <!-- Search engine -->
             <TextView style="@style/SettingsCardLabel" android:text="Search engine" />
             <LinearLayout style="@style/SettingsCard">

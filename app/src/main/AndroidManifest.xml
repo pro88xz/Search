@@ -7,6 +7,11 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
+    <!-- Menu > Add to Home screen on Android 7.x, whose launchers take a
+         shortcut by broadcast (ShortcutManagerCompat); from Android 8 the
+         system asks the user instead and this is not used. -->
+    <uses-permission android:name="com.android.launcher.permission.INSTALL_SHORTCUT"
+        android:maxSdkVersion="25" />
     <!--
       Needed for the web to reach them at all. A site asking for the camera,
       the microphone or a location gets nothing unless this app itself holds
