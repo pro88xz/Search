@@ -666,6 +666,16 @@
                     android:text="New tab" android:textSize="16sp"
                     android:textColor="?android:attr/textColorPrimary" />
             </LinearLayout>
+            <!-- The last tab closed, back with its address. Only while there is
+                 one to bring back; set from code (openMenu). -->
+            <LinearLayout android:id="@+id/menuReopen" style="@style/MenuRow"
+                android:visibility="gone">
+                <ImageView android:layout_width="22dp" android:layout_height="22dp"
+                    android:src="@drawable/menu_reopen" android:layout_marginEnd="18dp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="Reopen closed tab" android:textSize="16sp"
+                    android:textColor="?android:attr/textColorPrimary" />
+            </LinearLayout>
             <LinearLayout android:id="@+id/menuNightOwl" style="@style/MenuRow">
                 <ImageView android:layout_width="22dp" android:layout_height="22dp"
                     android:src="@drawable/menu_nightowl" android:layout_marginEnd="18dp" />
@@ -699,6 +709,36 @@
                     android:src="@drawable/menu_find" android:layout_marginEnd="18dp" />
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
                     android:text="Find in page" android:textSize="16sp"
+                    android:textColor="?android:attr/textColorPrimary" />
+            </LinearLayout>
+            <!-- For a website only: on the home page each says to open a page
+                 first. -->
+            <LinearLayout android:id="@+id/menuShare" style="@style/MenuRow">
+                <ImageView android:layout_width="22dp" android:layout_height="22dp"
+                    android:src="@drawable/menu_share" android:layout_marginEnd="18dp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="Share…" android:textSize="16sp"
+                    android:textColor="?android:attr/textColorPrimary" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/menuTranslate" style="@style/MenuRow">
+                <ImageView android:layout_width="22dp" android:layout_height="22dp"
+                    android:src="@drawable/menu_translate" android:layout_marginEnd="18dp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="Translate page" android:textSize="16sp"
+                    android:textColor="?android:attr/textColorPrimary" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/menuReader" style="@style/MenuRow">
+                <ImageView android:layout_width="22dp" android:layout_height="22dp"
+                    android:src="@drawable/menu_reader" android:layout_marginEnd="18dp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="Reader view" android:textSize="16sp"
+                    android:textColor="?android:attr/textColorPrimary" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/menuAddHome" style="@style/MenuRow">
+                <ImageView android:layout_width="22dp" android:layout_height="22dp"
+                    android:src="@drawable/menu_add_home" android:layout_marginEnd="18dp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="Add to Home screen" android:textSize="16sp"
                     android:textColor="?android:attr/textColorPrimary" />
             </LinearLayout>
             <LinearLayout android:id="@+id/menuPrint" style="@style/MenuRow">

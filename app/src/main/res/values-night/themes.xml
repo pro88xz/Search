@@ -3,6 +3,11 @@
     <style name="Theme.Search" parent="Theme.MaterialComponents.NoActionBar">
         <item name="android:windowBackground">@color/appBackground</item>
         <item name="android:colorBackground">@color/appBackground</item>
+        <item name="colorPrimary">@color/accentPurple</item>
+        <item name="colorPrimaryVariant">@color/accentPurple</item>
+        <item name="colorSecondary">@color/accentPurple</item>
+        <item name="colorAccent">@color/accentPurple</item>
+        <item name="colorControlActivated">@color/accentPurple</item>
     </style>
     <style name="Theme.Search.Splash" parent="Theme.MaterialComponents.NoActionBar">
         <item name="android:windowBackground">@drawable/splash_window</item>

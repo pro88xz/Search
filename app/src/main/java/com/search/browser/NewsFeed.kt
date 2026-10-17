@@ -515,11 +515,16 @@ object NewsFeed {
     fun refreshIfDue(context: Context, later: (String) -> Unit) {
         val app = context.applicationContext
         background.execute {
-            val warm = saved(app)
-            if (warm != null && !due(System.currentTimeMillis())) return@execute
-            val d = Delivery(later)
-            if (warm != null) d.first(warm)
-            refreshInBackground(app, d)
+            // As in the refresh itself: nothing here may take the app down.
+            try {
+                val warm = saved(app)
+                if (warm != null && !due(System.currentTimeMillis())) return@execute
+                val d = Delivery(later)
+                if (warm != null) d.first(warm)
+                refreshInBackground(app, d)
+            } catch (t: Throwable) {
+                DebugLog.add { "feed  refresh skipped: " + t.javaClass.simpleName }
+            }
         }
     }
 

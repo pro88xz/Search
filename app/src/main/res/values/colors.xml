@@ -22,8 +22,10 @@
     <!-- Mirrors the home page card fill and text colour -->
     <color name="feedCard">#FFFFFF</color>
     <color name="feedFg">#0E0E10</color>
-    <!-- Settings Material-3 surfaces -->
-    <color name="settingsPageBg">#F1EEF7</color>
+    <!-- Settings surfaces: the same page and card colours as every other
+         screen (appBackground under white cards). The page was a lavender
+         #F1EEF7, a purple tint no other screen had. -->
+    <color name="settingsPageBg">#F5F5F5</color>
     <color name="settingsCard">#FFFFFF</color>
     <color name="settingsIconTint">#5E44A0</color>
     <!-- The splash in light mode; values-night has the dark one. -->
@@ -32,8 +34,20 @@
     <color name="sugSheet">#FFFFFF</color>
     <color name="sugTitle">#7D7D7D</color>
     <color name="dangerFg">#B3261E</color>
-    <!-- Bottom bar and top bar glyphs at rest. Selected Home takes the accent. -->
-    <color name="navIcon">#57536B</color>
+    <!-- Bottom bar and top bar glyphs at rest: a neutral grey (it was a
+         purple grey). Selected Home takes the accent. -->
+    <color name="navIcon">#5F6368</color>
     <!-- The bottom bar's sheet. -->
     <color name="barSurface">#FFFFFF</color>
+    <!-- The accent picked in Settings > Customize, as ink: deep enough to
+         read on a white surface (values-night has the light ones for dark
+         surfaces). Switches, radio buttons, dialog buttons, the settings icons
+         and their section labels all take it (ThemeOverlay.Search.Accent.*),
+         so every screen carries the one accent the user chose. -->
+    <color name="accentBlue">#2B6CF0</color>
+    <color name="accentPurple">#5E44A0</color>
+    <color name="accentGreen">#1E8E55</color>
+    <color name="accentAmber">#A86400</color>
+    <color name="accentRose">#C4304B</color>
+    <color name="accentInk">#0E0E10</color>
 </resources>

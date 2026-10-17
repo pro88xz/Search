@@ -14,6 +14,7 @@ class SettingsActivity : AppCompatActivity() {
         Settings.applyNightMode(this)
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        Settings.applyAccent(this)
         setContentView(R.layout.activity_settings)
         androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(
             findViewById(R.id.settingsRoot)) { v, insets ->
@@ -31,7 +32,60 @@ class SettingsActivity : AppCompatActivity() {
             .setOnClickListener { finish() }
 
         setupSectionRows()
+        setupDefaultBrowser()
+        paintAccent(findViewById(R.id.settingsRoot), Settings.accentInk(this))
     }
+
+    /**
+     * The icons and the section labels in the accent the user picked, as on
+     * every other screen. They were a fixed purple whatever the choice. The
+     * red Clear browsing data row keeps its red.
+     */
+    private fun paintAccent(v: android.view.View, ink: Int) {
+        if (v is android.view.ViewGroup) {
+            for (i in 0 until v.childCount) paintAccent(v.getChildAt(i), ink)
+            return
+        }
+        if (v !is TextView || v.id == R.id.clearData) return
+        val tint = android.content.res.ColorStateList.valueOf(ink)
+        if (v is RadioButton) { v.buttonTintList = tint; return }
+        if (v.currentTextColor == getColor(R.color.settingsIconTint)) v.setTextColor(ink)
+        // The leading icon only: the chevron at the end stays grey.
+        v.compoundDrawablesRelative[0]?.let { icon ->
+            icon.mutate().setTintList(tint)
+            v.invalidate()
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Back from Customize with a new accent: this screen takes it too.
+        if (shownAccent != null && shownAccent != Settings.getHomeAccent(this)) recreate()
+        shownAccent = Settings.getHomeAccent(this)
+        // Gone once Search is the default; back if another browser took it.
+        findViewById<android.view.View>(R.id.defaultCard).visibility =
+            if (DefaultBrowser.isDefault(this)) android.view.View.GONE else android.view.View.VISIBLE
+    }
+
+    private val defaultLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    ) {
+        if (DefaultBrowser.isDefault(this)) toast("Search is now your default browser")
+    }
+
+    private fun setupDefaultBrowser() {
+        findViewById<TextView>(R.id.rowDefault).setOnClickListener {
+            val ask = DefaultBrowser.requestIntent(this)
+            try {
+                if (ask != null) defaultLauncher.launch(ask) else startActivity(DefaultBrowser.settingsIntent())
+            } catch (e: Exception) {
+                try { startActivity(DefaultBrowser.settingsIntent()) } catch (e2: Exception) {
+                    toast("Pick Search under Settings > Apps > Default apps > Browser")
+                }
+            }
+        }
+    }
+    private var shownAccent: String? = null
 
     private fun setupEngines() {
         val group = findViewById<RadioGroup>(R.id.engineGroup)

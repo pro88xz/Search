@@ -50,9 +50,20 @@ class DownloadsAdapter(
                 }
             }
             d.isRunning -> {
+                // How much, of how much, and how fast: a 4GB file at a steady
+                // 1% reads as stuck without them.
                 val pct = if (d.bytesTotal > 0)
                     (d.bytesSoFar * 100 / d.bytesTotal).toInt() else 0
-                "Downloading… $pct%"
+                val so = Downloads.formatSize(d.bytesSoFar)
+                val of = Downloads.formatSize(d.bytesTotal)
+                val amount = when {
+                    so.isEmpty() -> ""
+                    of.isEmpty() -> " \u00B7 $so"
+                    else -> " \u00B7 $so of $of"
+                }
+                val rate = rates[d.id]?.takeIf { it > 0.0 }
+                    ?.let { " \u00B7 " + Downloads.formatSize(it.toLong()) + "/s" } ?: ""
+                (if (d.bytesTotal > 0) "Downloading\u2026 $pct%" else "Downloading\u2026") + amount + rate
             }
             else -> "Pending"
         }
@@ -70,9 +81,25 @@ class DownloadsAdapter(
      * download is running cannot afford.
      */
     fun submit(newItems: List<Downloads.Item>) {
+        val now = android.os.SystemClock.uptimeMillis()
+        newItems.forEach { d ->
+            if (!d.isRunning || !d.managed) { seen.remove(d.id); rates.remove(d.id); return@forEach }
+            val before = seen[d.id]
+            if (before != null && now > before.second) {
+                val bps = (d.bytesSoFar - before.first) * 1000.0 / (now - before.second)
+                // Eased, so one slow poll does not make the speed jump about.
+                val old = rates[d.id]
+                rates[d.id] = if (old == null || old <= 0.0) bps else old * 0.6 + bps * 0.4
+            }
+            seen[d.id] = d.bytesSoFar to now
+        }
         items = newItems
         notifyDataSetChanged()
     }
+
+    /** Bytes and time at the last poll, per running download; and its speed in bytes a second. */
+    private val seen = HashMap<Long, Pair<Long, Long>>()
+    private val rates = HashMap<Long, Double>()
 
     override fun getItemCount() = items.size
 }

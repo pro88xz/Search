@@ -14,6 +14,61 @@
           dark is wanted. Ignored below Android 10.
         -->
         <item name="android:forceDarkAllowed">false</item>
+        <!-- The default accent (purple) until ThemeOverlay.Search.Accent.*
+             puts the chosen one on top. Left unset, MaterialComponents gave
+             switches and radio buttons its teal and dialog buttons its vivid
+             #6200EE - neither the app's accent. -->
+        <item name="colorPrimary">@color/accentPurple</item>
+        <item name="colorPrimaryVariant">@color/accentPurple</item>
+        <item name="colorSecondary">@color/accentPurple</item>
+        <item name="colorAccent">@color/accentPurple</item>
+        <item name="colorControlActivated">@color/accentPurple</item>
+    </style>
+
+    <!-- The accent picked in Settings > Customize, laid over Theme.Search by
+         Settings.applyAccent in every screen. -->
+    <style name="ThemeOverlay.Search.Accent" parent="">
+        <item name="colorPrimary">@color/accentPurple</item>
+        <item name="colorPrimaryVariant">@color/accentPurple</item>
+        <item name="colorSecondary">@color/accentPurple</item>
+        <item name="colorAccent">@color/accentPurple</item>
+        <item name="colorControlActivated">@color/accentPurple</item>
+    </style>
+    <style name="ThemeOverlay.Search.Accent.Purple" />
+    <style name="ThemeOverlay.Search.Accent.Blue">
+        <item name="colorPrimary">@color/accentBlue</item>
+        <item name="colorPrimaryVariant">@color/accentBlue</item>
+        <item name="colorSecondary">@color/accentBlue</item>
+        <item name="colorAccent">@color/accentBlue</item>
+        <item name="colorControlActivated">@color/accentBlue</item>
+    </style>
+    <style name="ThemeOverlay.Search.Accent.Green">
+        <item name="colorPrimary">@color/accentGreen</item>
+        <item name="colorPrimaryVariant">@color/accentGreen</item>
+        <item name="colorSecondary">@color/accentGreen</item>
+        <item name="colorAccent">@color/accentGreen</item>
+        <item name="colorControlActivated">@color/accentGreen</item>
+    </style>
+    <style name="ThemeOverlay.Search.Accent.Amber">
+        <item name="colorPrimary">@color/accentAmber</item>
+        <item name="colorPrimaryVariant">@color/accentAmber</item>
+        <item name="colorSecondary">@color/accentAmber</item>
+        <item name="colorAccent">@color/accentAmber</item>
+        <item name="colorControlActivated">@color/accentAmber</item>
+    </style>
+    <style name="ThemeOverlay.Search.Accent.Rose">
+        <item name="colorPrimary">@color/accentRose</item>
+        <item name="colorPrimaryVariant">@color/accentRose</item>
+        <item name="colorSecondary">@color/accentRose</item>
+        <item name="colorAccent">@color/accentRose</item>
+        <item name="colorControlActivated">@color/accentRose</item>
+    </style>
+    <style name="ThemeOverlay.Search.Accent.Ink">
+        <item name="colorPrimary">@color/accentInk</item>
+        <item name="colorPrimaryVariant">@color/accentInk</item>
+        <item name="colorSecondary">@color/accentInk</item>
+        <item name="colorAccent">@color/accentInk</item>
+        <item name="colorControlActivated">@color/accentInk</item>
     </style>
     <!--
       Dialogs.

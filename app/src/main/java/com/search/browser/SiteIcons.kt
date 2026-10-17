@@ -72,6 +72,9 @@ object SiteIcons {
     /** The icon already in memory for [url]'s site, if any. */
     fun cached(url: String?): Bitmap? = keyOf(url)?.let { memory.get(it) }
 
+    /** Memory is short: the icons in memory go; the ones on disk come back when next wanted. */
+    fun trimMemory() = memory.evictAll()
+
     /**
      * Finds the crisp icon for the page [web] is showing at [pageUrl] and hands
      * it to [onIcon] on the main thread; nothing is called when the site has
@@ -93,6 +96,11 @@ object SiteIcons {
             val disk = if (private) null else decodeFile(file)
             main.post {
                 if (disk != null) { deliver(key, disk); return@post }
+                // The tab may have been closed while the disk was read: a
+                // destroyed WebView is off the window, and calling into one
+                // aborts the process rather than throwing. isAttachedToWindow
+                // is a plain View call that never reaches the page.
+                if (!web.isAttachedToWindow) { inFlight.remove(key); startedAt.remove(key); return@post }
                 // The page's own list of icons: only the page knows it, and only
                 // on the main thread can it be asked.
                 val ask = try {
@@ -185,10 +193,12 @@ object SiteIcons {
                 out.toByteArray()
             }
             decode(bytes)
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
+            // OutOfMemoryError too: on this background thread an uncaught one
+            // would end the app, for the sake of an icon.
             null
         } finally {
-            conn?.disconnect()
+            try { conn?.disconnect() } catch (e: Exception) {}
         }
     }
 
@@ -204,7 +214,7 @@ object SiteIcons {
     }
 
     private fun decodeFile(file: File): Bitmap? =
-        if (!file.isFile) null else try { BitmapFactory.decodeFile(file.path) } catch (e: Exception) { null }
+        if (!file.isFile) null else try { BitmapFactory.decodeFile(file.path) } catch (e: Throwable) { null }
 
     private fun save(file: File, icon: Bitmap) {
         try {

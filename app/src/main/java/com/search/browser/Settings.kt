@@ -108,6 +108,8 @@ object Settings {
     const val SEC_BLOCK_3P_COOKIES = "sec_block_3p_cookies" // default false
     const val SEC_CONFIRM_DOWNLOADS = "sec_confirm_downloads" // default true
 
+    const val SEARCH_SUGGESTIONS = "search_suggestions" // default true: the engine's suggestions as you type
+
     // Adblock
     const val ADBLOCK_ENABLED = "adblock_enabled"     // default false
 
@@ -127,6 +129,7 @@ object Settings {
     const val TINT_BARS = "tint_bars"                  // default false: bars keep the app's surface; on, they take the site's colour
     const val HOME_ACCENT = "home_accent"              // hex string
     const val HOME_SHOW_TILES = "home_show_tiles"      // default true
+    const val DARK_WEB = "dark_web_pages"              // default false: darken sites with no dark look of their own, in dark theme (Android 13+)
 
     fun getHomeBackground(c: Context): String =
         prefs(c).getString(HOME_BACKGROUND, "clean") ?: "clean"
@@ -136,8 +139,36 @@ object Settings {
         prefs(c).getString(HOME_ACCENT, "#8B6BD8") ?: "#8B6BD8"
     fun setHomeAccent(c: Context, v: String) { prefs(c).edit().putString(HOME_ACCENT, v).apply() }
 
+    /** The accents offered in Settings > Customize: colour, name, theme overlay, ink. */
+    class Accent(val hex: String, val name: String, val overlay: Int, val ink: Int)
+    val ACCENTS = listOf(
+        Accent("#2B6CF0", "Blue", R.style.ThemeOverlay_Search_Accent_Blue, R.color.accentBlue),
+        Accent("#8B6BD8", "Purple", R.style.ThemeOverlay_Search_Accent_Purple, R.color.accentPurple),
+        Accent("#2FB170", "Green", R.style.ThemeOverlay_Search_Accent_Green, R.color.accentGreen),
+        Accent("#F5A623", "Amber", R.style.ThemeOverlay_Search_Accent_Amber, R.color.accentAmber),
+        Accent("#E5556E", "Rose", R.style.ThemeOverlay_Search_Accent_Rose, R.color.accentRose),
+        Accent("#0E0E10", "Ink", R.style.ThemeOverlay_Search_Accent_Ink, R.color.accentInk)
+    )
+    fun accentOf(c: Context): Accent {
+        val hex = getHomeAccent(c)
+        return ACCENTS.firstOrNull { it.hex.equals(hex, true) } ?: ACCENTS[1]
+    }
+
+    /**
+     * Lays the chosen accent over the screen's theme, so its switches, radio
+     * buttons, dialog buttons and text handles carry it. Called in onCreate
+     * before any view is inflated.
+     */
+    fun applyAccent(a: android.app.Activity) {
+        a.theme.applyStyle(accentOf(a).overlay, true)
+    }
+
+    /** The chosen accent as ink that reads on this theme's surfaces (deep on light, light on dark). */
+    fun accentInk(c: Context): Int = c.getColor(accentOf(c).ink)
+
     // Accessibility
     const val A11Y_TEXT_SCALE = "a11y_text_scale"     // int percent, default 100
+    const val A11Y_FORCE_ZOOM = "a11y_force_zoom"     // default false: pinch-zoom even where a site turns it off
     fun getTextScale(c: Context): Int = prefs(c).getInt(A11Y_TEXT_SCALE, 100)
     fun setTextScale(c: Context, pct: Int) { prefs(c).edit().putInt(A11Y_TEXT_SCALE, pct).apply() }
 }

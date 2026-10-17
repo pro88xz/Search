@@ -79,6 +79,9 @@ class NavSheetView @JvmOverloads constructor(
     var accent: Int = Color.parseColor("#8B6BD8")
         set(v) { field = v; repaint() }
 
+    /** The bar's own surface; any other [surfaceColor] is Night Owl's wash. */
+    private val plainSurface = context.getColor(R.color.barSurface)
+
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val line = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -154,10 +157,23 @@ class NavSheetView @JvmOverloads constructor(
         val middle = if (t != null && t.size == 3) t[1] else surfaceColor
         // A soft shadow, lifted slightly, so the sheet and its arc float over
         // the page as one piece.
-        fill.setShadowLayer(14f * dp, 0f, -1f * dp,
-            if (dark) Color.argb(110, 0, 0, 0) else Color.argb(26, 60, 48, 112))
+        // Neutral, as the top bar's: the shadow and the hairline were tinted
+        // lavender. Night Owl's wash keeps its lavender ones, and the ring
+        // around the button still carries a little of the accent the user
+        // picked.
+        val owlWash = surfaceColor != plainSurface
+        fill.setShadowLayer(14f * dp, 0f, -1f * dp, when {
+            dark -> Color.argb(110, 0, 0, 0)
+            owlWash -> Color.argb(26, 60, 48, 112)
+            else -> Color.argb(24, 0, 0, 0)
+        })
         ringPaint.color = mix(middle, accent, if (dark) 0.16f else 0.07f)
-        line.color = if (dark) Color.argb(18, 255, 255, 255) else mix(middle, accent, 0.12f)
+        line.color = when {
+            t != null && t.size == 3 && PageTint.isDark(t) -> Color.TRANSPARENT
+            dark -> Color.argb(18, 255, 255, 255)
+            owlWash -> mix(middle, accent, 0.12f)
+            else -> mix(middle, Color.BLACK, 0.09f)
+        }
         invalidate()
     }
 

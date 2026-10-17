@@ -63,7 +63,7 @@ object AppIcons {
                     app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(appId, data).apply()
                     ok = true
                 }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 // No icon is not worth a crash; the tile keeps its letter.
             } finally {
                 synchronized(busy) {
@@ -116,10 +116,10 @@ object AppIcons {
                 }
                 out.toByteArray()
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             null
         } finally {
-            conn?.disconnect()
+            try { conn?.disconnect() } catch (e: Exception) {}
         }
     }
 }
