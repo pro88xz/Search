@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launcher shortcut icon before Android 8, which has no adaptive icons:
+     the glyph on a white disc. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="oval"><solid android:color="@color/shortcutTile" /></shape>
+    </item>
+    <item android:drawable="@drawable/shortcut_scan_glyph" android:left="12dp" android:top="12dp"
+        android:right="12dp" android:bottom="12dp" />
+</layer-list>

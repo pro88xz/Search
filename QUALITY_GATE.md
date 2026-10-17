@@ -289,3 +289,39 @@ These were built without a phone to run them on. Check each once:
       bookmarks only. Dark websites on (dark theme, Android 13+): a white
       site is darkened. Force enable zoom on: a site that blocks pinch-zoom
       zooms.
+- [ ] (1.8.0) Feed ad: Settings > Performance & health > Feed ad shows
+      "asked N, filled N, failed N, on screen N". With airplane mode on at
+      launch, then off, a card arrives within a few seconds (and on the next
+      return to the app if it was in the background). Leave the app for over
+      an hour and come back to home: a new card replaces the old one. No
+      request in Night Owl, none for supporters ("Supporter: yes" shows).
+- [ ] (1.8.0) The owl: on a cold start it rises, opens its eyes, looks at
+      you, tilts and winks, once; again after 20 minutes away. Blinks look
+      natural (sometimes twice), the eyes dart and settle, it squashes when
+      tapped with a firm tick; while a page loads it looks up at the ring.
+      With animations off (Developer options) it holds still.
+- [ ] (1.8.0) Haptics: Home, Bookmarks, Tabs, Menu and New tab tick and
+      spring under the finger; pull to refresh, closing a tab and a tab
+      swipe confirm. Settings > Customize > Vibration on tap off: none.
+- [ ] (1.8.0) Long-press the app icon: New tab, Night Owl tab, Voice search,
+      Scan QR each open straight into that. Settings > Add the Search widget
+      pins it; each of its parts opens the right thing. Quick Settings: the
+      Night Owl tile opens a Night Owl tab (Android 14+ too).
+- [ ] (1.8.0) Select text in another app (Messages, Gmail): "Search" is in
+      the menu and opens the results in Search; Back returns to that app.
+- [ ] (1.8.0) Home: "Jump back in" shows the page last read in another tab
+      and a tap returns to it with Back still working. The blocked line
+      shows this week's count while ad blocking is on. Leave for 4 hours
+      (or set the clock forward): the app opens on home, old tab intact.
+- [ ] (1.8.0) Long-press a link: Open in new tab stays on the page with
+      "Switch"; Open in Night Owl tab; Copy link text; Download link. An
+      image: Search image with Google Lens. Hold Back or Forward in the
+      menu: the tab's pages that way, and picking one goes there.
+- [ ] (1.8.0) Tap the site icon in the address box: page info (secure or
+      not, certificate issuer, permissions with Reset, Block/Allow ads).
+- [ ] (1.8.0) Tab deck: type in the filter to narrow the cards; drag a card
+      to reorder (order kept after a restart); overflow: Close all, Close
+      others, Close duplicate tabs (n), Reopen closed tab, Delete last 15
+      minutes (history from the last 15 minutes is gone).
+- [ ] (1.8.0) Open a link from another app, then Back: the tab closes and
+      that app comes back.

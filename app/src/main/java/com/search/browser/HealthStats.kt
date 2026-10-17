@@ -54,6 +54,12 @@ object HealthStats {
     const val PAGES_LIGHT = "pages_light"
     const val PAGES_MEDIUM = "pages_medium"
     const val PAGES_HEAVY = "pages_heavy"
+    // The feed ad (MainActivity.loadFeedAd): asked for, answered with an ad,
+    // answered with an error, and the card actually on screen. Counts only.
+    const val AD_REQUESTS = "ad_requests"
+    const val AD_FILLED = "ad_filled"
+    const val AD_FAILED = "ad_failed"
+    const val AD_SEEN = "ad_seen"
 
     // Timings (milliseconds), kept as a sum and a count for an average.
     const val COLD_START = "cold_start"
@@ -265,7 +271,66 @@ object HealthStats {
             v.n(PAGES_MEDIUM) + ", heavy " + v.n(PAGES_HEAVY)
         out += "Memory warnings: getting short " + v.n(MEMORY_MODERATE) +
             ", low " + v.n(MEMORY_LOW)
+        out += "Feed ad: asked " + v.n(AD_REQUESTS) + ", filled " + v.n(AD_FILLED) +
+            ", failed " + v.n(AD_FAILED) + ", on screen " + v.n(AD_SEEN)
         return out
+    }
+
+    // ---------- Why the feed ad did not show ----------
+    //
+    // The last answer AdMob gave instead of an ad, kept so a release build
+    // can say why the card is missing (Settings > Performance & health): in a
+    // release build there is no log to read, and "no ad" looks the same
+    // whether the unit has no fill yet or the request is wrong.
+
+    private const val KEY_AD_ERROR = "ad_last_error"
+    private const val KEY_AD_ERROR_AT = "ad_last_error_at"
+    private const val KEY_AD_GATE = "ad_last_gate"
+
+    fun noteAdError(c: Context, code: Int, message: String?) {
+        prefs(c).edit()
+            .putString(KEY_AD_ERROR, code.toString() + "|" + (message ?: "").take(160))
+            .putLong(KEY_AD_ERROR_AT, System.currentTimeMillis())
+            .apply()
+    }
+
+    /** Why no request was made, when one was not (consent, supporter, Night Owl). */
+    fun noteAdGate(c: Context, why: String) {
+        prefs(c).edit().putString(KEY_AD_GATE, why).apply()
+    }
+
+    /** Plain lines about the feed ad's last failure and what it means, or none. */
+    fun adLines(c: Context): List<String> {
+        val p = prefs(c)
+        val out = mutableListOf<String>()
+        // A supporter purchase turns the ad off for good on this phone - a
+        // test purchase made while setting the store up included - so it is
+        // the first thing to rule out when the card never shows.
+        if (Settings.getBool(c, Settings.IS_SUPPORTER, false)) {
+            out += "Supporter: yes - the feed ad is off on this phone"
+        }
+        p.getString(KEY_AD_GATE, null)?.let { out += "Last time no ad was asked for: $it" }
+        val raw = p.getString(KEY_AD_ERROR, null) ?: return out
+        val code = raw.substringBefore('|').toIntOrNull() ?: -1
+        val msg = raw.substringAfter('|', "")
+        val at = p.getLong(KEY_AD_ERROR_AT, 0L)
+        val ago = if (at > 0) " (" + ((System.currentTimeMillis() - at) / 60_000L).coerceAtLeast(0) + " min ago)" else ""
+        out += "Last ad error: code $code - " + adErrorMeaning(code) + ago
+        if (msg.isNotBlank()) out += "AdMob said: $msg"
+        return out
+    }
+
+    /** What an AdMob LoadAdError code means, and what to do about it. */
+    fun adErrorMeaning(code: Int): String = when (code) {
+        0 -> "internal error on Google's side; it usually passes"
+        1 -> "invalid request: check the ad unit ID and the app ID in AdMob match this app"
+        2 -> "network error: no connection when the ad was asked for"
+        3 -> "no fill: AdMob had no ad to give (normal for a new unit or an app still in review)"
+        8 -> "the app ID is missing or wrong in the manifest"
+        9 -> "no fill from mediation"
+        10 -> "request ID mismatch"
+        11 -> "invalid ad string"
+        else -> "unknown"
     }
 
     private fun ms(v: Long?): String = if (v == null) "-" else "$v ms"
@@ -279,6 +344,11 @@ object HealthStats {
         versions(c).forEach { v ->
             sb.append("\nVersion ").append(v.name).append(" (").append(v.code).append(")\n")
             lines(v).forEach { sb.append("  ").append(it).append('\n') }
+        }
+        val ads = adLines(c)
+        if (ads.isNotEmpty()) {
+            sb.append("\nFeed ad\n")
+            ads.forEach { sb.append("  ").append(it).append('\n') }
         }
         return sb.toString()
     }

@@ -82,6 +82,14 @@ class MainActivity : AppCompatActivity() {
          * site can spend a few seconds drawing nothing while it starts up.
          */
         private const val OPENER_STALL_MS = 6000L
+
+        // Launcher shortcuts (res/xml/shortcuts.xml), the search widget
+        // (SearchWidget) and the Night Owl tile (OwlTileService).
+        const val ACTION_SEARCH = "com.search.browser.action.SEARCH"
+        const val ACTION_NEW_TAB = "com.search.browser.action.NEW_TAB"
+        const val ACTION_NIGHT_OWL = "com.search.browser.action.NIGHT_OWL"
+        const val ACTION_SCAN = "com.search.browser.action.SCAN"
+        const val ACTION_VOICE = "com.search.browser.action.VOICE"
     }
 
     // Posts to the main thread, attached or not. View.post on a WebView that
@@ -327,6 +335,9 @@ class MainActivity : AppCompatActivity() {
                         // network has settled before it is asked.
                         uiHandler.removeCallbacks(recoverAfterReconnect)
                         uiHandler.postDelayed(recoverAfterReconnect, 700L)
+                        // And the feed ad, if the launch had no connection
+                        // to ask for one with (or to settle consent with).
+                        uiHandler.postDelayed({ retryAdsAfterReconnect() }, 1500L)
                     }
                 }
             }
@@ -962,7 +973,10 @@ class MainActivity : AppCompatActivity() {
     /** Rounded corners, as a launcher draws a site's icon. */
     private object SiteIconOutline : android.view.ViewOutlineProvider() {
         override fun getOutline(view: View, outline: android.graphics.Outline) {
-            outline.setRoundRect(0, 0, view.width, view.height, view.width * 0.22f)
+            // Inside the padding: the view is a 40dp touch target around a 24dp icon.
+            val w = view.width - view.paddingLeft - view.paddingRight
+            outline.setRoundRect(view.paddingLeft, view.paddingTop,
+                view.width - view.paddingRight, view.height - view.paddingBottom, w * 0.22f)
         }
     }
 
@@ -1188,6 +1202,16 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         refreshScrollPrefs()
+        // Back after a while (20 minutes or more): the owl greets you again;
+        // after four hours, home is where it opens.
+        val away = if (leftAt > 0L) android.os.SystemClock.uptimeMillis() - leftAt else 0L
+        if (away > 20L * 60_000L) {
+            uiHandler.postDelayed({ if (!isFinishing) binding.navOwl.greet() }, 350L)
+        }
+        if (away > AWAY_FOR_HOME_MS && !searchMode && !deckVisible && fullscreenView == null &&
+            urlFromIntent(intent) == null) {
+            showHomeAfterAway()
+        }
         // Top Stories fetched while the app comes to the front, so home opens
         // on fresh ones rather than waiting for them; nothing is fetched when
         // the saved ones are under half an hour old.
@@ -1207,6 +1231,8 @@ class MainActivity : AppCompatActivity() {
         // An accent changed in Settings reaches the dialogs opened from here on.
         Settings.applyAccent(this)
         applyAccentTints()
+        refreshStaleFeedAd()
+        resumeFeedAd()
         // Back from the supporter page, possibly having just bought the ads
         // away. Above the early return below, which fires whenever the site
         // settings are unchanged - which is nearly every resume.
@@ -1248,8 +1274,14 @@ class MainActivity : AppCompatActivity() {
         // because reloading wipes the tab's back/forward history. Changes take
         // full effect on the next navigation.
     }
+    /** When the browser was last left (uptime), for the owl's hello on coming back. */
+    private var leftAt = 0L
+
     override fun onPause() {
         super.onPause()
+        leftAt = android.os.SystemClock.uptimeMillis()
+        Settings.setLong(this, Settings.LEFT_AT, System.currentTimeMillis())
+        PrivacyStats.flush(this)
         unregisterNetworkWatch()
         // Being left - possibly for good, by a swipe from Recents. The tabs go
         // to disk now, every live one's history included.
@@ -1523,6 +1555,10 @@ class MainActivity : AppCompatActivity() {
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
             keepSplash = false
         }, 1500L)
+        // The owl says hello once the splash has gone (OwlButtonView.greet).
+        if (savedInstanceState == null) {
+            uiHandler.postDelayed({ if (::binding.isInitialized && !isFinishing) binding.navOwl.greet() }, 1750L)
+        }
         enableEdgeToEdge()
         // The bottom bar paints behind the navigation bar itself
         // (NavSheetView.bottomInset), so Android's own shade over the buttons
@@ -1681,6 +1717,13 @@ class MainActivity : AppCompatActivity() {
                     // the same path window.close() already used.
                     tabs.activeTab?.openerId != null ->
                         tabs.activeTab?.let { foldBackPopup(it, "closed with Back") }
+                    // A tab another app's link opened, read to its start: it
+                    // closes and the app that sent it comes back, as in
+                    // Chrome. Remembered, so Reopen closed tab still has it.
+                    tabs.activeTab?.fromApp == true && tabs.count() > 1 -> {
+                        tabs.activeTab?.let { t -> rememberClosed(t); closeTabFromDeck(t) }
+                        if (!moveTaskToBack(true)) finish()
+                    }
                     // Nothing left to go back to. Leave, but do not die:
                     // finish() destroys the activity and every live WebView
                     // with it, so returning means rebuilding every tab from
@@ -1737,13 +1780,22 @@ class MainActivity : AppCompatActivity() {
             // or Android having reclaimed the app - where the disk copy beats
             // instance state, which holds addresses only. A link the app was
             // launched with opens beside the tabs, as it would were it open.
-            if (fresh) urlFromIntent(intent)?.let { addNewTab(resolveInput(it)) }
+            val link = if (fresh) urlFromIntent(intent) else null
+            if (link != null) { addNewTab(resolveInput(link)); tabs.activeTab?.fromApp = true }
+            else {
+                // Four hours or more since the browser was last used: home.
+                val left = Settings.getLong(this, Settings.LEFT_AT, 0L)
+                val now = System.currentTimeMillis()
+                if (fresh && left > 0L && now - left > AWAY_FOR_HOME_MS && now > left) showHomeAfterAway()
+            }
         } else if (restoreTabs(savedInstanceState)) {
             // Instance state's addresses, when there is nothing on disk.
         } else {
             // If launched by a tapped/shared link, open that; otherwise home.
-            val startUrl = (if (fresh) urlFromIntent(intent) else null) ?: homePage
+            val link = if (fresh) urlFromIntent(intent) else null
+            val startUrl = link?.let { resolveInput(it) } ?: homePage
             val first = tabs.createTab(startUrl)
+            first.fromApp = link != null
             openTab(first, startUrl)
         }
         updateTabCount()
@@ -1751,15 +1803,42 @@ class MainActivity : AppCompatActivity() {
         if (fresh && intent?.getStringExtra(BrowsingData.EXTRA_OPEN) == BrowsingData.OPEN_DOWNLOADS) {
             binding.root.post { if (!isFinishing && !isDestroyed) openDownloads() }
         }
+        // Started from a launcher shortcut: once the browser is laid out.
+        if (fresh) {
+            val launch = intent
+            binding.root.post { if (!isFinishing && !isDestroyed) handleShortcut(launch) }
+        }
 
     }
 
     // Handles links tapped/shared while the app is already open (singleTop
     // delivers them here instead of a fresh onCreate). Opens the link in a
     // new tab via the normal go() path.
+    // ---------- Launcher shortcuts (res/xml/shortcuts.xml) ----------
+
+
+    /** Acts on a launcher shortcut's intent; false when [intent] is not one. */
+    private fun handleShortcut(intent: android.content.Intent?): Boolean {
+        when (intent?.action) {
+            ACTION_SEARCH -> { leaveTransientUi(); closeDeckIfOpen(); enterSearchMode() }
+            ACTION_NEW_TAB -> { leaveTransientUi(); closeDeckIfOpen(); addNewTab(homePage) }
+            ACTION_NIGHT_OWL -> {
+                leaveTransientUi(); closeDeckIfOpen()
+                if (nightOwl) addNewTab(homePage) else enterNightOwl()
+            }
+            ACTION_SCAN -> { leaveTransientUi(); launchScan() }
+            ACTION_VOICE -> { leaveTransientUi(); closeDeckIfOpen(); launchVoiceSearch() }
+            else -> return false
+        }
+        return true
+    }
+
+    private fun closeDeckIfOpen() { if (deckVisible) closeDeck() }
+
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        if (handleShortcut(intent)) return
         // Settings > Browsing data > Downloads.
         if (intent.getStringExtra(BrowsingData.EXTRA_OPEN) == BrowsingData.OPEN_DOWNLOADS) {
             leaveTransientUi()
@@ -1773,6 +1852,8 @@ class MainActivity : AppCompatActivity() {
             // new tab's history - so back, from a link someone had just shared
             // into the browser, went to the home page instead of leaving.
             addNewTab(resolveInput(incoming))
+            tabs.activeTab?.fromApp =
+                !intent.getBooleanExtra(ProcessTextActivity.EXTRA_FROM_SELF, false)
         }
     }
 
@@ -1998,19 +2079,66 @@ class MainActivity : AppCompatActivity() {
             downloadFailed()
         }
 
+        /**
+         * The page last read in another tab, for home's "Jump back in" card:
+         * {id, url, title, site, domain}, or {} when there is none. A copy the
+         * main thread keeps (resumeJson), since this runs on WebView's bridge
+         * thread and the tab list belongs to the main one.
+         */
+        @JavascriptInterface
+        fun getResume(): String {
+            if (!privileged) return "{}"
+            return resumeJson
+        }
+
+        /** Back to that tab, or to its page if the tab has gone since. */
+        @JavascriptInterface
+        fun resumeTab(id: String, url: String) {
+            if (!privileged) return
+            runOnUiThread {
+                val tab = id.toLongOrNull()?.let { want -> tabs.tabs.firstOrNull { it.id == want } }
+                Haptics.tap(binding.webContainer)
+                if (tab != null && !tab.isPrivate) openTab(tab)
+                else if (url.startsWith("https://") || url.startsWith("http://")) loadInto(activeWeb(), url)
+            }
+        }
+
+        /** Home's "blocked this week" line: {on, week, saved} (saved as "38 MB"). */
+        @JavascriptInterface
+        fun getPrivacyStats(): String {
+            if (!privileged) return "{}"
+            val on = AdBlocker.isEnabled(this@MainActivity) && !nightOwl
+            val week = PrivacyStats.week(this@MainActivity)
+            return JSONObject()
+                .put("on", on)
+                .put("week", week)
+                .put("saved", android.text.format.Formatter.formatShortFileSize(
+                    this@MainActivity, PrivacyStats.bytesSaved(week)))
+                .toString()
+        }
+
         @JavascriptInterface
         fun getRecentSites(): String {
             // The browsing history. This is the call the gate exists for.
             if (!privileged) return "[]"
-            // Return up to 8 most-recent unique domains from history as JSON.
-            val entries = History.load(this@MainActivity)
+            // The most used sites first (SiteVisits, frecency), then, while
+            // there are fewer than eight of those - a new install, or after
+            // an update from a version that did not count visits - the most
+            // recent ones from history fill the row.
             val seen = LinkedHashSet<String>()
+            val out0 = JSONArray()
+            try {
+                SiteVisits.top(this@MainActivity, 8).forEach { (domain, url) ->
+                    if (seen.add(domain)) out0.put(JSONObject().put("domain", domain).put("url", url))
+                }
+            } catch (e: Exception) { /* fall back to history alone */ }
+            val entries = History.load(this@MainActivity)
             // Built with the JSON library rather than by hand. The hand-rolled
             // version escaped the url but not the domain, and neither against
             // control characters, so one odd address in the history produced
             // JSON the home page could not parse - and the tiles silently came
             // back empty with nothing to say why.
-            val out = JSONArray()
+            val out = out0
             for (e in entries) {
                 if (out.length() >= 8) break
                 val host = try {
@@ -2654,7 +2782,7 @@ class MainActivity : AppCompatActivity() {
                 // Cosmetic ad-hiding: hide common ad containers when blocking is
                 // on - and not on a site the user has allowed ads on.
                 val shownHost = try { android.net.Uri.parse(shown ?: "").host } catch (e: Exception) { null }
-                if (AdBlocker.isEnabled(this@MainActivity) &&
+                if (AdBlocker.isEnabled(this@MainActivity) && !AdBlocker.isOwnSite(shownHost) &&
                     !AdBlockSites.isAllowed(this@MainActivity, shownHost)
                 ) {
                     view?.evaluateJavascript(AdBlocker.hideCss(), null)
@@ -2701,7 +2829,10 @@ class MainActivity : AppCompatActivity() {
                     val title = view?.title ?: ""
                     val ctx = applicationContext
                     historyIo.execute {
-                        try { History.add(ctx, title, url) } catch (t: Throwable) { /* one visit unrecorded */ }
+                        try {
+                            History.add(ctx, title, url)
+                            SiteVisits.add(ctx, url)
+                        } catch (t: Throwable) { /* one visit unrecorded */ }
                     }
                 } else if (url != null && nightOwl) {
                     // Noted so leaving can clear these hosts and only these.
@@ -2716,6 +2847,9 @@ class MainActivity : AppCompatActivity() {
                 if (view == tabs.activeTab?.webView) {
                     refreshStar(); refreshOmniboxVisibility(shown)
                     pushAccentToPage(view)
+                    // A website read: home's Jump back in offers it; home
+                    // itself, loaded, shows the card.
+                    if (shown == homePage) refreshResumeCard() else noteResumable()
                 }
             }
         }
@@ -2871,6 +3005,8 @@ class MainActivity : AppCompatActivity() {
 
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
                 if (view == tabs.activeTab?.webView) {
+                    // The owl watches the ring while the page comes in.
+                    binding.navOwl.setBusy(newProgress in 1..99)
                     if (newProgress >= 100) endPullRefresh()
                     // The ring around the New tab button, not a line over the page.
                     binding.loadRing.setProgress(newProgress)
@@ -3072,6 +3208,7 @@ class MainActivity : AppCompatActivity() {
     private var touchExploration = false
 
     private fun refreshScrollPrefs() {
+        Haptics.refresh(this)
         hideBarsPref = Settings.getBool(this, Settings.HIDE_BARS_ON_SCROLL, true)
         tintBarsPref = Settings.getBool(this, Settings.TINT_BARS, false)
         touchExploration = (getSystemService(ACCESSIBILITY_SERVICE) as?
@@ -3750,7 +3887,18 @@ class MainActivity : AppCompatActivity() {
                 }
                 WebView.HitTestResult.SRC_ANCHOR_TYPE -> {
                     val href = r.extra
-                    if (href.isNullOrBlank()) false else { showTargetMenu(null, href); true }
+                    if (href.isNullOrBlank()) false else {
+                        // The link's own text comes back through the same
+                        // async hop as an image anchor's href, for Copy link text.
+                        val h = object : android.os.Handler(android.os.Looper.getMainLooper()) {
+                            override fun handleMessage(m: android.os.Message) {
+                                showTargetMenu(null, href, m.data?.getString("title"))
+                            }
+                        }
+                        try { web.requestFocusNodeHref(h.obtainMessage()) }
+                        catch (e: Exception) { showTargetMenu(null, href) }
+                        true
+                    }
                 }
                 // Plain text and input fields fall through to the system, or we
                 // would break text selection everywhere to add this menu.
@@ -3759,22 +3907,41 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showTargetMenu(image: String?, link: String?) {
+    private fun showTargetMenu(image: String?, link: String?, linkText: String? = null) {
+        if (isFinishing || isDestroyed) return
         val labels = ArrayList<String>()
         val acts = ArrayList<() -> Unit>()
+        val webLink = link?.takeIf { it.startsWith("https://") || it.startsWith("http://") }
 
         if (!link.isNullOrBlank()) {
-            labels.add("Open link in new tab"); acts.add { addNewTab(link) }
+            // In the background, as Chrome does, so a list of results can be
+            // worked down without leaving it; "Switch" goes there.
+            labels.add("Open in new tab"); acts.add { addBackgroundTab(link) }
+            if (!nightOwl && webLink != null) {
+                labels.add("Open in Night Owl tab"); acts.add { enterNightOwl(webLink) }
+            }
             labels.add("Copy link address"); acts.add { copyText("Link", link) }
+            val text = linkText?.trim()?.takeIf { it.isNotEmpty() && it != link }
+            if (text != null) { labels.add("Copy link text"); acts.add { copyText("Link text", text) } }
             labels.add("Share link"); acts.add { shareLink(link, "") }
+            if (webLink != null) {
+                labels.add("Download link"); acts.add {
+                    val name = webLink.substringBefore('?').substringAfterLast('/')
+                    val mime = try { java.net.URLConnection.guessContentTypeFromName(name) } catch (e: Exception) { null }
+                    startDownload(webLink, activeWeb()?.settings?.userAgentString, null, mime, -1L)
+                }
+            }
         }
         if (!image.isNullOrBlank()) {
             labels.add("Save image"); acts.add { saveImage(image) }
-            labels.add("Open image in new tab"); acts.add { addNewTab(image) }
+            labels.add("Open image in new tab"); acts.add { addBackgroundTab(image) }
             // A data: or blob: address is meaningless outside this page, so it
             // is not offered for copy or share - a link nobody can open is a
             // worse answer than no menu entry.
             if (image.startsWith("http")) {
+                labels.add("Search image with Google Lens"); acts.add {
+                    addBackgroundTab("https://lens.google.com/uploadbyurl?url=" + android.net.Uri.encode(image))
+                }
                 labels.add("Copy image address"); acts.add { copyText("Image", image) }
                 labels.add("Share image"); acts.add { shareLink(image, "") }
             }
@@ -3790,6 +3957,33 @@ class MainActivity : AppCompatActivity() {
             .setTitle(title)
             .setItems(labels.toTypedArray()) { d, i -> d.dismiss(); acts[i]() }
             .show()
+    }
+
+    /**
+     * A tab for [url] opened beside the one on screen without leaving it: it
+     * gets no page until it is first shown (openTab builds it then), so it
+     * costs nothing until wanted. "Switch" goes to it.
+     */
+    private fun addBackgroundTab(url: String) {
+        val target = resolveInput(url)
+        val tab = tabs.createTab(target)
+        tab.title = siteNameOf(target).ifBlank { "New tab" }
+        // Just after the tab it came from, as Chrome places it.
+        val from = tabs.tabs.indexOf(tabs.activeTab)
+        if (from >= 0) {
+            tabs.tabs.remove(tab)
+            tabs.tabs.add((from + 1).coerceAtMost(tabs.tabs.size), tab)
+        }
+        updateTabCount()
+        scheduleSessionSave()
+        Haptics.tick(binding.webContainer)
+        try {
+            com.google.android.material.snackbar.Snackbar
+                .make(binding.webArea, "Opened in a new tab", com.google.android.material.snackbar.Snackbar.LENGTH_LONG)
+                .setAction("Switch") { if (tabs.tabs.contains(tab)) { leaveTransientUi(); openTab(tab) } }
+                .setActionTextColor(currentAccent())
+                .show()
+        } catch (e: Exception) { /* no window to show it in */ }
     }
 
     private fun copyText(label: String, text: String) {
@@ -4775,6 +4969,18 @@ class MainActivity : AppCompatActivity() {
             loadInto(tab.webView, loadUrl)
         }
         if (!shown) binding.webContainer.addView(tab.webView)
+        // A tab switch eases in rather than cutting (not during a swipe,
+        // which carries its own movement, nor with animations off).
+        if (!shown && leaving != null && leaving !== tab && swipeNeighbor == null && animationsOn()) {
+            tab.webView?.let { w ->
+                w.animate().cancel()
+                w.alpha = 0.35f
+                w.animate().alpha(1f).setDuration(160L)
+                    .setInterpolator(android.view.animation.DecelerateInterpolator(1.6f))
+                    .withEndAction { w.alpha = 1f }
+                    .start()
+            }
+        }
         tabs.setActive(tab)
         tabs.markLive(tab)
         // The loading ring shows this tab's load, not the one just left, and
@@ -4795,6 +5001,7 @@ class MainActivity : AppCompatActivity() {
         // only judged while on screen, so the watch starts again here.
         if (tab.openerId != null && returnedFromSignIn(tab)) watchReturnedPopup(tab, tab.url)
         scheduleSessionSave()
+        if (tab.url == homePage) refreshResumeCard()
     }
 
     /**
@@ -5157,7 +5364,7 @@ class MainActivity : AppCompatActivity() {
      */
     private val nightOwlHosts = linkedSetOf<String>()
 
-    private fun enterNightOwl() {
+    private fun enterNightOwl(openUrl: String = homePage) {
         nightOwl = true
         nightOwlHosts.clear()
         // The card goes now, and the ad it was bound to goes with it, so
@@ -5175,7 +5382,7 @@ class MainActivity : AppCompatActivity() {
         // The private settings ride on the tab itself, in newWebView, so this
         // new tab is built with them rather than having them applied to the
         // tab being left behind.
-        addNewTab(homePage)
+        addNewTab(openUrl)
         android.widget.Toast.makeText(this,
             "Night Owl on — private browsing", android.widget.Toast.LENGTH_SHORT).show()
     }
@@ -5490,6 +5697,31 @@ class MainActivity : AppCompatActivity() {
 
     /** MobileAds.initialize has finished. Loading before it has is not valid. */
     private var adsReady = false
+    /** MobileAds.initialize has been asked for (startAdsSdk). */
+    private var adsStarted = false
+    /**
+     * When the ad on the card arrived, on the clock that keeps running while
+     * the phone sleeps. A card older than an hour is replaced. Uptime stops
+     * in deep sleep, so a card left overnight read as minutes old and stayed
+     * up long after AdMob had stopped counting it.
+     */
+    private var nativeAdAt = 0L
+    /** When the last request went out (elapsed real time), for the re-ask on resume. */
+    private var lastAdAttemptAt = 0L
+    /** The consent update is out; a resume while it is does not send another. */
+    private var consentInFlight = false
+    /** The card has been on screen with its current ad (counted once per ad). */
+    private var adSeen = false
+    /**
+     * Failed requests in a row this session. A failure used to be the end of
+     * it: one empty answer at launch - routine for a new ad unit, or with no
+     * signal - and the feed had no ad until the app was next started. Now it
+     * asks again after a growing pause (AD_RETRY_MS), a few times at most,
+     * and once more when the network comes back.
+     */
+    private var adFailures = 0
+    private val adRetry = Runnable { loadFeedAd() }
+    private val AD_RETRY_MS = longArrayOf(30_000L, 120_000L, 300_000L, 900_000L)
     /**
      * A request is in flight.
      *
@@ -5510,18 +5742,40 @@ class MainActivity : AppCompatActivity() {
         // rather than started and never asked - and with no ads there is no
         // consent to ask for. Initialisation makes network calls of its own;
         // "gone" should mean gone.
-        if (Settings.getBool(this, Settings.IS_SUPPORTER, false)) return
-        // Consent comes first: where the law requires an answer, the AdMob
-        // message is shown and the SDK is not even started until there is one.
-        AdConsent.gather(this) { allowed ->
-            if (allowed && !isFinishing && !isDestroyed) startAdsSdk()
+        if (Settings.getBool(this, Settings.IS_SUPPORTER, false)) {
+            HealthStats.noteAdGate(this, "supporter (ads bought away)")
+            return
         }
+        gatherConsentThenStart()
+    }
+
+    /**
+     * Consent first: where the law requires an answer, the AdMob message is
+     * shown and the SDK is not started until there is one. Someone who
+     * already answered in an earlier session can be asked for ads at once,
+     * in parallel with the update, as Google's UMP guide does - otherwise
+     * every launch waited for a network round trip before even starting the
+     * SDK, and a launch with a slow or no connection showed no ad all session.
+     */
+    private fun gatherConsentThenStart() {
+        if (consentInFlight) return
+        consentInFlight = true
+        AdConsent.gather(this) { allowed ->
+            consentInFlight = false
+            if (isFinishing || isDestroyed) return@gather
+            if (allowed) startAdsSdk()
+            else HealthStats.noteAdGate(this, "consent does not allow ads yet")
+        }
+        if (AdConsent.canRequestAds(this)) startAdsSdk()
     }
 
     // Initialization does disk work and can take a moment, so it runs off the
     // main thread per the SDK guide - otherwise it lands squarely in cold
     // start. Loading is bounced back to the main thread, where it must run.
     private fun startAdsSdk() {
+        // Once: the consent answer and the parallel start can both get here.
+        if (adsStarted) return
+        adsStarted = true
         Thread {
             com.google.android.gms.ads.MobileAds.initialize(this) {
                 runOnUiThread {
@@ -5542,11 +5796,12 @@ class MainActivity : AppCompatActivity() {
      * Safe to call from anywhere: every reason not to ask is tested here rather
      * than at the call sites, so no caller has to remember them.
      */
-    private fun loadFeedAd() {
+    private fun loadFeedAd(replace: Boolean = false) {
+        uiHandler.removeCallbacks(adRetry)
         // Night Owl: no request at all. The card being hidden is not the point
         // - an ad request carries device signals for targeting, and a private
         // session is exactly when those should not be sent.
-        if (nightOwl) return
+        if (nightOwl) { HealthStats.noteAdGate(this, "Night Owl was on"); return }
         // Supporters bought the feed back. Tested before the request rather
         // than at bind time: an ad request carries device signals for targeting
         // whether or not the card is ever shown.
@@ -5555,11 +5810,18 @@ class MainActivity : AppCompatActivity() {
         // Never without consent where it is required. Checked here as well as
         // at startup because this is reached from other paths - leaving Night
         // Owl - and the answer can change in Settings, Ad privacy choices.
-        if (!AdConsent.canRequestAds(this)) return
-        // One ad per session. Without this, leaving Night Owl a second time
-        // would ask again for a card that is already on screen.
-        if (nativeAd != null) return
+        if (!AdConsent.canRequestAds(this)) {
+            HealthStats.noteAdGate(this, "consent does not allow ads yet")
+            return
+        }
+        // One ad at a time. Without this, leaving Night Owl a second time
+        // would ask again for a card that is already on screen. [replace]
+        // asks for a new one to take the place of a card over an hour old,
+        // which AdMob counts as expired; the old one stays until it arrives.
+        if (nativeAd != null && !replace) return
         adLoading = true
+        lastAdAttemptAt = android.os.SystemClock.elapsedRealtime()
+        HealthStats.count(this, HealthStats.AD_REQUESTS)
         com.google.android.gms.ads.AdLoader.Builder(this, feedAdUnit)
             .forNativeAd { ad ->
                 adLoading = false
@@ -5568,8 +5830,12 @@ class MainActivity : AppCompatActivity() {
                 // is already out and cannot be recalled, but the card does not
                 // appear and nothing is kept.
                 if (nightOwl) { ad.destroy(); return@forNativeAd }
+                HealthStats.count(this, HealthStats.AD_FILLED)
+                adFailures = 0
                 nativeAd?.destroy()
                 nativeAd = ad
+                nativeAdAt = android.os.SystemClock.elapsedRealtime()
+                adSeen = false
                 bindFeedAd(ad)
             }
             .withAdListener(object : com.google.android.gms.ads.AdListener() {
@@ -5578,7 +5844,19 @@ class MainActivity : AppCompatActivity() {
                     // not a wiring fault. 0 internal, 1 invalid request (bad unit
                     // id or app id mismatch), 2 network.
                     adLoading = false
-                    binding.adSlot.visibility = View.GONE
+                    HealthStats.count(this@MainActivity, HealthStats.AD_FAILED)
+                    HealthStats.noteAdError(this@MainActivity, e.code, e.message)
+                    // A card already up (this was a replacement) stays up.
+                    if (nativeAd == null) binding.adSlot.visibility = View.GONE
+                    // Asked again later, a few times, with a growing pause -
+                    // never in a tight loop, which AdMob treats as abuse. Not
+                    // after an invalid request (1) or a missing app ID (8):
+                    // those are set-up faults that the same request repeats.
+                    val fixable = e.code != 1 && e.code != 8
+                    if (fixable && adFailures < AD_RETRY_MS.size && !isFinishing && !isDestroyed) {
+                        uiHandler.postDelayed(adRetry, AD_RETRY_MS[adFailures])
+                    }
+                    adFailures++
                     // Debug only. Without this a missing ad and a broken one
                     // look identical from the phone, which is no way to tell
                     // routine no-fill from a wiring fault. Never in release:
@@ -5600,6 +5878,43 @@ class MainActivity : AppCompatActivity() {
                     .build())
             .build()
             .loadAd(com.google.android.gms.ads.AdRequest.Builder().build())
+    }
+
+    /** Back online: the ad flow picks up wherever it was left. */
+    private fun retryAdsAfterReconnect() {
+        if (isFinishing || isDestroyed || nightOwl) return
+        if (Settings.getBool(this, Settings.IS_SUPPORTER, false)) return
+        when {
+            !adsStarted -> gatherConsentThenStart()
+            adsReady && nativeAd == null && !adLoading -> { adFailures = 0; loadFeedAd() }
+        }
+    }
+
+    /** A card over an hour old is replaced when home is shown again, as AdMob asks. */
+    private fun refreshStaleFeedAd() {
+        if (nativeAd == null || adLoading || !adsReady) return
+        if (android.os.SystemClock.elapsedRealtime() - nativeAdAt < 60L * 60_000L) return
+        loadFeedAd(replace = true)
+    }
+
+    /**
+     * Back in the app with no card: the flow picks up rather than staying
+     * empty until the next cold start. The SDK not started yet (consent could
+     * not be settled offline at launch) is started now; a card that failed
+     * and ran out of retries is asked for again, at most every 15 minutes.
+     */
+    private fun resumeFeedAd() {
+        if (isFinishing || isDestroyed || nightOwl) return
+        if (Settings.getBool(this, Settings.IS_SUPPORTER, false)) return
+        if (!hasNetwork()) return
+        when {
+            !adsStarted -> gatherConsentThenStart()
+            adsReady && nativeAd == null && !adLoading &&
+                android.os.SystemClock.elapsedRealtime() - lastAdAttemptAt > 15L * 60_000L -> {
+                adFailures = 0
+                loadFeedAd()
+            }
+        }
     }
 
     /**
@@ -5738,6 +6053,13 @@ class MainActivity : AppCompatActivity() {
         val slack = 12f * resources.displayMetrics.density
         val remaining = (maxScroll - scrollY).coerceAtLeast(0).toFloat()
         binding.adSlot.translationY = if (remaining <= slack) 0f else remaining
+        // Counted once per ad when half of the card is in view, for the
+        // numbers in Performance & health (the SDK counts real impressions).
+        if (!adSeen && binding.adSlot.height > 0 &&
+            binding.adSlot.translationY < binding.adSlot.height / 2f) {
+            adSeen = true
+            HealthStats.count(this, HealthStats.AD_SEEN)
+        }
     }
 
     // Tells the page how much room to leave. Sent after layout, since the card's
@@ -5801,6 +6123,9 @@ class MainActivity : AppCompatActivity() {
         // Park it first; positionAdSlot brings it to wherever it belongs.
         if (show && changed) binding.adSlot.translationY = adSlotParkedY()
         binding.adSlot.visibility = if (show) View.VISIBLE else View.GONE
+        // Home again after a long stay on sites: an hour-old card is swapped
+        // for a new one, the old staying up until it arrives.
+        if (show && changed) refreshStaleFeedAd()
         // Re-sent whenever the card is up, not only on a change: a home reload
         // (accent change, private toggle, tab switch) drops the page's CSS
         // reserve back to 0 without the slot's visibility ever changing, and
@@ -5856,7 +6181,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupDeck() {
         tabAdapter = TabAdapter(
-            tabs = tabs.tabs,
+            tabs = { shownTabs() },
             // openTab before closeDeck, here and below: openTab takes a picture
             // of the tab being left, and refuses while the deck is still up -
             // closed first, the last frame on screen would be the deck itself.
@@ -5875,14 +6200,39 @@ class MainActivity : AppCompatActivity() {
         // to carry the card over a third of its width, and anything less
         // springs back into place. The card tilts and fades as it goes.
         androidx.recyclerview.widget.ItemTouchHelper(object :
-            androidx.recyclerview.widget.ItemTouchHelper.SimpleCallback(0,
+            androidx.recyclerview.widget.ItemTouchHelper.SimpleCallback(
+                // Long-press and drag a card to put the tab somewhere else.
+                androidx.recyclerview.widget.ItemTouchHelper.UP or
+                    androidx.recyclerview.widget.ItemTouchHelper.DOWN or
+                    androidx.recyclerview.widget.ItemTouchHelper.LEFT or
+                    androidx.recyclerview.widget.ItemTouchHelper.RIGHT,
                 androidx.recyclerview.widget.ItemTouchHelper.LEFT or
                     androidx.recyclerview.widget.ItemTouchHelper.RIGHT) {
             override fun onMove(
                 rv: androidx.recyclerview.widget.RecyclerView,
                 vh: androidx.recyclerview.widget.RecyclerView.ViewHolder,
                 target: androidx.recyclerview.widget.RecyclerView.ViewHolder
-            ) = false
+            ): Boolean {
+                // Only in the full list: a filtered one has gaps in it.
+                if (deckFilter.isNotBlank()) return false
+                val from = vh.bindingAdapterPosition
+                val to = target.bindingAdapterPosition
+                if (from < 0 || to < 0 || from >= tabs.tabs.size || to >= tabs.tabs.size) return false
+                java.util.Collections.swap(tabs.tabs, from, to)
+                tabAdapter.notifyItemMoved(from, to)
+                scheduleSessionSave()
+                return true
+            }
+
+            override fun onSelectedChanged(
+                vh: androidx.recyclerview.widget.RecyclerView.ViewHolder?, actionState: Int
+            ) {
+                super.onSelectedChanged(vh, actionState)
+                if (actionState == androidx.recyclerview.widget.ItemTouchHelper.ACTION_STATE_DRAG) {
+                    Haptics.confirm(vh?.itemView)
+                    vh?.itemView?.animate()?.scaleX(1.04f)?.scaleY(1.04f)?.setDuration(160L)?.start()
+                }
+            }
 
             override fun getSwipeThreshold(vh: androidx.recyclerview.widget.RecyclerView.ViewHolder) = 0.35f
 
@@ -5890,7 +6240,7 @@ class MainActivity : AppCompatActivity() {
             override fun getSwipeEscapeVelocity(defaultValue: Float) = defaultValue * 0.6f
 
             override fun onSwiped(vh: androidx.recyclerview.widget.RecyclerView.ViewHolder, direction: Int) {
-                val tab = tabs.tabs.getOrNull(vh.bindingAdapterPosition)
+                val tab = shownTabs().getOrNull(vh.bindingAdapterPosition)
                 if (tab == null) tabAdapter.notifyDataSetChanged() else closeTabByUser(tab)
             }
 
@@ -5915,12 +6265,26 @@ class MainActivity : AppCompatActivity() {
                 super.clearView(rv, vh)
                 vh.itemView.alpha = 1f
                 vh.itemView.rotation = 0f
+                vh.itemView.animate().scaleX(1f).scaleY(1f).setDuration(200L).start()
             }
         }).attachToRecyclerView(binding.tabList)
 
         binding.deckClose.setOnClickListener { closeDeck() }
+        binding.deckMore.setOnClickListener { showDeckMenu(it) }
         binding.deckNewTab.setOnClickListener { addNewTab(homePage); closeDeck() }
 
+        // Typing filters the cards to the tabs whose title or site matches;
+        // Enter still searches the web in a new tab.
+        binding.deckSearch.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(cs: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(cs: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun afterTextChanged(e: android.text.Editable?) {
+                val q = e?.toString()?.trim() ?: ""
+                if (q == deckFilter) return
+                deckFilter = q
+                if (binding.tabList.visibility == View.VISIBLE) tabAdapter.notifyDataSetChanged()
+            }
+        })
         binding.deckSearch.setOnEditorActionListener { _, actionId, event ->
             val enter = actionId == EditorInfo.IME_ACTION_GO ||
                 event?.keyCode == KeyEvent.KEYCODE_ENTER
@@ -5997,6 +6361,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun closeDeck() {
         hideKeyboard()
+        if (deckFilter.isNotEmpty()) { deckFilter = ""; binding.deckSearch.setText("") }
         deckSpring.cancel()
         deckOpenSeq++
         endDeckLayer()
@@ -6010,6 +6375,160 @@ class MainActivity : AppCompatActivity() {
         // until the next navigation. Restore-only: it can never hide the card
         // in a state that already allowed it.
         refreshAdSlot()
+    }
+
+    // ---------- Jump back in ----------
+
+    /** What home's "Jump back in" card offers (getResume); written on the main thread only. */
+    @Volatile private var resumeJson = "{}"
+    /** The tab last seen showing a website, by id. */
+    private var resumeTabId: Long? = null
+
+    /**
+     * Notes the tab on screen if it is showing a website, and rebuilds the
+     * card's copy. Called as pages finish and tabs are switched; a Night Owl
+     * tab is never offered.
+     */
+    private fun noteResumable() {
+        val t = tabs.activeTab
+        if (t != null && !t.isPrivate && (t.url.startsWith("https://") || t.url.startsWith("http://"))) {
+            resumeTabId = t.id
+        }
+        val r = resumeTabId?.let { id -> tabs.tabs.firstOrNull { it.id == id } }
+        resumeJson = if (r == null || r.isPrivate || nightOwl ||
+            !(r.url.startsWith("https://") || r.url.startsWith("http://"))) "{}"
+        else try {
+            val site = siteNameOf(r.url)
+            JSONObject()
+                .put("id", r.id.toString())
+                .put("url", r.url)
+                .put("title", PageLabel.title(r.title, r.url).ifBlank { site })
+                .put("site", site)
+                .put("domain", (android.net.Uri.parse(r.url).host ?: "").removePrefix("www.")
+                    .removePrefix("mobile.").removePrefix("m."))
+                .toString()
+        } catch (e: Exception) { "{}" }
+    }
+
+    /** Home on screen: its card catches up with the tab last read. */
+    private fun refreshResumeCard() {
+        noteResumable()
+        val web = activeWeb() ?: return
+        if (web.url == homePage) web.evaluateJavascript("window.__refreshResume && window.__refreshResume()", null)
+    }
+
+    // ---------- Home after a long break ----------
+    //
+    // After four hours away the browser opens on its home page - the news,
+    // the shortcuts, Jump back in - rather than on whatever page was left
+    // open, as Chrome does after a while. The page left is still in its tab,
+    // one tap away. Settings > Customize > Open home after 4 hours away.
+
+    private val AWAY_FOR_HOME_MS = 4L * 60L * 60_000L
+
+    private fun showHomeAfterAway() {
+        if (!Settings.getBool(this, Settings.HOME_AFTER_AWAY, true)) return
+        val current = tabs.activeTab
+        if (current == null || current.url == homePage) return
+        noteResumable()
+        val home = tabs.tabs.lastOrNull { it.url == homePage && it.isPrivate == nightOwl }
+        if (home != null) openTab(home) else addNewTab(homePage)
+    }
+
+    /** What is typed in the deck's search field, filtering its cards. */
+    private var deckFilter = ""
+
+    /** The tabs the deck shows: all, or those whose title or address has [deckFilter] in it. */
+    private fun shownTabs(): List<Tab> {
+        val q = deckFilter
+        if (q.isBlank()) return tabs.tabs
+        return tabs.tabs.filter { t ->
+            t.title.contains(q, ignoreCase = true) || t.url.contains(q, ignoreCase = true) ||
+                PageLabel.title(t.title, t.url).contains(q, ignoreCase = true)
+        }
+    }
+
+    /** The deck's overflow: close every tab, or every tab but the one on screen. */
+    private fun showDeckMenu(anchor: View) {
+        val menu = android.widget.PopupMenu(this, anchor)
+        menu.menu.add(0, 1, 0, "Close all tabs")
+        if (tabs.count() > 1) menu.menu.add(0, 2, 1, "Close other tabs")
+        if (closedTabs.isNotEmpty() && !nightOwl) menu.menu.add(0, 3, 2, "Reopen closed tab")
+        val dupes = duplicateTabs()
+        if (dupes.isNotEmpty()) menu.menu.add(0, 4, 3, "Close duplicate tabs (" + dupes.size + ")")
+        if (!nightOwl) menu.menu.add(0, 5, 4, "Delete last 15 minutes")
+        menu.setOnMenuItemClickListener { item ->
+            when (item.itemId) {
+                1 -> confirmCloseTabs(keepActive = false)
+                2 -> confirmCloseTabs(keepActive = true)
+                3 -> reopenClosedTab(inDeck = true)
+                4 -> closeTabsQuietly(duplicateTabs())
+                5 -> {
+                    val n = BrowsingData.deleteRecent(this)
+                    Haptics.confirm(anchor)
+                    toast(if (n == 0) "Nothing from the last 15 minutes"
+                        else "Deleted " + n + (if (n == 1) " page" else " pages") + " from history")
+                }
+            }
+            true
+        }
+        menu.show()
+    }
+
+    /**
+     * Tabs showing the same page as another, ignoring the #part: all but one
+     * of each set, keeping the one on screen if it is among them, otherwise
+     * the first. Home tabs count too; empty new tabs do not.
+     */
+    private fun duplicateTabs(): List<Tab> {
+        val groups = tabs.tabs.filter { it.url.isNotBlank() && !it.isPrivate }
+            .groupBy { it.url.substringBefore('#') }
+        return groups.values.filter { it.size > 1 }.flatMap { same ->
+            val keep = same.firstOrNull { it === tabs.activeTab } ?: same.first()
+            same.filter { it !== keep }
+        }
+    }
+
+    /**
+     * Closes [going] with no question: each is remembered, so Reopen closed
+     * tab brings them back. For duplicates, where nothing unique is lost.
+     */
+    private fun closeTabsQuietly(going: List<Tab>) {
+        if (going.isEmpty()) return
+        Haptics.confirm(binding.tabList)
+        going.sortedBy { it === tabs.activeTab }.forEach { t ->
+            if (!tabs.tabs.contains(t)) return@forEach
+            rememberClosed(t)
+            closeTabFromDeck(t)
+        }
+        toast("Closed " + going.size + (if (going.size == 1) " duplicate tab" else " duplicate tabs"))
+    }
+
+    /**
+     * Closes every tab (or every other one), each remembered so Reopen closed
+     * tab can bring them back one by one; asked first, since it is many at once.
+     */
+    private fun confirmCloseTabs(keepActive: Boolean) {
+        val keep = if (keepActive) tabs.activeTab else null
+        // The tab on screen last: closing it first would bring each next tab
+        // to life (a new page) only to close it a moment later.
+        val going = tabs.tabs.filter { it !== keep }.sortedBy { it === tabs.activeTab }
+        if (going.isEmpty()) return
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(this, R.style.Theme_Search_Dialog)
+            .setTitle(if (keepActive) "Close other tabs?" else "Close all tabs?")
+            .setMessage(going.size.toString() + (if (going.size == 1) " tab" else " tabs") +
+                " will close. Menu > Reopen closed tab brings them back.")
+            .setPositiveButton("Close") { _, _ ->
+                Haptics.confirm(binding.tabList)
+                going.forEach { t ->
+                    if (!tabs.tabs.contains(t)) return@forEach
+                    rememberClosed(t)
+                    closeTabFromDeck(t)
+                }
+                if (!keepActive) closeDeck()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     // ---------- Closed tabs come back ----------
@@ -6039,6 +6558,7 @@ class MainActivity : AppCompatActivity() {
 
     /** A tab the user closed in the deck: remembered, closed, and offered back. */
     private fun closeTabByUser(tab: Tab) {
+        Haptics.confirm(binding.tabList)
         val remembered = rememberClosed(tab)
         closeTabFromDeck(tab)
         if (remembered && deckVisible) {
@@ -6081,6 +6601,124 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun needAPage() = toast("Open a page first")
+
+    /**
+     * Page info, from a tap on the site's icon, as the lock opens it in
+     * Chrome: whether the connection is private and who vouches for the site,
+     * what it has been allowed, and whether its ads are blocked - the last
+     * two changeable right here.
+     */
+    private fun showPageInfo() {
+        if (searchMode) return
+        val url = webPageUrl() ?: return
+        val host = try { android.net.Uri.parse(url).host?.ifBlank { null } } catch (e: Exception) { null } ?: return
+        val name = host.removePrefix("www.")
+        Haptics.tick(binding.siteIcon)
+        val text = android.text.SpannableStringBuilder()
+        fun block(head: String, body: String?) {
+            if (text.isNotEmpty()) text.append("\n\n")
+            val start = text.length
+            text.append(head)
+            text.setSpan(android.text.style.StyleSpan(android.graphics.Typeface.BOLD),
+                start, text.length, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+            if (!body.isNullOrBlank()) text.append("\n").append(body)
+        }
+        if (url.startsWith("https://")) {
+            val cert = try { activeWeb()?.certificate } catch (e: Exception) { null }
+            val by = cert?.issuedBy?.oName?.ifBlank { null } ?: cert?.issuedBy?.cName?.ifBlank { null }
+            val until = cert?.validNotAfterDate?.let {
+                java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(it)
+            }
+            block("Connection is secure",
+                "What you send this site, passwords and card numbers included, is " +
+                    "private on the way." +
+                    (if (by != null) "\nCertificate from " + by + (if (until != null) ", valid until $until" else "") + "." else ""))
+        } else {
+            block("Connection is not secure",
+                "Don't enter passwords or card details here: anyone on the network could read them.")
+        }
+        // What this site has been allowed, matched by host: the two prompts
+        // record their origin in slightly different forms.
+        val origins = SitePermissions.bySite(this).filterKeys {
+            SitePermissions.hostOf(it) == name
+        }
+        val answers = origins.values.flatMap { it.entries }
+        if (answers.isNotEmpty()) {
+            block("Permissions", answers.joinToString("\n") { (kind, answer) ->
+                val what = when (kind) {
+                    SitePermissions.LOCATION -> "Location"
+                    SitePermissions.CAMERA_MIC -> "Camera and microphone"
+                    else -> kind
+                }
+                what + ": " + if (answer == SitePermissions.ALLOW) "allowed" else "blocked"
+            })
+        }
+        val adsHost = siteForAds()
+        if (adsHost != null) {
+            block("Ads and trackers",
+                if (AdBlockSites.isAllowed(this, adsHost)) "Allowed on this site" else "Blocked on this site")
+        }
+        if (nightOwl) block("Night Owl", "Nothing from this visit is kept once the Night Owl tabs close.")
+        val dialog = com.google.android.material.dialog.MaterialAlertDialogBuilder(this, R.style.Theme_Search_Dialog)
+            .setTitle(name)
+            .setMessage(text)
+            .setPositiveButton("Done", null)
+        if (origins.isNotEmpty()) {
+            dialog.setNeutralButton("Reset permissions") { _, _ ->
+                origins.forEach { (origin, kinds) ->
+                    kinds.keys.forEach { SitePermissions.forget(this, origin, it) }
+                }
+                toast("$name will ask again")
+            }
+        }
+        if (adsHost != null) {
+            val allowed = AdBlockSites.isAllowed(this, adsHost)
+            dialog.setNegativeButton(if (allowed) "Block ads" else "Allow ads") { _, _ ->
+                if (allowed) AdBlockSites.block(this, adsHost) else AdBlockSites.allow(this, adsHost)
+                toast(if (allowed) "Ads blocked on $name" else "Ads allowed on $name")
+                // Blocking acts on requests, so the page is fetched again.
+                activeWeb()?.reload()
+            }
+        }
+        dialog.show()
+    }
+
+    /**
+     * Back or Forward held: the tab's pages that way, nearest first, as in
+     * Chrome; picking one goes straight there. The app's home is listed as
+     * Home rather than by its file address.
+     */
+    private fun showTabHistory(anchor: View, back: Boolean): Boolean {
+        val web = activeWeb() ?: return false
+        val list = try { web.copyBackForwardList() } catch (e: Exception) { return false }
+        val cur = list.currentIndex
+        val steps = if (back) (cur - 1 downTo maxOf(0, cur - 12))
+            else (cur + 1 until minOf(list.size, cur + 13))
+        if (steps.isEmpty()) return false
+        Haptics.tick(anchor)
+        val menu = android.widget.PopupMenu(this, anchor)
+        var order = 0
+        for (i in steps) {
+            val item = list.getItemAtIndex(i) ?: continue
+            val itemUrl = item.url ?: continue
+            val label = when {
+                itemUrl == homePage -> "Home"
+                isErrorPage(itemUrl) -> "Page didn't load"
+                else -> PageLabel.title(item.title ?: "", itemUrl)
+            }
+            menu.menu.add(0, i, order++, label)
+        }
+        menu.setOnMenuItemClickListener { item ->
+            closeMenuNow()
+            // Still the same tab, and the step still valid.
+            if (activeWeb() === web && web.canGoBackOrForward(item.itemId - cur)) {
+                web.goBackOrForward(item.itemId - cur)
+            }
+            true
+        }
+        menu.show()
+        return true
+    }
 
     /**
      * The page in the phone's language, through Google Translate's page
@@ -7183,6 +7821,35 @@ class MainActivity : AppCompatActivity() {
         binding.urlBar.setOnClickListener {
             if (!searchMode) enterSearchMode()
         }
+        // The site's icon is the page's info, as the lock is in Chrome.
+        binding.siteIcon.setOnClickListener { showPageInfo() }
+        Motion.pressable(binding.siteIcon, 0.85f)
+        // A long press on the address, as in Chrome: copy it, share it, paste
+        // and go, or edit it. The clipboard is only read if Paste and go is
+        // picked, so Android's "pasted" notice never appears for nothing.
+        binding.urlBar.setOnLongClickListener { v ->
+            if (searchMode) return@setOnLongClickListener false
+            val url = webPageUrl()
+            val menu = android.widget.PopupMenu(this, v)
+            if (url != null) {
+                menu.menu.add(0, 1, 0, "Copy link")
+                menu.menu.add(0, 2, 1, "Share\u2026")
+            }
+            val cm = getSystemService(CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+            if (cm?.primaryClipDescription?.hasMimeType("text/*") == true) menu.menu.add(0, 3, 2, "Paste and go")
+            menu.menu.add(0, 4, 3, if (url != null) "Edit address" else "Search")
+            menu.setOnMenuItemClickListener { item ->
+                when (item.itemId) {
+                    1 -> url?.let { copyText("Link", it) }
+                    2 -> url?.let { shareLink(it, activeWeb()?.title ?: "") }
+                    3 -> readClipboardText()?.let { go(it) }
+                    4 -> enterSearchMode()
+                }
+                true
+            }
+            menu.show()
+            true
+        }
         // Empties the field without leaving search mode, so the next query can be
         // typed straight away. The watcher hides this button once the box is bare.
         binding.clearBtn.setOnClickListener {
@@ -7224,24 +7891,27 @@ class MainActivity : AppCompatActivity() {
     private fun setupBars() {
         setupTabSwipe()
         setupMenuDrag()
-        binding.navHome.setOnClickListener { leaveTransientUi(); navHome() }
+        binding.navHome.setOnClickListener { Haptics.tap(it); leaveTransientUi(); navHome() }
         binding.navBookmarks.setOnClickListener {
-            leaveTransientUi(); openDeck(); showBookmarks()
+            Haptics.tap(it); leaveTransientUi(); openDeck(); showBookmarks()
         }
         // Search, in the tab on screen - exactly what a tap on the search box
         // does. It opened a new tab for every search, which only filled the
         // tab list with tabs nobody went back to.
         binding.navNewTab.setOnClickListener {
+            Haptics.owl(it)
             binding.navOwl.pop()
             if (findActive) closeFindBar()
             if (!searchMode) enterSearchMode()
         }
-        binding.navTabs.setOnClickListener { leaveTransientUi(); openDeck() }
+        binding.navTabs.setOnClickListener { Haptics.tap(it); leaveTransientUi(); openDeck() }
         // Long-pressing Tabs also opens a new tab, as it does in Chrome.
+        // (A long press brings its own vibration.)
         binding.navTabs.setOnLongClickListener {
             leaveTransientUi(); addNewTab(homePage); true
         }
         binding.navMenu.setOnClickListener {
+            Haptics.tap(it)
             if (binding.menuScrim.visibility == View.VISIBLE) closeMenu()
             else { if (findActive) closeFindBar(); openMenu() }
         }
@@ -7252,6 +7922,9 @@ class MainActivity : AppCompatActivity() {
         binding.menuForward.setOnClickListener {
             closeMenuNow(); activeWeb()?.takeIf { it.canGoForward() }?.goForward()
         }
+        // Held, as in Chrome: the tab's pages that way, to jump straight to one.
+        binding.menuBack.setOnLongClickListener { v -> showTabHistory(v, back = true) }
+        binding.menuForward.setOnLongClickListener { v -> showTabHistory(v, back = false) }
         binding.menuRefresh.setOnClickListener {
             closeMenuNow()
             val web = activeWeb()
@@ -7266,6 +7939,11 @@ class MainActivity : AppCompatActivity() {
             androidx.core.view.ViewCompat.setTooltipText(b, b.contentDescription)
         }
         androidx.core.view.ViewCompat.setTooltipText(binding.navTabs, "Tabs")
+        // Each button gives under the finger and springs back (Motion).
+        listOf(binding.navHome, binding.navBookmarks, binding.navTabs, binding.navMenu,
+            binding.settingsBtn, binding.starBtn, binding.menuBack, binding.menuForward,
+            binding.menuRefresh).forEach { Motion.pressable(it, 0.88f) }
+        Motion.pressable(binding.navNewTab, 0.93f)
         refreshNav()
     }
 
@@ -7432,6 +8110,7 @@ class MainActivity : AppCompatActivity() {
         val toward = flung && kotlin.math.sign(vx) == kotlin.math.sign(x)
         val back = flung && !toward
         if (n != null && w > 0f && !back && (toward || kotlin.math.abs(x) > w * 0.35f)) {
+            Haptics.tick(binding.bottomBar)
             swipeSpring.animate(x, if (x < 0f) -w else w, vx) {
                 // The page is off screen; the tab it slid to takes its place
                 // in the same frame, where its picture was.
@@ -7514,9 +8193,7 @@ class MainActivity : AppCompatActivity() {
         pullRefreshing = true
         pullStartedAt = android.os.SystemClock.uptimeMillis()
         // A small tick in the hand as the refresh takes, as Chrome gives.
-        binding.pullIndicator.performHapticFeedback(
-            if (Build.VERSION.SDK_INT >= 30) android.view.HapticFeedbackConstants.CONFIRM
-            else android.view.HapticFeedbackConstants.VIRTUAL_KEY)
+        Haptics.confirm(binding.pullIndicator)
         pullSpring.animate(y, pullHold)
         val disc = binding.pullIndicator
         pullSpin = android.animation.ObjectAnimator.ofFloat(disc, View.ROTATION, disc.rotation, disc.rotation + 360f).apply {
@@ -7948,6 +8625,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun go(input: String) {
+        tabs.activeTab?.fromApp = false
         if (searchMode) exitSearchMode()
         // An empty bar has nothing to go to. It used to load a blank search.
         if (input.isBlank()) { hideKeyboard(); return }

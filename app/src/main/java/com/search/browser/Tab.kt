@@ -86,6 +86,14 @@ class Tab(
     /** When this tab last lost its renderer (uptime ms), to catch a crash loop. */
     var lastRendererLoss = 0L
 
+    /**
+     * Opened for a link from another app (a chat, a mail). Back with nowhere
+     * left to go closes it and returns to that app, as Chrome does, rather
+     * than leaving it behind in the tab list. Cleared once something is
+     * typed into it, when it has become the user's own tab.
+     */
+    var fromApp = false
+
     /** Names this tab's history file in the saved session; fixed for its life. */
     var diskKey: String = java.util.UUID.randomUUID().toString()
 

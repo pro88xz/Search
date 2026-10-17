@@ -33,6 +33,7 @@ class SettingsActivity : AppCompatActivity() {
 
         setupSectionRows()
         setupDefaultBrowser()
+        setupWidgetRow()
         paintAccent(findViewById(R.id.settingsRoot), Settings.accentInk(this))
     }
 
@@ -71,6 +72,19 @@ class SettingsActivity : AppCompatActivity() {
         androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
     ) {
         if (DefaultBrowser.isDefault(this)) toast("Search is now your default browser")
+    }
+
+    private fun setupWidgetRow() {
+        val supported = android.os.Build.VERSION.SDK_INT >= 26 && try {
+            getSystemService(android.appwidget.AppWidgetManager::class.java)?.isRequestPinAppWidgetSupported == true
+        } catch (e: Exception) { false }
+        findViewById<android.view.View>(R.id.widgetCard).visibility =
+            if (supported) android.view.View.VISIBLE else android.view.View.GONE
+        findViewById<TextView>(R.id.rowWidget).setOnClickListener {
+            if (!SearchWidget.requestPin(this)) {
+                toast("Long-press your home screen, then Widgets > Search")
+            }
+        }
     }
 
     private fun setupDefaultBrowser() {

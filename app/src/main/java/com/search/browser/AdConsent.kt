@@ -38,14 +38,26 @@ object AdConsent {
         info.requestConsentInfoUpdate(activity, params, {
             if (activity.isFinishing || activity.isDestroyed) return@requestConsentInfoUpdate
             formShowing = true
-            UserMessagingPlatform.loadAndShowConsentFormIfRequired(activity) {
+            UserMessagingPlatform.loadAndShowConsentFormIfRequired(activity) { error ->
                 // Called whether a form was shown or not, and on failure.
                 formShowing = false
+                // A form that could not be shown where one is required - no
+                // message published in AdMob, Privacy & messaging, for this
+                // region, say - leaves no ads at all, and used to say nothing.
+                if (error != null && !info.canRequestAds()) {
+                    HealthStats.noteAdGate(activity,
+                        "consent form failed: " + error.errorCode + " " + error.message)
+                }
                 onDone(info.canRequestAds())
             }
-        }, {
-            // The status could not be refreshed - offline, say. The answer
-            // given on an earlier launch is still on the device, and decides.
+        }, { error ->
+            // The status could not be refreshed - offline, or the consent
+            // server blocked by a private DNS. The answer given on an earlier
+            // launch is still on the device, and decides.
+            if (!info.canRequestAds()) {
+                HealthStats.noteAdGate(activity,
+                    "consent check failed: " + error.errorCode + " " + error.message)
+            }
             onDone(info.canRequestAds())
         })
     }

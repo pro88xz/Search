@@ -10,7 +10,8 @@ import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 
 class TabAdapter(
-    private val tabs: List<Tab>,
+    /** The tabs the deck shows: all of them, or those matching what is typed in its search field. */
+    private val tabs: () -> List<Tab>,
     private val onSelect: (Tab) -> Unit,
     private val onClose: (Tab) -> Unit,
     /**
@@ -35,7 +36,7 @@ class TabAdapter(
     }
 
     override fun onBindViewHolder(holder: VH, position: Int) {
-        val tab = tabs[position]
+        val tab = tabs().getOrNull(position) ?: return
         holder.title.text = tab.title.ifBlank { "New Tab" }
 
         // The live tab wears a ring in the accent picked for the owl, and sits
@@ -75,5 +76,5 @@ class TabAdapter(
         }
     }
 
-    override fun getItemCount(): Int = tabs.size
+    override fun getItemCount(): Int = tabs().size
 }

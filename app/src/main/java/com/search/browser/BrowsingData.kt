@@ -111,7 +111,20 @@ object BrowsingData {
     /** The history list, and the site icons kept for it. */
     fun clearHistory(c: Context) {
         History.clear(c)
+        SiteVisits.clear(c)
         c.getSharedPreferences("favicon_cache", Context.MODE_PRIVATE).edit().clear().apply()
+    }
+
+    /**
+     * Quick delete: the last [minutes] of history and the visits they added
+     * to home's shortcuts. Cookies and the cache cannot be cut to a time
+     * window in a WebView, so they stay, and the wording says so. Returns
+     * how many pages came off history.
+     */
+    fun deleteRecent(c: Context, minutes: Int = 15): Int {
+        val since = System.currentTimeMillis() - minutes * 60_000L
+        SiteVisits.forgetSince(c, since)
+        return History.deleteSince(c, since)
     }
 
     /** Everything a browser accumulates about where you have been. Bookmarks stay. */
