@@ -91,6 +91,14 @@ object Settings {
         prefs(c).edit().putLong(key, value).apply()
     }
 
+    // ---- Generic strings ----
+    fun getString(c: Context, key: String, default: String?): String? =
+        prefs(c).getString(key, default)
+
+    /** Written at once (commit) and reported, for a choice that must not be lost. */
+    fun putStringNow(c: Context, key: String, value: String): Boolean =
+        try { prefs(c).edit().putString(key, value).commit() } catch (e: Exception) { false }
+
     // ---- Generic boolean toggles (security, adblock, etc.) ----
     fun getBool(c: Context, key: String, default: Boolean): Boolean =
         prefs(c).getBoolean(key, default)

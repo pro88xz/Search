@@ -1228,7 +1228,16 @@ class MainActivity : AppCompatActivity() {
         // Top Stories fetched while the app comes to the front, so home opens
         // on fresh ones rather than waiting for them; nothing is fetched when
         // the saved ones are under half an hour old.
-        if (!nightOwl) NewsFeed.refreshIfDue(this) { fresh -> runOnUiThread { pushFeedUpdate(fresh) } }
+        // A mode changed in Settings (or the introduction): the home page
+        // takes it now, with no reload of anything else.
+        val mode = BrowsingMode.get(this)
+        val zen = Settings.getBool(this, BrowsingMode.ZEN_SHORTCUTS, false)
+        if (mode != browsingMode || zen != zenShortcuts) applyBrowsingMode(mode, zen)
+        // News only for Explore: Focus and Zen fetch none, not even behind the scenes.
+        if (!nightOwl && browsingMode == BrowsingMode.EXPLORE) {
+            NewsFeed.refreshIfDue(this) { fresh -> runOnUiThread { pushFeedUpdate(fresh) } }
+        }
+        uiHandler.postDelayed({ maybeShowModeIntro(); maybeAnnounceModes() }, 900L)
         if (!tintBarsPref) setBarTint(null, null, animate = false)
         HealthStats.sessionStarted(this)
         registerNetworkWatch()
@@ -1572,6 +1581,8 @@ class MainActivity : AppCompatActivity() {
             keepSplash = false
             // An app open ad that arrived behind the splash may show now.
             AppOpenAds.poke()
+            // A fresh install: the owl's introduction to the modes.
+            uiHandler.postDelayed({ maybeShowModeIntro() }, 250L)
         }, 1500L)
         enableEdgeToEdge()
         // The bottom bar paints behind the navigation bar itself
@@ -1601,6 +1612,11 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         // The chosen accent over the theme, for dialogs and text handles.
         Settings.applyAccent(this)
+        // The browsing mode (Explore, Focus, Zen): upgraded installs are put
+        // on Explore once, before anything reads it or onPause writes LEFT_AT.
+        BrowsingMode.migrate(this)
+        browsingMode = BrowsingMode.get(this)
+        zenShortcuts = Settings.getBool(this, BrowsingMode.ZEN_SHORTCUTS, false)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         // The app open ad watches opens from here on, and asks this activity
@@ -1609,6 +1625,7 @@ class MainActivity : AppCompatActivity() {
         AppOpenAds.gate = appOpenGate
         AppOpenAds.canShowOver = appOpenOver
         if (opensForATask(intent)) AppOpenAds.skipThisOpen()
+        launchedForTask = opensForATask(intent)
         // The owl's hello, asked for now so its first frame after the splash
         // is already the sleeping owl; it plays once the bar is on screen and
         // the app has settled (OwlButtonView.requestGreet). A fresh start, or
@@ -2238,7 +2255,10 @@ class MainActivity : AppCompatActivity() {
             val bg = Settings.getHomeBackground(this@MainActivity)
             val accent = Settings.getHomeAccent(this@MainActivity)
             val tiles = Settings.getBool(this@MainActivity, Settings.HOME_SHOW_TILES, true)
-            return "{\"background\":\"$bg\",\"accent\":\"$accent\",\"tiles\":$tiles,\"nightOwl\":$nightOwl}"
+            val mode = browsingMode
+            val zen = zenShortcuts
+            return "{\"background\":\"$bg\",\"accent\":\"$accent\",\"tiles\":$tiles,\"nightOwl\":$nightOwl," +
+                "\"mode\":\"$mode\",\"zenTiles\":$zen}"
         }
         /** home.html: the stories and publishers the reader hid (FeedHidden). */
         @JavascriptInterface
@@ -2298,6 +2318,7 @@ class MainActivity : AppCompatActivity() {
      */
     private fun pushFeedUpdate(json: String) {
         if (isFinishing || isDestroyed || nightOwl) return
+        if (browsingMode != BrowsingMode.EXPLORE) return
         val web = activeWeb() ?: return
         if (web.url != homePage) return
         web.evaluateJavascript("window.__onFeedUpdate && window.__onFeedUpdate(JSON.parse(" +
@@ -2922,7 +2943,10 @@ class MainActivity : AppCompatActivity() {
                     pushAccentToPage(view)
                     // A website read: home's Jump back in offers it; home
                     // itself, loaded, shows the card.
-                    if (shown == homePage) refreshResumeCard() else noteResumable()
+                    if (shown == homePage) {
+                        refreshResumeCard()
+                        uiHandler.postDelayed({ maybeAnnounceModes() }, 1200L)
+                    } else noteResumable()
                 }
             }
         }
@@ -5872,6 +5896,7 @@ class MainActivity : AppCompatActivity() {
         AdConsent.gather(this) { allowed ->
             consentInFlight = false
             if (isFinishing || isDestroyed) return@gather
+            uiHandler.postDelayed({ maybeShowModeIntro() }, 300L)
             // Why not, when not, is written by AdConsent itself, with the
             // form's or the server's error where there was one.
             if (allowed) startAdsSdk()
@@ -5931,6 +5956,11 @@ class MainActivity : AppCompatActivity() {
         // asks for a new one to take the place of a card over an hour old,
         // which AdMob counts as expired; the old one stays until it arrives.
         if (nativeAd != null && !replace) return
+        // The feed ad belongs to the feed, which only Explore has.
+        if (browsingMode != BrowsingMode.EXPLORE) {
+            HealthStats.noteAdGate(this, "home is in " + BrowsingMode.title(browsingMode) + " (no feed)")
+            return
+        }
         adLoading = true
         lastAdAttemptAt = android.os.SystemClock.elapsedRealtime()
         HealthStats.count(this, HealthStats.AD_REQUESTS)
@@ -6348,7 +6378,7 @@ class MainActivity : AppCompatActivity() {
         val shown = web?.url
         val onHome = (url == null || url == homePage) && (shown == null || shown == homePage)
         val show = nativeAd != null && onHome && !searchMode &&
-            !deckVisible && !nightOwl
+            !deckVisible && !nightOwl && browsingMode == BrowsingMode.EXPLORE
         val changed = (binding.adSlot.visibility == View.VISIBLE) != show
         // A different page under the card - another home tab, or home loaded
         // again - starts it parked too, rather than where the last one had it.
@@ -6376,6 +6406,82 @@ class MainActivity : AppCompatActivity() {
         // reserve back to 0 without the slot's visibility ever changing, and
         // the card then overlaps the last feed card.
         if (changed || show) binding.adSlot.post { syncAdSlotReserve() }
+    }
+
+    // ---------- Browsing modes (BrowsingMode) ----------
+
+    @Volatile private var browsingMode = BrowsingMode.EXPLORE
+    @Volatile private var zenShortcuts = false
+    private var launchedForTask = false
+    private var introLaunched = false
+    private var announcing = false
+
+    /**
+     * A new mode for the home page: every home page open in a tab recomposes
+     * on the spot (window.__setMode) - no reload, nothing else touched - and
+     * the feed ad follows: requested and shown in Explore, hidden otherwise.
+     */
+    private fun applyBrowsingMode(mode: String, zen: Boolean) {
+        browsingMode = mode
+        zenShortcuts = zen
+        val js = "window.__setMode && window.__setMode(" + org.json.JSONObject.quote(mode) + "," + zen + ")"
+        tabs.tabs.forEach { t ->
+            val w = t.webView ?: return@forEach
+            if (w.url == homePage) w.evaluateJavascript(js, null)
+        }
+        refreshAdSlot()
+        if (mode == BrowsingMode.EXPLORE) loadFeedAd()
+    }
+
+    /**
+     * The owl's introduction, once, on a fresh install: after the splash and
+     * the consent message (or six seconds, if consent is slow to answer),
+     * never over a link or shortcut the browser was opened for, never in
+     * Night Owl. Skipped or finished, it is not shown again.
+     */
+    private fun maybeShowModeIntro() {
+        if (introLaunched || isFinishing || isDestroyed) return
+        if (BrowsingMode.introDone(this)) return
+        if (keepSplash || launchedForTask || nightOwl || AdConsent.formShowing) return
+        if (consentInFlight && android.os.SystemClock.uptimeMillis() - createdAt < 6000L) {
+            uiHandler.postDelayed({ maybeShowModeIntro() }, 1000L)
+            return
+        }
+        introLaunched = true
+        try {
+            startActivity(android.content.Intent(this, ModeIntroActivity::class.java))
+            @Suppress("DEPRECATION")
+            overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
+        } catch (e: Exception) { introLaunched = false }
+    }
+    private val createdAt = android.os.SystemClock.uptimeMillis()
+
+    /**
+     * Once after the upgrade that brought the modes: "Search has 3 modes now".
+     * Only on home, once it is up, with nothing else in front - not while
+     * typing, searching, in the tab deck, during the consent message or an
+     * app open ad (the window has no focus then) or another dialog.
+     */
+    private fun maybeAnnounceModes() {
+        if (announcing || isFinishing || isDestroyed) return
+        if (!BrowsingMode.announcementDue(this)) return
+        if (keepSplash || searchMode || deckVisible || findActive || nightOwl) return
+        if (AdConsent.formShowing || !hasWindowFocus()) return
+        if (activeWeb()?.url != homePage) return
+        announcing = true
+        BrowsingMode.markAnnounced(this)
+        HealthStats.count(this, HealthStats.MODE_ANNOUNCED)
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(this, R.style.Theme_Search_Dialog)
+            .setTitle("Search has 3 modes now")
+            .setMessage("Choose the browsing experience that suits you: Explore, Focus, or Zen. " +
+                "You\u2019re on Explore by default, and you can switch anytime in Settings.")
+            .setPositiveButton("Got it", null)
+            .setNegativeButton("Choose mode") { _, _ ->
+                startActivity(android.content.Intent(this, SectionActivity::class.java)
+                    .putExtra(SectionActivity.EXTRA_SECTION, SectionActivity.SEC_MODE))
+            }
+            .setOnDismissListener { announcing = false }
+            .show()
     }
 
     // ---------- The app open ad's questions (AppOpenAds) ----------

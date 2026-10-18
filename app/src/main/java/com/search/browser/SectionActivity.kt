@@ -20,6 +20,7 @@ class SectionActivity : AppCompatActivity() {
         const val SEC_SITE = "site"
         const val SEC_DATA = "data"
         const val SEC_HEALTH = "health"
+        const val SEC_MODE = "mode"
     }
 
     private lateinit var content: LinearLayout
@@ -54,9 +55,45 @@ class SectionActivity : AppCompatActivity() {
             SEC_SITE -> { title.text = "Site settings"; buildSite() }
             SEC_DATA -> { title.text = "Browsing data"; buildData() }
             SEC_HEALTH -> { title.text = "Performance & health"; buildHealth() }
+            SEC_MODE -> { title.text = "Browsing experience"; buildMode() }
             else -> { title.text = "Coming soon"; addNote("This section is coming soon.") }
         }
     }
+
+    // ---- Browsing experience: Explore, Focus, Zen ----
+
+    /**
+     * The three modes on one screen, the one in use selected. A tap applies
+     * it straight away - the home page changes when it is next shown - and
+     * says so; nothing else changes: tabs, bookmarks, shortcuts, history and
+     * downloads stay exactly as they are.
+     */
+    private fun buildMode() {
+        addNote("Choose how your home page looks. Your tabs, bookmarks, shortcuts, " +
+            "history and downloads stay as they are in every mode.")
+        val cards = ModeCards(this, BrowsingMode.get(this)) { mode ->
+            if (mode == BrowsingMode.get(this)) return@ModeCards
+            if (BrowsingMode.set(this, mode)) {
+                HealthStats.count(this, HealthStats.MODE_CHANGED)
+                toast("Browsing experience changed to " + BrowsingMode.title(mode) + ".")
+            } else {
+                toast("Couldn't save that. Please try again.")
+            }
+        }
+        content.addView(cards.view, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        group("Zen")
+        addToggle(
+            "Shortcuts in Zen",
+            "Show your first four shortcuts under the search box in Zen.",
+            BrowsingMode.ZEN_SHORTCUTS, false
+        )
+        addNote("Explore loads Top Stories; Focus and Zen don't fetch news at all, " +
+            "so the home page does less work and uses less data.")
+    }
+
+    private fun toast(msg: String) =
+        android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_SHORT).show()
 
     // ---- Security section ----
 
