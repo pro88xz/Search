@@ -121,6 +121,7 @@ object SiteIcons {
 
     private fun deliver(key: String, icon: Bitmap) {
         memory.put(key, icon)
+        synchronized(this) { tileData.remove(key) }
         startedAt.remove(key)
         inFlight.remove(key)?.forEach { cb -> try { cb(icon) } catch (_: Exception) { } }
     }
@@ -199,6 +200,80 @@ object SiteIcons {
             null
         } finally {
             try { conn?.disconnect() } catch (e: Exception) {}
+        }
+    }
+
+    // ---------- For home's shortcut tiles ----------
+    //
+    // A tile for a site in history used WebView's captured favicon - mostly
+    // 16 or 32px, blurry in a 48dp tile - or a letter when there was none,
+    // while the built-in tiles fetched sharp ones. The crisp icon found for
+    // the address bar (above) is on disk already for every site visited, so
+    // the tiles use that; a tile's site without one gets its large icon
+    // fetched from the site itself, which learns nothing a visit to it would
+    // not tell it.
+
+    private const val TILE_MIN_PX = 48
+    private val tileData = object : LruCache<String, String>(48) {}
+    private val tilePrefetched = HashSet<String>()
+
+    /**
+     * The crisp icon for [host] as a PNG data: URL for the page, from memory
+     * or the disk cache, never the network; null when there is none at
+     * least [TILE_MIN_PX] across. Also tries "m." and "mobile." for a host
+     * visited on its mobile site. Safe from any thread.
+     */
+    @Synchronized
+    fun tileDataUrl(context: Context, host: String): String? {
+        if (host.isBlank()) return null
+        tileData.get(host)?.let { return it.ifEmpty { null } }
+        val icon = listOf(host, "m.$host", "mobile.$host").firstNotNullOfOrNull { key ->
+            memory.get(key) ?: decodeFile(File(File(context.cacheDir, "site_icons"), sha1(key) + ".png"))
+        }
+        if (icon == null || minOf(icon.width, icon.height) < TILE_MIN_PX) return null
+        val url = try {
+            val side = 192
+            val scaled = if (maxOf(icon.width, icon.height) > side) {
+                val f = side.toFloat() / maxOf(icon.width, icon.height)
+                Bitmap.createScaledBitmap(icon, (icon.width * f).toInt().coerceAtLeast(1),
+                    (icon.height * f).toInt().coerceAtLeast(1), true)
+            } else icon
+            val out = java.io.ByteArrayOutputStream()
+            scaled.compress(Bitmap.CompressFormat.PNG, 100, out)
+            "data:image/png;base64," + android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)
+        } catch (e: Throwable) { return null }
+        tileData.put(host, url)
+        return url
+    }
+
+    /**
+     * Fetches [host]'s large icon from the site itself (its apple-touch-icon,
+     * then its favicon) into the cache, once per host per run, and calls
+     * [onDone] on the main thread if a crisp one was found.
+     */
+    fun prefetchForTile(context: Context, host: String, onDone: () -> Unit) {
+        if (host.isBlank()) return
+        synchronized(this) { if (!tilePrefetched.add(host)) return }
+        val dir = File(context.cacheDir, "site_icons")
+        // Asked from home's JavaScript bridge thread; WebView's own user agent
+        // is read on the main thread, as the icon loader above does.
+        main.post { prefetchWith(host, dir,
+            try { android.webkit.WebSettings.getDefaultUserAgent(context) } catch (e: Exception) { null }, onDone) }
+    }
+
+    private fun prefetchWith(host: String, dir: File, ua: String?, onDone: () -> Unit) {
+        io.execute {
+            val icon = try {
+                fetchBest(emptyList(), "https://$host", ua) ?: fetchBest(emptyList(), "https://www.$host", ua)
+            } catch (t: Throwable) { null }
+            if (icon != null && minOf(icon.width, icon.height) >= TILE_MIN_PX) {
+                save(File(dir, sha1(host) + ".png"), icon)
+                main.post {
+                    memory.put(host, icon)
+                    synchronized(this) { tileData.remove(host) }
+                    onDone()
+                }
+            }
         }
     }
 

@@ -1212,6 +1212,7 @@ class MainActivity : AppCompatActivity() {
         // Back from the background: an app open ad that is ready opens the
         // way in (a launch is handled by the splash: onSplashMinimumDone).
         if (AppOpenAds.takeOpen() == AppOpenAds.WARM_OPEN) warmOpenAd()
+        resumePendingApkInstall()
         refreshScrollPrefs()
         // Back after a while: the owl says hello - wide awake after twenty
         // minutes or more, a nod after a few. Not for a trip to Settings, a
@@ -1584,9 +1585,13 @@ class MainActivity : AppCompatActivity() {
         // Release the splash ~1.2s after the animation so it settles, then
         // enters - or, on an open with an app open ad, hold it for the ad,
         // which is shown over it, so the browser opens splash, ad, home.
+        // Opened for something specific (the widget, a link, a shortcut) it
+        // goes as soon as the browser is drawn: the launcher's own animation
+        // from the widget has already led in, and a second and a half of
+        // splash after it read as a stall.
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
             onSplashMinimumDone()
-        }, 1500L)
+        }, if (savedInstanceState == null && opensForATask(intent)) 150L else 1500L)
         enableEdgeToEdge()
         // The bottom bar paints behind the navigation bar itself
         // (NavSheetView.bottomInset), so Android's own shade over the buttons
@@ -1632,9 +1637,7 @@ class MainActivity : AppCompatActivity() {
         // given on an earlier launch, an ad possible: the splash will wait a
         // moment for the app open ad. Never on the very first launch, which
         // has the consent message and the owl's introduction to get through.
-        splashAdWanted = savedInstanceState == null && !launchedForTask &&
-            BrowsingMode.introDone(this) && !Settings.getBool(this, Settings.IS_SUPPORTER, false) &&
-            AdConsent.canRequestAds(this) && hasNetwork()
+        coldLaunch = savedInstanceState == null
         // A fresh install: the owl's introduction opens straight from the
         // splash - home is never seen first - and the consent message and
         // the ads wait until it is done (adsDeferred, onResume).
@@ -2052,6 +2055,27 @@ class MainActivity : AppCompatActivity() {
         }
         @JavascriptInterface
         fun getCachedFavicon(domain: String): String {
+            if (!privileged) return ""
+            if (domain.isBlank() || domain == "__order") return ""
+            // The crisp icon (SiteIcons: the site's own large icon, found
+            // when it was last open) first.
+            SiteIcons.tileDataUrl(this@MainActivity, domain)?.let { return it }
+            // Else the favicon WebView captured, but only a sharp one: a 16
+            // or 32px favicon is what made the tiles blurry. Without a sharp
+            // icon a built-in tile fetches its own (home.html), and a site in
+            // history gets its large icon from the site, redrawing the row.
+            val captured = getSharedPreferences("favicon_cache", Context.MODE_PRIVATE)
+                .getString(domain, "") ?: ""
+            if (captured.isNotEmpty() && capturedIsSharp(domain, captured)) return captured
+            if (!nightOwl) SiteIcons.prefetchForTile(this@MainActivity, domain) {
+                if (!isFinishing && !isDestroyed && activeWeb()?.url == homePage) refreshHomeTiles()
+            }
+            return ""
+        }
+
+        /** home.html, last resort for a site in history with no sharp icon: the small captured favicon. */
+        @JavascriptInterface
+        fun getSmallFavicon(domain: String): String {
             if (!privileged) return ""
             if (domain.isBlank() || domain == "__order") return ""
             return getSharedPreferences("favicon_cache", Context.MODE_PRIVATE)
@@ -4383,6 +4407,21 @@ class MainActivity : AppCompatActivity() {
      * oldest fall out past a cap. Off the main thread - PNG encoding and a
      * base64 of it are not free.
      */
+    /** Whether a captured favicon (a PNG data: URL) is big enough to look sharp in a tile. */
+    private val sharpMemo = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+    private fun capturedIsSharp(domain: String, dataUrl: String): Boolean {
+        val key = domain + ":" + dataUrl.length
+        sharpMemo[key]?.let { return it }
+        val sharp = try {
+            val bytes = android.util.Base64.decode(dataUrl.substringAfter(','), android.util.Base64.DEFAULT)
+            val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, o)
+            minOf(o.outWidth, o.outHeight) >= 96
+        } catch (e: Exception) { false }
+        sharpMemo[key] = sharp
+        return sharp
+    }
+
     private fun storeFavicon(host: String, bmp: android.graphics.Bitmap) {
         try {
             val domain = host.removePrefix("www.")
@@ -5912,12 +5951,19 @@ class MainActivity : AppCompatActivity() {
     private fun gatherConsentThenStart() {
         if (consentInFlight) return
         consentInFlight = true
-        AdConsent.gather(this) { allowed ->
+        AdConsent.gather(this, onFormNeeded = {
+            // A consent message has to be answered: it must be seen, so the
+            // splash makes way, and this launch goes without the app open ad.
+            splashAdWanted = false
+            releaseSplash()
+        }) { allowed ->
             consentInFlight = false
             if (isFinishing || isDestroyed) return@gather
             // Why not, when not, is written by AdConsent itself, with the
             // form's or the server's error where there was one.
             if (allowed) startAdsSdk()
+            // The splash may be waiting on this answer before asking for the ad.
+            continueSplashAd()
         }
         if (AdConsent.canRequestAds(this)) startAdsSdk()
     }
@@ -6519,37 +6565,55 @@ class MainActivity : AppCompatActivity() {
      * a clock. Even then the request is not cancelled - its ad is kept for
      * the next open.
      */
-    private val AD_WAIT_GUARD_MS = 12_000L
+    private val AD_WAIT_GUARD_MS = 15_000L
     private var splashAdWanted = false
     private var launchCover: View? = null
     private var coverAdShowing = false
 
     /**
-     * The splash has been up its usual 1.5 s. With an app open ad wanted it
-     * stays until the ad has loaded, and the ad is shown over it; only a
-     * failed request lets the browser open without one. Nothing is ever
-     * shown over home once it is up.
+     * The splash has been up its usual 1.5 s. On a plain launch it now stays
+     * until the app open ad has loaded and is shown over it: first until the
+     * consent check has answered (whether ads may be asked for is only known
+     * then - on a fresh start it is not known from before), then until the
+     * ad itself has loaded. Only a request that fails, a consent message
+     * that has to be answered, or no ad being allowed lets the browser open
+     * without the ad. Nothing is ever shown over home once it is up.
      */
     private fun onSplashMinimumDone() {
         if (isFinishing || isDestroyed) { keepSplash = false; return }
         if (introFromSplash) { introFromSplash = false; openIntroFromSplash(); return }
-        if (!splashAdWanted || !AppOpenAds.wantedThisOpen()) { releaseSplash(); return }
+        splashAdWanted = keepSplash && coldLaunch && !launchedForTask && !nightOwl &&
+            BrowsingMode.introDone(this) && !Settings.getBool(this, Settings.IS_SUPPORTER, false) &&
+            hasNetwork() && AppOpenAds.wantedThisOpen()
+        if (!splashAdWanted) { releaseSplash(); return }
+        uiHandler.postDelayed(splashGuard, AD_WAIT_GUARD_MS)
+        continueSplashAd()
+    }
+
+    /** The next step of the splash's wait: consent answered, then the ad loaded, then shown. */
+    private fun continueSplashAd() {
+        if (!keepSplash || !splashAdWanted) return
+        // Still asking whether ads may be shown: this runs again when it answers.
+        if (consentInFlight) return
+        if (!AdConsent.canRequestAds(this)) { splashAdWanted = false; releaseSplash(); return }
         if (AppOpenAds.readyNow()) { splashAd(); return }
-        // Still loading (or the SDK still starting - its answer comes all the
-        // same): the splash waits for it.
         AppOpenAds.onResult = { loaded ->
             AppOpenAds.onResult = null
             if (keepSplash && splashAdWanted) {
                 if (loaded) splashAd() else { splashAdWanted = false; releaseSplash() }
             }
         }
-        AppOpenAds.requestNow()
-        uiHandler.postDelayed(splashGuard, AD_WAIT_GUARD_MS)
+        // Asked for now if it can be; if the SDK is still starting, it asks
+        // the moment it can (sdkReady), and the answer comes all the same.
+        // With the SDK started and still no request out, one has just failed
+        // (the next is not due for a while): nothing is coming to wait for.
+        if (!AppOpenAds.requestNow() && adsSdkCalled) { splashAdWanted = false; releaseSplash() }
     }
 
     private val splashGuard = Runnable {
         if (keepSplash && splashAdWanted) { splashAdWanted = false; releaseSplash() }
     }
+    private var coldLaunch = false
 
     private fun splashAd() {
         uiHandler.removeCallbacks(splashGuard)
@@ -7622,12 +7686,124 @@ class MainActivity : AppCompatActivity() {
             return
         }
         val mime = mimeForDownload(d)
+        if (isApk(d, mime)) { installApk(d, uri); return }
         // Specific type first - it is what routes a PDF to a PDF reader rather
         // than to a generic file browser. A wildcard type is the fallback for
         // one that nothing claims outright.
         if (startViewer(uri, mime)) return
         if (!mime.equals("*/*", true) && startViewer(uri, "*/*")) return
         toast("No app on this phone opens this kind of file")
+    }
+
+    // ---------- A downloaded app (.apk) ----------
+    //
+    // Handing an APK to Android's installer did nothing at all: from Android 8
+    // the installer closes at once for an app that has not declared
+    // REQUEST_INSTALL_PACKAGES, and the browser had not. Now it is declared,
+    // and before the installer is opened the browser checks it has been
+    // allowed to use it (Settings > Install unknown apps, per app); if not,
+    // it says why and opens that switch, and carries on with the install
+    // when the user comes back with it on. Android 11 restarts the app when
+    // that switch is flipped, so what was being installed is kept on disk,
+    // not in memory, for a few minutes.
+
+    private val APK_MIME = "application/vnd.android.package-archive"
+    private val APK_PREFS = "apk_install"
+    private val APK_PENDING_MS = 10L * 60_000L
+
+    private fun isApk(d: Downloads.Item, mime: String): Boolean {
+        if (mime.equals(APK_MIME, true)) return true
+        val name = android.net.Uri.decode(d.localUri?.substringAfterLast('/')?.substringBefore('?') ?: "")
+        return name.endsWith(".apk", true) || d.title.endsWith(".apk", true)
+    }
+
+    private fun installApk(d: Downloads.Item, uri: android.net.Uri) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !canInstallApps()) {
+            askToAllowInstalls(d)
+            return
+        }
+        if (!startViewer(uri, APK_MIME)) toast("Android's installer couldn't open this file")
+    }
+
+    private fun canInstallApps(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
+            try { packageManager.canRequestPackageInstalls() } catch (e: Exception) { false }
+
+    /** The owl's ask: allow the browser to hand apps to Android's installer. */
+    private fun askToAllowInstalls(d: Downloads.Item) {
+        if (isFinishing || isDestroyed) return
+        val view = layoutInflater.inflate(R.layout.dialog_install_apps, null)
+        applyOwlArtIn(view)
+        view.findViewById<android.widget.TextView>(R.id.installMessage).text =
+            "To install " + d.title.ifBlank { "this app" } + ", Android needs your OK for Search " +
+            "to open app files. Turn on \u201cAllow from this source\u201d, then come back " +
+            "and the install starts. Only install apps from sources you trust."
+        val dialog = android.app.AlertDialog.Builder(this).setView(view).create()
+        dialog.window?.setBackgroundDrawable(
+            android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+        dialog.window?.attributes?.windowAnimations = R.style.OwlDialogAnim
+        view.findViewById<android.widget.TextView>(R.id.installNotNow).setOnClickListener {
+            Haptics.tap(it)
+            dialog.dismiss()
+        }
+        view.findViewById<android.widget.TextView>(R.id.installAllow).setOnClickListener {
+            Haptics.tap(it)
+            dialog.dismiss()
+            getSharedPreferences(APK_PREFS, Context.MODE_PRIVATE).edit()
+                .putLong("id", d.id).putBoolean("managed", d.managed)
+                .putString("local", d.localUri).putLong("at", System.currentTimeMillis())
+                .apply()
+            val opened = try {
+                startActivity(android.content.Intent(
+                    android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    android.net.Uri.parse("package:" + packageName)))
+                true
+            } catch (e: Exception) {
+                try {
+                    startActivity(android.content.Intent(android.provider.Settings.ACTION_SECURITY_SETTINGS))
+                    true
+                } catch (e2: Exception) { false }
+            }
+            if (!opened) {
+                clearPendingApk()
+                toast("Turn on Install unknown apps for Search in Android's settings")
+            }
+        }
+        dialog.show()
+        dialog.window?.let { w ->
+            val width = (resources.displayMetrics.widthPixels * 0.86f).toInt()
+            w.setLayout(width, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+    }
+
+    /** Back from the install switch (onResume): with it on, the install carries on. */
+    private fun resumePendingApkInstall() {
+        val p = getSharedPreferences(APK_PREFS, Context.MODE_PRIVATE)
+        if (!p.contains("id")) return
+        val at = p.getLong("at", 0L)
+        val id = p.getLong("id", -1L)
+        val managed = p.getBoolean("managed", true)
+        val local = p.getString("local", null)
+        // One go: on or off, the question has been answered.
+        clearPendingApk()
+        if (System.currentTimeMillis() - at !in 0L..APK_PENDING_MS) return
+        if (!canInstallApps()) return
+        Thread {
+            val d = try {
+                Downloads.load(this).firstOrNull { it.id == id && it.managed == managed && it.localUri == local }
+                    ?: Downloads.load(this).firstOrNull { it.id == id && it.managed == managed }
+            } catch (e: Exception) { null }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                val uri = d?.takeIf { it.isComplete }?.let { resolveDownloadUri(it) }
+                if (d == null || uri == null) toast("That file is no longer on this phone")
+                else if (!startViewer(uri, APK_MIME)) toast("Android's installer couldn't open this file")
+            }
+        }.start()
+    }
+
+    private fun clearPendingApk() {
+        getSharedPreferences(APK_PREFS, Context.MODE_PRIVATE).edit().clear().apply()
     }
 
     /** A failed download: offer to fetch it again. */

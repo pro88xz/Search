@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The search widget in a cell too short for the full one (SearchWidget
+     picks): the same, a size down.
+     RemoteViews: only frame, linear, image and text views. The pill is a
+     fixed height, centred in the cell: stretched to the whole cell it was a
+     large white slab with a small owl in it. Its id is Android's own
+     background id, which is what the launcher's widget-to-app animation
+     (Android 12+) grows out of. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:paddingStart="2dp"
+    android:paddingEnd="2dp">
+
+    <LinearLayout
+        android:id="@android:id/background"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_gravity="center_vertical"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="10dp"
+        android:paddingEnd="4dp"
+        android:background="@drawable/widget_pill_bg">
+
+        <ImageView
+            android:id="@+id/widgetOwl"
+            android:layout_width="30dp"
+            android:layout_height="35dp"
+            android:src="@drawable/ic_owl"
+            android:scaleType="fitCenter"
+            android:contentDescription="@null" />
+
+        <TextView
+            android:id="@+id/widgetText"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_marginStart="10dp"
+            android:gravity="center_vertical"
+            android:text="@string/widget_hint"
+            android:textSize="16sp"
+            android:textColor="@color/widgetHint"
+            android:maxLines="1"
+            android:ellipsize="end" />
+
+        <ImageView
+            android:id="@+id/widgetMic"
+            android:layout_width="42dp"
+            android:layout_height="42dp"
+            android:padding="10dp"
+            android:background="@drawable/widget_btn_ripple"
+            android:src="@drawable/ic_mic"
+            android:scaleType="fitCenter"
+            android:contentDescription="@string/widget_voice" />
+
+        <ImageView
+            android:id="@+id/widgetScan"
+            android:layout_width="42dp"
+            android:layout_height="42dp"
+            android:padding="10dp"
+            android:background="@drawable/widget_btn_ripple"
+            android:src="@drawable/ic_scan"
+            android:scaleType="fitCenter"
+            android:contentDescription="@string/widget_scan" />
+    </LinearLayout>
+</FrameLayout>

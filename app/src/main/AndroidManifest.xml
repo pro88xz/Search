@@ -12,6 +12,11 @@
          system asks the user instead and this is not used. -->
     <uses-permission android:name="com.android.launcher.permission.INSTALL_SHORTCUT"
         android:maxSdkVersion="25" />
+    <!-- An app downloaded as an .apk is handed to Android's installer. From
+         Android 8 the installer refuses, silently, an app that does not
+         declare this: tapping a downloaded APK did nothing at all. The user
+         still has to allow it, per app, in Settings (MainActivity asks). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!--
       Needed for the web to reach them at all. A site asking for the camera,
       the microphone or a location gets nothing unless this app itself holds
