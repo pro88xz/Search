@@ -1240,7 +1240,9 @@ class MainActivity : AppCompatActivity() {
         if (!nightOwl && browsingMode == BrowsingMode.EXPLORE) {
             NewsFeed.refreshIfDue(this) { fresh -> runOnUiThread { pushFeedUpdate(fresh) } }
         }
-        uiHandler.postDelayed({ maybeShowModeIntro(); maybeAnnounceModes() }, 900L)
+        // Back from the introduction on a fresh install: consent, then the ads.
+        if (adsDeferred && BrowsingMode.introDone(this)) { adsDeferred = false; initAds() }
+        uiHandler.postDelayed({ maybeAnnounceModes() }, 900L)
         if (!tintBarsPref) setBarTint(null, null, animate = false)
         HealthStats.sessionStarted(this)
         registerNetworkWatch()
@@ -1633,6 +1635,10 @@ class MainActivity : AppCompatActivity() {
         splashAdWanted = savedInstanceState == null && !launchedForTask &&
             BrowsingMode.introDone(this) && !Settings.getBool(this, Settings.IS_SUPPORTER, false) &&
             AdConsent.canRequestAds(this) && hasNetwork()
+        // A fresh install: the owl's introduction opens straight from the
+        // splash - home is never seen first - and the consent message and
+        // the ads wait until it is done (adsDeferred, onResume).
+        introFromSplash = savedInstanceState == null && !launchedForTask && !BrowsingMode.introDone(this)
         // The owl's hello, asked for now so its first frame after the splash
         // is already the sleeping owl; it plays once the bar is on screen and
         // the app has settled (OwlButtonView.requestGreet). A fresh start, or
@@ -1814,7 +1820,7 @@ class MainActivity : AppCompatActivity() {
         // The same test as `fresh` below, which decides whether the shortcut is acted on.
         nightOwlLaunchPending = savedInstanceState == null && tabStore.snapshot == null &&
             intent?.action == ACTION_NIGHT_OWL
-        initAds()
+        if (introFromSplash) adsDeferred = true else initAds()
         // Notification media buttons -> drive the page's media element.
         MediaService.onControl = mediaControl
         // Quietly check Play for a newer version on launch; prompts only if one
@@ -5816,6 +5822,8 @@ class MainActivity : AppCompatActivity() {
     private var adsReady = false
     /** MobileAds.initialize has been asked for (startAdsSdk). */
     private var adsStarted = false
+    /** MobileAds.initialize has been called and returned: the app open ad may be asked for. */
+    @Volatile private var adsSdkCalled = false
     /**
      * When the ad on the card arrived, on the clock that keeps running while
      * the phone sleeps. A card older than an hour is replaced. Uptime stops
@@ -5907,7 +5915,6 @@ class MainActivity : AppCompatActivity() {
         AdConsent.gather(this) { allowed ->
             consentInFlight = false
             if (isFinishing || isDestroyed) return@gather
-            uiHandler.postDelayed({ maybeShowModeIntro() }, 300L)
             // Why not, when not, is written by AdConsent itself, with the
             // form's or the server's error where there was one.
             if (allowed) startAdsSdk()
@@ -5931,9 +5938,18 @@ class MainActivity : AppCompatActivity() {
                     // so initialization finishing DURING a private session is
                     // handled by the same test as every other path in.
                     loadFeedAd()
-                    // And the app open ad, gated the same way (appOpenGate).
-                    AppOpenAds.sdkReady()
                 }
+            }
+            // The app open ad is asked for as soon as the SDK has been started
+            // - not when it reports it has finished starting, which can take
+            // longer than the splash: waiting for that is why the ad used to
+            // arrive too late for the launch it was asked for and only showed
+            // on the next one. With no mediation there is nothing to wait for,
+            // as Google's own app open sample does.
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                adsSdkCalled = true
+                AppOpenAds.sdkReady()
             }
         }.start()
     }
@@ -6424,7 +6440,6 @@ class MainActivity : AppCompatActivity() {
     @Volatile private var browsingMode = BrowsingMode.EXPLORE
     @Volatile private var zenShortcuts = false
     private var launchedForTask = false
-    private var introLaunched = false
     private var announcing = false
 
     /**
@@ -6444,28 +6459,6 @@ class MainActivity : AppCompatActivity() {
         if (mode == BrowsingMode.EXPLORE) loadFeedAd()
     }
 
-    /**
-     * The owl's introduction, once, on a fresh install: after the splash and
-     * the consent message (or six seconds, if consent is slow to answer),
-     * never over a link or shortcut the browser was opened for, never in
-     * Night Owl. Skipped or finished, it is not shown again.
-     */
-    private fun maybeShowModeIntro() {
-        if (introLaunched || isFinishing || isDestroyed) return
-        if (BrowsingMode.introDone(this)) return
-        if (keepSplash || launchedForTask || nightOwl || AdConsent.formShowing) return
-        if (consentInFlight && android.os.SystemClock.uptimeMillis() - createdAt < 6000L) {
-            uiHandler.postDelayed({ maybeShowModeIntro() }, 1000L)
-            return
-        }
-        introLaunched = true
-        try {
-            startActivity(android.content.Intent(this, ModeIntroActivity::class.java))
-            @Suppress("DEPRECATION")
-            overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
-        } catch (e: Exception) { introLaunched = false }
-    }
-    private val createdAt = android.os.SystemClock.uptimeMillis()
 
     /**
      * Once after the upgrade that brought the modes: "Search has 3 modes now".
@@ -6482,24 +6475,37 @@ class MainActivity : AppCompatActivity() {
         announcing = true
         BrowsingMode.markAnnounced(this)
         HealthStats.count(this, HealthStats.MODE_ANNOUNCED)
-        com.google.android.material.dialog.MaterialAlertDialogBuilder(this, R.style.Theme_Search_Dialog)
-            .setTitle("Search has 3 modes now")
-            .setMessage("Choose the browsing experience that suits you: Explore, Focus, or Zen. " +
-                "You\u2019re on Explore by default, and you can switch anytime in Settings.")
-            .setPositiveButton("Got it", null)
-            .setNegativeButton("Choose mode") { _, _ ->
-                startActivity(android.content.Intent(this, SectionActivity::class.java)
-                    .putExtra(SectionActivity.EXTRA_SECTION, SectionActivity.SEC_MODE))
-            }
-            .setOnDismissListener { announcing = false }
-            .show()
+        // The owl dialogs' own design (as Play Games' welcome): the owl, the
+        // accent, the pill buttons, the owl's entrance.
+        val view = layoutInflater.inflate(R.layout.dialog_modes_new, null)
+        applyOwlArtIn(view)
+        val dialog = android.app.AlertDialog.Builder(this).setView(view).create()
+        dialog.window?.setBackgroundDrawable(
+            android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+        dialog.window?.attributes?.windowAnimations = R.style.OwlDialogAnim
+        view.findViewById<android.widget.TextView>(R.id.modesGotIt).setOnClickListener {
+            Haptics.tap(it)
+            dialog.dismiss()
+        }
+        view.findViewById<android.widget.TextView>(R.id.modesChoose).setOnClickListener {
+            Haptics.tap(it)
+            dialog.dismiss()
+            startActivity(android.content.Intent(this, SectionActivity::class.java)
+                .putExtra(SectionActivity.EXTRA_SECTION, SectionActivity.SEC_MODE))
+        }
+        dialog.setOnDismissListener { announcing = false }
+        dialog.show()
+        dialog.window?.let { w ->
+            val width = (resources.displayMetrics.widthPixels * 0.86f).toInt()
+            w.setLayout(width, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
     }
 
     // ---------- The app open ad's questions (AppOpenAds) ----------
 
     /** Asked for and shown only where the feed ad may be: consent, no Night Owl, no supporter. */
     private val appOpenGate: () -> Boolean = {
-        !isFinishing && !isDestroyed && adsReady && !nightOwl && !nightOwlLaunchPending &&
+        !isFinishing && !isDestroyed && adsSdkCalled && !nightOwl && !nightOwlLaunchPending &&
             !Settings.getBool(this, Settings.IS_SUPPORTER, false) &&
             AdConsent.canRequestAds(this) && !AdConsent.formShowing
     }
@@ -6526,6 +6532,7 @@ class MainActivity : AppCompatActivity() {
      */
     private fun onSplashMinimumDone() {
         if (isFinishing || isDestroyed) { keepSplash = false; return }
+        if (introFromSplash) { introFromSplash = false; openIntroFromSplash(); return }
         if (!splashAdWanted || !AppOpenAds.wantedThisOpen()) { releaseSplash(); return }
         if (AppOpenAds.readyNow()) { splashAd(); return }
         // Still loading (or the SDK still starting - its answer comes all the
@@ -6562,8 +6569,35 @@ class MainActivity : AppCompatActivity() {
         AppOpenAds.onResult = null
         if (!keepSplash) return
         keepSplash = false
-        // A fresh install: the owl's introduction to the modes.
-        uiHandler.postDelayed({ maybeShowModeIntro() }, 250L)
+    }
+
+    /**
+     * The introduction is started while the splash still stands, and the
+     * splash is let go only once the introduction has covered this screen
+     * (onStop), so the way in is splash, introduction, home - with no
+     * glimpse of home in between.
+     */
+    private fun openIntroFromSplash() {
+        releaseSplashOnStop = true
+        try {
+            startActivity(android.content.Intent(this, ModeIntroActivity::class.java))
+            @Suppress("DEPRECATION")
+            overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
+        } catch (e: Exception) {
+            releaseSplashOnStop = false
+            releaseSplash()
+            return
+        }
+        // Should the introduction not come up for any reason, the browser opens.
+        uiHandler.postDelayed({ releaseSplashOnStop = false; releaseSplash() }, 6000L)
+    }
+    private var introFromSplash = false
+    private var releaseSplashOnStop = false
+    private var adsDeferred = false
+
+    override fun onStop() {
+        super.onStop()
+        if (releaseSplashOnStop) { releaseSplashOnStop = false; releaseSplash() }
     }
 
     /**
