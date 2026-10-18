@@ -366,6 +366,21 @@ These were built without a phone to run them on. Check each once:
       and after rotating. With the feed offline (no stories) it sits at the
       end of the page. Taps on its button open the ad; a tap that stops a
       fling does not.
+- [ ] (2.0.4) Outside Europe (a non-EU SIM, consent never shown): fresh
+      install, finish the intro, relaunch - the app open ad and the feed
+      ad come with no consent message and no extra wait. In the EEA or UK
+      the consent message still comes first and no ad before it.
+- [ ] (2.0.4) Menu: Back / Forward / Reload and the hairline on top, six
+      rows under them; each group opens a strip that swipes sideways and
+      closes the others; every action (Home/Close Search, Reopen, Find,
+      Zoom, Reader, Translate, Desktop, ads on this site, History,
+      Downloads, Share, Add to Home screen, Print, Games, Coffee) works.
+- [ ] (2.0.4) Home feed: videos from YouTube (play button, channel name,
+      "YouTube") one in every three cards after the ad; Music, Comedy,
+      Viral and Trending chips under See all; a video opens on YouTube.
+- [ ] (2.0.4) Home feed opens with 12 stories; scrolling to the end adds
+      more without a button until "You're all caught up"; the ad stays
+      after the second story.
 - [ ] (2.0.3) App open ad on the FIRST launch after installing the
       update (not a fresh install) and after force-stopping the app: the
       splash stays until the ad is on screen, then home. Repeat with the
