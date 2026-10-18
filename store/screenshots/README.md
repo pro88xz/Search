@@ -23,7 +23,7 @@ Volume down takes each one. Save them as `captures/01.png` ... `08.png`:
 | 04 | **Night Owl** private browsing | Night Owl on, its home page |
 | 05 | Three ways to **browse** | Settings > Browsing mode, the three mode cards |
 | 06 | Every tool **one tap** away | The menu open on the home page |
-| 07 | Tabs, bookmarks and **downloads** | The tab switcher with three or four neutral tabs open (no well-known people, adult topics, artists' videos or cookie pop-ups) |
+| 07 | Switch between **tabs** in a tap | The tab switcher with three or four neutral tabs open (no well-known people, adult topics, artists' videos or cookie pop-ups) |
 | 08 | Search **widget** for your home screen | The phone's home screen with the Search widget on it |
 
 ## Making the frames
