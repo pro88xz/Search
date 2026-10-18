@@ -794,7 +794,6 @@
                     android:text="Play games" android:textSize="16sp"
                     android:textColor="?android:attr/textColorPrimary" />
             </LinearLayout>
-            <!-- Debug builds append "Share debug log" here (src/debug). -->
             </LinearLayout>
             </ScrollView>
         </com.search.browser.DragPanel>

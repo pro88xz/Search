@@ -8692,8 +8692,6 @@ class MainActivity : AppCompatActivity() {
         binding.menuHistory.setOnClickListener {
             closeMenuNow(); openDeck(); showHistory()
         }
-        // Debug builds add "Share debug log" here; release builds have none.
-        DebugTools.install(this, binding.menuRows, { tabs.maxLiveTabs }) { closeMenuNow() }
         binding.menuDownloads.setOnClickListener {
             closeMenuNow()
             openDownloads()

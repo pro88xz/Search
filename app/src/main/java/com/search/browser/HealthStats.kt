@@ -276,10 +276,13 @@ object HealthStats {
             v.n(PAGES_MEDIUM) + ", heavy " + v.n(PAGES_HEAVY)
         out += "Memory warnings: getting short " + v.n(MEMORY_MODERATE) +
             ", low " + v.n(MEMORY_LOW)
-        out += "Feed ad: asked " + v.n(AD_REQUESTS) + ", filled " + v.n(AD_FILLED) +
-            ", failed " + v.n(AD_FAILED) + ", on screen " + v.n(AD_SEEN)
-        out += "App open ad: asked " + v.n(AO_REQUESTS) + ", loaded " + v.n(AO_FILLED) +
-            ", failed " + v.n(AO_FAILED) + ", shown " + v.n(AO_SHOWN)
+        // Ad numbers are for testing: debug builds only.
+        if (BuildConfig.DEBUG) {
+            out += "Feed ad: asked " + v.n(AD_REQUESTS) + ", filled " + v.n(AD_FILLED) +
+                ", failed " + v.n(AD_FAILED) + ", on screen " + v.n(AD_SEEN)
+            out += "App open ad: asked " + v.n(AO_REQUESTS) + ", loaded " + v.n(AO_FILLED) +
+                ", failed " + v.n(AO_FAILED) + ", shown " + v.n(AO_SHOWN)
+        }
         return out
     }
 
@@ -355,22 +358,4 @@ object HealthStats {
     }
 
     private fun ms(v: Long?): String = if (v == null) "-" else "$v ms"
-
-    /** The whole report, for sharing. */
-    fun report(c: Context): String {
-        val sb = StringBuilder("Search - performance & health\n")
-        sb.append("Android ").append(Build.VERSION.RELEASE)
-            .append(" (API ").append(Build.VERSION.SDK_INT).append("), ")
-            .append(Build.MANUFACTURER).append(' ').append(Build.MODEL).append('\n')
-        versions(c).forEach { v ->
-            sb.append("\nVersion ").append(v.name).append(" (").append(v.code).append(")\n")
-            lines(v).forEach { sb.append("  ").append(it).append('\n') }
-        }
-        val ads = adLines(c)
-        if (ads.isNotEmpty()) {
-            sb.append("\nFeed ad\n")
-            ads.forEach { sb.append("  ").append(it).append('\n') }
-        }
-        return sb.toString()
-    }
 }
