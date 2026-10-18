@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- "Search has 3 modes now": the one-time message after the upgrade that
+     brought the browsing modes, in the owl dialogs' own design
+     (dialog_games_welcome): the owl, a bold title, the three modes as pills,
+     a line of explanation, and an outline and a filled button. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="20dp"
+    android:background="@drawable/dialog_bg">
+    <ImageView
+        android:layout_width="56dp"
+        android:layout_height="56dp"
+        android:layout_gravity="center_horizontal"
+        android:src="@drawable/ic_owl"
+        android:layout_marginBottom="12dp"
+        android:contentDescription="Search" />
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Search has 3 modes now"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:textColor="?android:attr/textColorPrimary" />
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="12dp"
+        android:orientation="horizontal"
+        android:importantForAccessibility="noHideDescendants">
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="30dp"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:gravity="center"
+            android:text="Explore"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:textColor="#5E44A0"
+            android:background="@drawable/dialog_btn_outline" />
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="30dp"
+            android:layout_marginStart="8dp"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:gravity="center"
+            android:text="Focus"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:textColor="#5E44A0"
+            android:background="@drawable/dialog_btn_outline" />
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="30dp"
+            android:layout_marginStart="8dp"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:gravity="center"
+            android:text="Zen"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:textColor="#5E44A0"
+            android:background="@drawable/dialog_btn_outline" />
+    </LinearLayout>
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:text="Choose the browsing experience that suits you: Explore, Focus, or Zen. You’re on Explore by default, and you can switch anytime in Settings."
+        android:textSize="14sp"
+        android:gravity="center"
+        android:lineSpacingExtra="3dp"
+        android:textColor="#8A8A8F"
+        android:layout_marginBottom="20dp" />
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:baselineAligned="false">
+        <TextView
+            android:id="@+id/modesChoose"
+            android:layout_width="0dp"
+            android:layout_height="46dp"
+            android:layout_weight="1"
+            android:layout_marginEnd="6dp"
+            android:text="Choose mode"
+            android:textAllCaps="false"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:textColor="#5E44A0"
+            android:background="@drawable/dialog_btn_outline" />
+        <TextView
+            android:id="@+id/modesGotIt"
+            android:layout_width="0dp"
+            android:layout_height="46dp"
+            android:layout_weight="1"
+            android:layout_marginStart="6dp"
+            android:text="Got it"
+            android:textAllCaps="false"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:textColor="#FFFFFF"
+            android:background="@drawable/dialog_btn_filled" />
+    </LinearLayout>
+</LinearLayout>

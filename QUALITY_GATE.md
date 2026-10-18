@@ -366,6 +366,10 @@ These were built without a phone to run them on. Check each once:
       and after rotating. With the feed offline (no stories) it sits at the
       end of the page. Taps on its button open the ad; a tap that stops a
       fling does not.
+- [ ] (2.0.2) Fresh install: splash, then straight into the owl's
+      introduction - home is not seen first; after it, home, then the
+      consent message where one applies. Upgrade: "Search has 3 modes now"
+      is the owl dialog (owl, three mode pills, accent buttons).
 - [ ] (2.0.1) App open ad: launch from the launcher (not the first launch):
       the splash stays until the ad has loaded, the ad shows over the
       splash, and closing it shows home - never home first and the ad over
