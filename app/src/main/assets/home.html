@@ -1136,16 +1136,25 @@
     img.decoding = 'async';
     img.setAttribute('loading', 'lazy');
     img.setAttribute('referrerpolicy', 'no-referrer');
+    // A YouTube video's 1280px frame (hq720) is asked for first; a video
+    // without one gets an error or YouTube's 120px grey stand-in, and then
+    // its 480px frame, which every video has, before the story is given up.
+    var yt = /^(https:\/\/i\.ytimg\.com\/vi\/[\w-]+\/)hq720\.jpg$/.exec(src);
+    function stand_in(){ return yt && img.naturalWidth <= 120; }
+    function fail(){
+      if (yt) { var next = yt[1] + 'hqdefault.jpg'; yt = null; img.src = next; return; }
+      if (onFail) onFail();
+    }
     img.onload = function(){
       // A picture with no pixels is a failure that reported success.
-      if (!img.naturalWidth) { if (onFail) onFail(); return; }
+      if (!img.naturalWidth || stand_in()) { fail(); return; }
       img.classList.add('ok'); box.classList.remove('loading');
     };
-    img.onerror = function(){ if (onFail) onFail(); };
+    img.onerror = fail;
     img.src = src;
     // Already in memory (a re-render): show it at once rather than fading in
     // again, so rebuilding the list never flickers.
-    if (img.complete && img.naturalWidth) { img.classList.add('instant', 'ok'); box.classList.remove('loading'); }
+    if (img.complete && img.naturalWidth && !stand_in()) { img.classList.add('instant', 'ok'); box.classList.remove('loading'); }
     box.appendChild(img);
   }
 
