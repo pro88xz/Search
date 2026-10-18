@@ -374,6 +374,8 @@
      as the reader nears it (moreObserver), and, once every story is on the
      page, a quiet line saying so. */
   .feed-more { display:block; height:1px; }
+  /* The further ad places (seatExtraSlots): shut until their ad has come. */
+  .xslot { display:block; height:0; }
   .feed-end { display:block; padding:18px 0 4px; text-align:center;
     font-size:13px; color:var(--muted); }
 
@@ -1352,6 +1354,7 @@
       target.insertBefore(adSlotEl, before);
     }
     sizeAdSlot(false);
+    seatExtraSlots();
   }
   // [animate]: open the box smoothly when it is on screen; anywhere else at
   // once - and when it is above what the reader is looking at, the page is
@@ -1410,6 +1413,87 @@
   if (window.ResizeObserver) { try { new ResizeObserver(reportAdSlotSoon).observe(wrapEl); } catch (e) {} }
   window.addEventListener('resize', reportAdSlotSoon);
   window.addEventListener('load', reportAdSlotSoon);
+
+  // ---------- More ad places, further down ----------
+  // For readers who scroll that far, one more native card stands after the
+  // 11th, 19th, 27th and 35th story - one in each batch the feed loads as it
+  // is scrolled. The app lays a second card (its own ad unit) over whichever
+  // of these places is nearest the view (SearchApp.extraAdSlotAt). A place
+  // stays shut until its ad has come; the ad is asked for only when the
+  // reader is within a couple of screens of it (SearchApp.extraAdWanted);
+  // and it opens (__setExtraAdSlot) only while it is still below the
+  // screen, so nothing the reader is looking at ever moves. The first ad's
+  // place, above, is left exactly as it was.
+  var XSLOT_AFTER = [11, 19, 27, 35];
+  var xslots = [], xH = [], xAsked = [], xRep = '', xRaf = 0;
+  function extraOn(){ return !nightOwl && mode === 'explore' && feed.shown && feed.cat === 'All'; }
+  function seatExtraSlots(){
+    // Reached from seatAdSlot, which can run before this part of the script has.
+    if (!xslots) return;
+    var list = (storiesEl && extraOn()) ? storiesEl.querySelector('.list') : null;
+    var rows = list ? list.querySelectorAll('.row') : [];
+    for (var k = 0; k < XSLOT_AFTER.length; k++) {
+      var n = XSLOT_AFTER[k], s = xslots[k];
+      // Only between stories: there must be one after it.
+      if (!list || rows.length <= n) {
+        if (s && s.parentNode) s.parentNode.removeChild(s);
+        continue;
+      }
+      if (!s) {
+        s = xslots[k] = el('div', 'xslot');
+        s.setAttribute('aria-hidden', 'true');
+        s.style.height = (xH[k] || 0) + 'px';
+      }
+      var after = rows[n - 1];
+      if (s.parentNode !== list || s.previousSibling !== after) list.insertBefore(s, after.nextSibling);
+    }
+    checkExtraSoon();
+  }
+  function checkExtra(){
+    xRaf = 0;
+    if (!xslots) return;
+    var A = bridge();
+    if (!A || !A.extraAdSlotAt) return;
+    var vh = window.innerHeight || document.documentElement.clientHeight;
+    var y = window.pageYOffset, mid = y + vh / 2, best = -1, bestD = 0;
+    if (extraOn()) {
+      for (var k = 0; k < xslots.length; k++) {
+        var s = xslots[k];
+        if (!s || !s.parentNode || s.offsetParent === null) continue;
+        var top = docTop(s);
+        if (!xAsked[k] && top - (y + vh) < vh * 2.5 && A.extraAdWanted) {
+          xAsked[k] = true;
+          try { A.extraAdWanted(k, s.offsetWidth); } catch (e) {}
+        }
+        if (!(xH[k] > 0)) continue;
+        var d = Math.abs(top + xH[k] / 2 - mid);
+        if (best < 0 || d < bestD) { best = k; bestD = d; }
+      }
+    }
+    var b = best < 0 ? null : xslots[best];
+    var at = b ? [best, docTop(b), docLeft(b), b.offsetWidth, b.offsetHeight] : [-1, -1, 0, 0, 0];
+    var key = at.join(',');
+    if (key === xRep) return;
+    xRep = key;
+    try { A.extraAdSlotAt(at[0], at[1], at[2], at[3], at[4]); } catch (e) {}
+  }
+  function checkExtraSoon(){ if (!xRaf) xRaf = requestAnimationFrame(checkExtra); }
+  window.__setExtraAdSlot = function(k, px){
+    var h = px > 0 ? Math.round(px) : 0;
+    var s = xslots[k];
+    if (h > 0 && !(xH[k] > 0) && s && s.parentNode) {
+      var vh = window.innerHeight || document.documentElement.clientHeight;
+      if (s.getBoundingClientRect().top < vh) return;
+    }
+    xH[k] = h;
+    if (s) s.style.height = h + 'px';
+    checkExtraSoon();
+  };
+  // Asked by the app when it needs the place again (a tab switch back to home).
+  window.__extraAdWhere = function(){ xRep = ''; checkExtraSoon(); };
+  window.addEventListener('scroll', checkExtraSoon, { passive: true });
+  window.addEventListener('resize', checkExtraSoon);
+  if (window.ResizeObserver) { try { new ResizeObserver(checkExtraSoon).observe(wrapEl); } catch (e) {} }
 
   // A story or a publisher the reader hid from the card menu: off the page
   // now, and kept off (the app remembers it for the next loads).

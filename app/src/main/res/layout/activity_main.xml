@@ -247,6 +247,16 @@
                 android:layout_gravity="top|start"
                 android:alpha="0"
                 android:visibility="gone" />
+            <!-- The further feed ads' card (MainActivity, extra feed ads): one
+                 card, laid over whichever of home's further ad places is
+                 nearest the view, exactly as adSlot is over the first. -->
+            <com.search.browser.AdSlotLayout
+                android:id="@+id/adSlotExtra"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="top|start"
+                android:alpha="0"
+                android:visibility="gone" />
         </FrameLayout>
 
         <!-- ===== BOTTOM navigation bar: Home, Bookmarks, New tab, Tabs, Menu.
