@@ -27,7 +27,8 @@
     --accent-text:var(--accent-l); --heading:var(--ink-l);
     --skel:#ECEBF0; --sweep:rgba(255,255,255,0.75);
     --press:rgba(22,20,40,0.05);
-    --shadow-card:0 1px 2px rgba(22,20,40,0.04), 0 8px 24px -10px rgba(22,20,40,0.14);
+    --shadow-card:0 0 0 1px rgba(22,20,40,0.06), 0 1px 3px rgba(22,20,40,0.05), 0 10px 26px -14px rgba(22,20,40,0.16);
+    --card-r:24px;
     --shadow-tile:0 1px 2px rgba(22,20,40,0.05), 0 6px 14px -6px rgba(22,20,40,0.16);
     --shadow-hero:0 2px 4px rgba(22,20,40,0.06), 0 18px 36px -14px rgba(22,20,40,0.42);
     --ease-out:cubic-bezier(.2,.8,.2,1);
@@ -41,7 +42,7 @@
       --accent-text:var(--accent-d); --heading:var(--fg);
       --skel:#1D1D22; --sweep:rgba(255,255,255,0.05);
       --press:rgba(255,255,255,0.05);
-      --shadow-card:0 1px 2px rgba(0,0,0,0.5);
+      --shadow-card:0 0 0 1px rgba(255,255,255,0.07), 0 1px 2px rgba(0,0,0,0.5);
       --shadow-tile:0 1px 2px rgba(0,0,0,0.5);
       --shadow-hero:0 18px 36px -16px rgba(0,0,0,0.7);
     }
@@ -59,12 +60,11 @@
   button { font:inherit; color:inherit; background:none; border:0; padding:0; margin:0; cursor:pointer; }
   svg { display:block; }
 
-  /* The bottom reserve is the ad slot's height plus room for the native bar,
-     which overlaps the bottom 58px of this page (its corners, and the arc the
-     "+" button sits in, rise over it): the last card must clear it, with air
-     to spare. */
+  /* The bottom reserve is room for the native bar, which overlaps the bottom
+     58px of this page (its corners, and the arc the "+" button sits in, rise
+     over it): the last card must clear it, with air to spare. */
   .wrap { min-height:100%; display:flex; flex-direction:column; align-items:center;
-    padding:12px var(--gutter) calc(108px + var(--adslot, 0px)); }
+    padding:12px var(--gutter) 108px; }
 
   /* ---------- Wordmark ----------
      It used to be a 66px billboard taking a fifth of the first screen. Now it
@@ -254,155 +254,129 @@
   .chip[aria-pressed="true"]::before { opacity:1; transform:none; }
   .chip.is-pressed { transform:scale(0.94); transition-duration:.15s; }
 
-  /* Featured story. The image keeps a fixed 16:9 box and fades into an ink
-     drawn from the accent, so the headline sits on something dark whatever
-     the photograph does at its bottom edge, and the card belongs to the app
-     rather than to the photo. */
-  .hero {
-    position:relative; display:block; overflow:hidden; border-radius:24px;
-    background:var(--hero-ink);
-    color:#fff; text-decoration:none;
-    box-shadow:var(--shadow-hero);
-    transition:transform .55s var(--ease-spring);
-    -webkit-touch-callout:default;
+  /* ---------- The story card ----------
+     After Chrome's Discover: the whole feed is one white card on the
+     page's grey, 24px corners and a hairline, and the stories run down it
+     one after another - each with its picture the card's full width, the
+     headline in a calm medium weight, and the publisher row under it (its
+     round icon, its name, where and how long ago, then Share and a menu).
+     The featured story leads the card with a taller picture, a "Top story"
+     tag, a bigger headline and its summary. The feed's ad (native, laid
+     over .adslot by the app) is drawn as one more story on the card, with
+     its "Ad" label, as it must be. The class names (.list holding .row
+     stories, .list-foot) are what expand, collapse and the filters address. */
+  .sheet {
+    position:relative; overflow:hidden;
+    border-radius:var(--card-r); background:var(--surface);
+    box-shadow:var(--shadow-card);
   }
-  /* The accent glow and the edge hairline sit over the photo, not under it:
-     painted on the card's own background they stopped where the image began,
-     and the edge showed a step there. */
-  .hero::after {
-    content:""; position:absolute; left:0; top:0; right:0; bottom:0; border-radius:inherit;
-    pointer-events:none;
-    background:radial-gradient(120% 60% at 100% 100%, rgba(var(--accent-rgb),0.34), rgba(var(--accent-rgb),0) 62%);
-  }
-  @media (prefers-color-scheme: dark) {
-    .hero::after { box-shadow:inset 0 0 0 1px rgba(255,255,255,0.07); }
-  }
-  .hero.is-pressed { transform:scale(0.98); transition:transform .18s var(--ease-out) 30ms; }
-  .hero-media { position:relative; display:block; height:0; padding-top:56.25%; overflow:hidden; }
-  .hero-scrim {
-    position:absolute; left:0; right:0; bottom:-1px; height:72%; pointer-events:none;
-    background:linear-gradient(180deg,
-      rgba(var(--hero-ink-rgb),0) 0%,
-      rgba(var(--hero-ink-rgb),0.45) 38%,
-      rgba(var(--hero-ink-rgb),0.86) 72%,
-      rgb(var(--hero-ink-rgb)) 100%);
-  }
-  .cat {
-    position:absolute; left:14px; top:14px; z-index:2;
-    height:26px; line-height:26px; padding:0 10px; border-radius:9px;
-    background:var(--accent); color:var(--on-accent);
-    font-size:12.5px; font-weight:700; letter-spacing:0.01em;
-    box-shadow:0 4px 12px -4px rgba(0,0,0,0.45), inset 0 0 0 1px rgba(255,255,255,0.14);
-  }
-  .hero-body { position:relative; z-index:1; display:block; margin-top:-46px; padding:0 18px 16px; }
-  .hero-title {
-    display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;
-    font-size:22px; line-height:1.2; font-weight:800; letter-spacing:-0.012em;
-    overflow-wrap:anywhere; word-break:break-word; text-wrap:pretty;
-    text-shadow:0 1px 14px rgba(0,0,0,0.3);
-  }
-  .hero-sum {
-    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
-    margin-top:8px; font-size:14px; line-height:1.45; color:rgba(255,255,255,0.78);
-    overflow-wrap:anywhere; word-break:break-word;
-  }
-  .hero-meta { display:flex; align-items:center; margin-top:14px; min-height:46px; }
-  .hero-meta .favwrap {
-    flex:none; width:24px; height:24px; border-radius:50%; background:#fff;
-    display:flex; align-items:center; justify-content:center; overflow:hidden; margin-right:8px;
-    box-shadow:0 1px 3px rgba(0,0,0,0.3);
-  }
-  .hero-meta .favwrap img { width:16px; height:16px; display:block; border-radius:3px; }
-  .hero-meta .favwrap .mono { color:var(--hero-ink); font-size:11px; }
-  .hero-meta .src { font-size:13.5px; font-weight:600; color:rgba(255,255,255,0.94);
-    min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .hero-meta .sep { flex:none; width:1px; height:13px; margin:0 9px; background:rgba(255,255,255,0.32); }
-  .hero-meta .time { flex:none; font-size:13px; color:rgba(255,255,255,0.68); white-space:nowrap; }
-  .hero-meta .grow { flex:1; min-width:8px; }
-  .hbtn {
-    position:relative; flex:none; display:flex; align-items:center; justify-content:center;
-    border-radius:50%; transition:transform .45s var(--ease-spring);
-  }
-  .hbtn.share { width:40px; height:40px; margin-right:8px; color:rgba(255,255,255,0.9);
-    background:rgba(255,255,255,0.12); box-shadow:inset 0 0 0 1px rgba(255,255,255,0.08); }
-  .hbtn.share svg { width:18px; height:18px; }
-  .hbtn.go { width:46px; height:46px; background:var(--accent); color:var(--on-accent);
-    box-shadow:0 8px 20px -6px rgba(var(--accent-rgb),0.85), inset 0 0 0 1px rgba(255,255,255,0.16); }
-  .hbtn.go svg { width:22px; height:22px; transition:transform .45s var(--ease-spring); }
-  .hbtn.is-pressed { transform:scale(0.9); transition-duration:.15s; }
-  .hero.is-pressed .hbtn.go svg { transform:translateX(3px); }
-
-  /* Every story after the featured one is a card of its own: the full
-     picture with its category, the headline, a short summary, and the
-     publisher's logo, name and age with a share button - the featured card's
-     anatomy, on the page's own surface. The class names (.list holding .row
-     cards, .list-foot) are kept from the compact list this replaced, because
-     expand, collapse and the filters address the stories through them. */
-  .list { display:flex; flex-direction:column; margin-top:14px; }
-  .row {
-    position:relative; display:block; overflow:hidden; margin-bottom:14px;
-    border-radius:22px; background:var(--surface); box-shadow:var(--shadow-card);
+  .hero, .row {
+    position:relative; display:block; padding-bottom:12px;
     text-decoration:none; color:inherit;
-    transition:transform .55s var(--ease-spring);
     -webkit-touch-callout:default;
   }
-  @media (prefers-color-scheme: dark) { .row { box-shadow:inset 0 0 0 1px var(--hair); } }
-  .row::after {
-    content:""; position:absolute; left:0; top:0; right:0; bottom:0; border-radius:inherit;
+  .hero::after, .row::after {
+    content:""; position:absolute; left:0; top:0; right:0; bottom:0;
     background:var(--press); opacity:0; transition:opacity .3s ease; pointer-events:none;
   }
-  .row.is-pressed { transform:scale(0.985); transition:transform .18s var(--ease-out) 30ms; }
-  .row.is-pressed::after { opacity:1; transition-duration:.12s; }
-  .smedia { position:relative; display:block; height:0; padding-top:56.25%; overflow:hidden; }
+  .hero.is-pressed::after, .row.is-pressed::after { opacity:1; transition-duration:.12s; }
+
+  /* Pictures sit in boxes whose size is fixed before they arrive, so
+     nothing below ever moves when one lands. */
+  .hero-media, .smedia { position:relative; display:block; overflow:hidden; background:var(--skel); }
+  .hero-media { height:0; padding-top:62.5%; }
+  .smedia { height:0; padding-top:56.25%; }
   .hero-media img, .smedia img {
     position:absolute; left:0; top:0; width:100%; height:100%; object-fit:cover; display:block;
     opacity:0; transition:opacity .45s ease;
   }
   .hero-media img.ok, .smedia img.ok { opacity:1; }
   .hero-media img.instant, .smedia img.instant { transition:none; }
-  .sbody { display:block; padding:14px 16px 10px; }
-  .stitle {
+  /* A hairline where a white picture would otherwise bleed into the card. */
+  .hero-media::after, .smedia::after {
+    content:""; position:absolute; left:0; top:0; right:0; bottom:0; pointer-events:none;
+    box-shadow:inset 0 -1px 0 var(--hair);
+  }
+
+  .tag {
+    position:absolute; left:14px; top:14px; z-index:2;
+    display:flex; align-items:center; gap:6px;
+    height:28px; padding:0 11px 0 9px; border-radius:14px;
+    background:rgba(16,14,24,0.52); color:#fff;
+    -webkit-backdrop-filter:blur(10px) saturate(1.4); backdrop-filter:blur(10px) saturate(1.4);
+    font-size:12.5px; font-weight:650; letter-spacing:0.01em;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,0.14);
+  }
+  .tag i { width:7px; height:7px; border-radius:50%; background:var(--accent-2);
+    box-shadow:0 0 0 3px rgba(var(--accent-rgb),0.35); }
+
+  /* Video: a play button in the middle of the picture, as on YouTube's own cards. */
+  .play {
+    position:absolute; left:50%; top:50%; z-index:2; width:54px; height:54px; margin:-27px 0 0 -27px;
+    border-radius:50%; display:flex; align-items:center; justify-content:center;
+    background:rgba(16,14,24,0.55); color:#fff;
+    -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px);
+    box-shadow:0 6px 18px -6px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(255,255,255,0.12);
+  }
+  .play svg { width:22px; height:22px; margin-left:3px; }
+
+  .hero-body { display:block; padding:16px 20px 0; }
+  .hero-title {
     display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;
-    font-size:17.5px; line-height:1.27; font-weight:750; letter-spacing:-0.012em; color:var(--heading);
+    font-size:22px; line-height:1.28; font-weight:650; letter-spacing:-0.014em; color:var(--heading);
     overflow-wrap:anywhere; word-break:break-word; text-wrap:pretty;
   }
-  .ssum {
+  .hero-sum {
     display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
-    margin-top:6px; font-size:14px; line-height:1.45; color:var(--fg-2);
+    margin-top:8px; font-size:14.5px; line-height:1.45; color:var(--fg-2);
     overflow-wrap:anywhere; word-break:break-word;
   }
-  .smeta { display:flex; align-items:center; margin-top:10px; min-height:44px; min-width:0; }
-  .smeta .favwrap {
-    flex:none; width:24px; height:24px; border-radius:50%; overflow:hidden; margin-right:8px;
-    display:flex; align-items:center; justify-content:center;
-    background:#fff; box-shadow:0 0 0 1px var(--hair), 0 1px 3px rgba(0,0,0,0.08);
+
+  .sbody { display:block; padding:16px 20px 0; }
+  .stitle {
+    display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;
+    font-size:19px; line-height:1.32; font-weight:500; letter-spacing:-0.008em; color:var(--heading);
+    overflow-wrap:anywhere; word-break:break-word; text-wrap:pretty;
   }
-  .smeta .favwrap img { width:16px; height:16px; display:block; border-radius:3px; }
-  .smeta .src { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-    font-size:13.5px; font-weight:600; color:var(--fg); }
-  .smeta .sep { flex:none; width:1px; height:12px; margin:0 8px; background:var(--muted); opacity:0.5; }
-  .smeta .time { flex:none; font-size:12.5px; color:var(--muted); white-space:nowrap; }
-  .smeta .grow { flex:1; min-width:8px; }
-  .sbtn {
-    position:relative; flex:none; width:40px; height:40px; margin-right:-4px; border-radius:50%;
+
+  /* The publisher row, the same on every card. */
+  .meta { display:flex; align-items:center; min-height:56px; padding:4px 6px 6px 20px; min-width:0; }
+  .meta .favwrap {
+    flex:none; width:24px; height:24px; border-radius:50%; overflow:hidden; margin-right:10px;
     display:flex; align-items:center; justify-content:center;
-    color:var(--accent-text); background:rgba(var(--accent-rgb),0.10);
+    background:#fff; box-shadow:0 0 0 1px var(--hair);
+  }
+  .meta .favwrap img { width:18px; height:18px; display:block; border-radius:3px; }
+  .meta .who { display:flex; align-items:center; min-width:0; flex:1; font-size:14px; line-height:1.2; }
+  .meta .src { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    font-weight:550; color:var(--fg); }
+  .meta .dot { flex:none; margin:0 5px; color:var(--muted); }
+  .meta .site, .meta .time { flex:none; color:var(--muted); white-space:nowrap; }
+  .ibtn {
+    position:relative; flex:none; width:44px; height:44px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center; color:var(--fg-2);
     transition:transform .45s var(--ease-spring), background-color .2s ease;
   }
-  .sbtn svg { width:18px; height:18px; }
-  .sbtn.is-pressed { transform:scale(0.88); background:rgba(var(--accent-rgb),0.18); transition-duration:.15s; }
+  .ibtn svg { width:20px; height:20px; }
+  .ibtn.more svg { width:22px; height:22px; }
+  .ibtn.is-pressed { transform:scale(0.86); background:var(--press); transition-duration:.15s; }
   .mono {
     width:100%; height:100%; display:flex; align-items:center; justify-content:center;
     font-size:11px; font-weight:800; color:var(--accent-text); background:rgba(var(--accent-rgb),0.14);
   }
+
+  .list { display:block; }
+  /* The feed ad's place: the app's native card is laid over it, so it is an
+     empty box exactly the card's size (SearchApp.adSlotAt / __setAdSlot). */
+  .adslot { display:block; height:0; margin:0;
+    transition:height .34s var(--ease-out), margin-bottom .34s var(--ease-out); }
   .list-foot {
     position:relative; display:flex; align-items:center; justify-content:center;
-    width:100%; height:50px; margin-top:2px; border-radius:25px;
+    width:100%; height:52px; margin-top:12px; border-radius:26px;
     background:var(--surface); box-shadow:var(--shadow-card);
-    font-size:14px; font-weight:650; color:var(--accent-text);
+    font-size:14.5px; font-weight:650; color:var(--accent-text);
     transition:transform .45s var(--ease-spring);
   }
-  @media (prefers-color-scheme: dark) { .list-foot { box-shadow:inset 0 0 0 1px var(--hair); } }
   .list-foot.is-pressed { transform:scale(0.97); transition-duration:.15s; }
 
   /* While a picture loads its box shimmers. A picture that cannot load takes
@@ -413,7 +387,6 @@
     background:linear-gradient(90deg, rgba(255,255,255,0) 0%, var(--sweep) 50%, rgba(255,255,255,0) 100%);
     transform:translateX(-100%); animation:sweep 1.5s cubic-bezier(.4,0,.2,1) infinite;
   }
-  .hero .loading { background:rgba(255,255,255,0.04); }
 
   /* Entrances for stories: staggered, transform and opacity only. */
   @keyframes storyIn { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:none; } }
@@ -435,17 +408,21 @@
     transform:translateX(-100%); animation:sweep 1.5s cubic-bezier(.4,0,.2,1) infinite;
   }
   @keyframes sweep { to { transform:translateX(100%); } }
-  .sk-hero { border-radius:24px; overflow:hidden; background:var(--surface); box-shadow:var(--shadow-card); }
-  .sk-hero .sk-media { height:0; padding-top:56.25%;
+  .sk-hero { overflow:hidden; background:var(--surface); }
+  .sk-hero .sk-media { height:0; padding-top:62.5%;
     background-image:linear-gradient(135deg, rgba(var(--accent-rgb),0.10), rgba(var(--accent-rgb),0.02)); }
-  .sk-hero .sk-body { padding:16px 18px 18px; }
+  .sk-hero .sk-body { padding:18px 20px 18px; }
+  .sk-meta { display:flex; align-items:center; gap:10px; margin-top:18px; }
+  .sk-meta .sk-line { margin:0; }
+  .sk-dot { flex:none; width:24px; height:24px; border-radius:50%; }
   .sk-line { height:12px; border-radius:6px; }
   .sk-line + .sk-line { margin-top:10px; }
   .sk-line.h { height:18px; }
   .w95 { width:95%; } .w80 { width:80%; } .w60 { width:60%; } .w45 { width:45%; } .w30 { width:30%; }
-  .sk-card { margin-top:14px; border-radius:22px; overflow:hidden; background:var(--surface); box-shadow:var(--shadow-card); }
+  .sk-card { border-radius:0; overflow:hidden; background:var(--surface); }
+  .sk-sheet { border-radius:var(--card-r); overflow:hidden; background:var(--surface); box-shadow:var(--shadow-card); }
   .sk-card .sk-media { height:0; padding-top:56.25%; }
-  .sk-card .sk-body { padding:14px 16px 16px; }
+  .sk-card .sk-body { padding:16px 20px 18px; }
 
   /* ---------- Night Owl ---------- */
   .nightowl-empty { display:none; width:100%; max-width:520px; margin-top:56px; text-align:center;
@@ -977,7 +954,9 @@
     flame: '<svg class="flame" viewBox="0 0 24 24" aria-hidden="true"><defs><linearGradient id="flameG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--accent)"/><stop offset="1" style="stop-color:var(--accent-deep)"/></linearGradient></defs><path fill="url(#flameG)" d="M13.6 1.6C14 4.2 15.5 6 17 7.7 18.7 9.6 20.1 11.8 20.1 14.7 20.1 19.1 16.6 22.4 12 22.4 7.4 22.4 3.9 19.1 3.9 14.8 3.9 12.1 5.1 9.9 6.9 8.3 6.9 9.9 7.6 11.1 8.8 11.7 8.5 7.8 10.6 4.2 13.6 1.6Z"/><path fill="#fff" fill-opacity=".5" d="M12.5 11.1C13.3 13 15.7 14.4 15.7 17.2 15.7 19.3 14.1 20.8 12 20.8 9.9 20.8 8.3 19.3 8.3 17.4 8.3 15.8 9.2 14.6 10.4 13.8 10.5 14.9 11 15.6 11.8 16 11.5 14.4 11.8 12.6 12.5 11.1Z"/></svg>',
     chev: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.5 6.5L15 12l-5.5 5.5"/></svg>',
     arrow: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13.5M13 6.5l5.5 5.5-5.5 5.5"/></svg>',
-    share: '<svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M176,160a39.7,39.7,0,0,0-28.6,12.1L91.4,140.5a40.1,40.1,0,0,0,0-25L147.4,83.9a40,40,0,1,0-8-14L83.4,101.5a40,40,0,1,0,0,53l56,31.6a40,40,0,1,0,36.6-26.1Z"/></svg>'
+    share: '<svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M176,156a43.78,43.78,0,0,0-29.09,11L106.1,140.8a44.07,44.07,0,0,0,0-25.6L146.91,89a43.83,43.83,0,1,0-13-20.17L93.09,95a44,44,0,1,0,0,65.94L133.9,187.2A44,44,0,1,0,176,156Zm0-120a20,20,0,1,1-20,20A20,20,0,0,1,176,36ZM64,148a20,20,0,1,1,20-20A20,20,0,0,1,64,148Zm112,72a20,20,0,1,1,20-20A20,20,0,0,1,176,220Z"/></svg>',
+    more: '<svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M112,60a16,16,0,1,1,16,16A16,16,0,0,1,112,60Zm16,52a16,16,0,1,0,16,16A16,16,0,0,0,128,112Zm0,68a16,16,0,1,0,16,16A16,16,0,0,0,128,180Z"/></svg>',
+    play: '<svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M240,128a15.74,15.74,0,0,1-7.6,13.51L88.32,229.65a16,16,0,0,1-16.2.3A15.86,15.86,0,0,1,64,216.13V39.87a15.86,15.86,0,0,1,8.12-13.82,16,16,0,0,1,16.2.3L232.4,114.49A15.74,15.74,0,0,1,240,128Z"/></svg>'
   };
 
   var feed = { items:[], expanded:false, cat:'All', cats:[], canExpand:false, shown:false, token:0 };
@@ -1025,9 +1004,23 @@
   // The v2 contract, and the old {title, link, image, source} cache that a
   // phone keeps for up to the TTL after upgrading: every field past the four
   // is optional, and its absence just leaves its decoration off.
+  // Stories and publishers the reader asked not to see (the card menu's
+  // "Not interested" and "Hide stories from ..."), kept by the app.
+  var hidden = { links:{}, sources:{} };
+  function loadHidden(){
+    hidden = { links:{}, sources:{} };
+    var A = bridge();
+    if (!A || !A.getFeedHidden) return;
+    try {
+      var h = JSON.parse(A.getFeedHidden() || '{}');
+      (h.links || []).forEach(function(l){ hidden.links[l] = true; });
+      (h.sources || []).forEach(function(d){ hidden.sources[d] = true; });
+    } catch (e) {}
+  }
   function normalize(raw){
     if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch (e) { raw = []; } }
     if (!raw || !raw.length) return [];
+    loadHidden();
     var out = [];
     for (var i = 0; i < raw.length; i++) {
       var it = raw[i];
@@ -1043,6 +1036,7 @@
       var image = String(it.image || '').trim();
       if (!/^https?:\/\//i.test(image) || badImages[image]) continue;
       var domain = String(it.domain || '').trim().toLowerCase().replace(/^www\./, '') || hostOf(link);
+      if (hidden.links[link] || hidden.sources[domain]) continue;
       out.push({
         title: title, link: link,
         image: image,
@@ -1144,13 +1138,13 @@
   function topUp(){
     var card = storiesEl.querySelector('.list');
     if (!card) return;
-    var foot = card.querySelector('.list-foot');
     var shown = card.querySelectorAll('.row').length;
     var list = visibleItems();
     var want = feed.expanded ? list.length - 1 : Math.min(COLLAPSED_ROWS, list.length - 1);
     for (var k = 1 + shown; shown < want && k < list.length; k++, shown++) {
-      card.insertBefore(buildRow(list[k]), foot);
+      card.appendChild(buildRow(list[k]));
     }
+    seatAdSlot();
   }
   // Publisher favicon, from the publisher's own domain (never the reader's
   // history). If it cannot be had, the source's initial stands in.
@@ -1179,51 +1173,72 @@
     if (A && A.open) A.open(it.link);
   }
 
+  // YouTube's stories are videos: a play button on the picture, and the
+  // channel named as the publisher with YouTube after it, as Chrome does.
+  function isVideo(it){ return it.domain === 'youtube.com' || it.domain === 'youtu.be'; }
+  function publisherOf(it){
+    if (isVideo(it) && it.summary) {
+      var ch = it.summary.split(' · ')[0];
+      if (ch) return { name: ch, site: 'YouTube' };
+    }
+    return { name: it.source || it.domain, site: '' };
+  }
+  function iconButton(cls, label, svg, onTap){
+    var b = el('span', 'ibtn ' + cls);
+    b.setAttribute('role', 'button');
+    b.setAttribute('aria-label', label);
+    b.setAttribute('data-press', '');
+    b.innerHTML = svg;
+    b.addEventListener('click', function(ev){ ev.stopPropagation(); ev.preventDefault(); onTap(); });
+    return b;
+  }
+  // The publisher row: icon, name, (YouTube,) age; Share; the menu.
+  function buildMeta(it){
+    var meta = el('span', 'meta');
+    var fw = el('span', 'favwrap'); favicon(fw, it); meta.appendChild(fw);
+    var who = el('span', 'who');
+    var pub = publisherOf(it);
+    who.appendChild(el('span', 'src', pub.name));
+    if (pub.site) { who.appendChild(el('span', 'dot', '·')); who.appendChild(el('span', 'site', pub.site)); }
+    if (it.published) { who.appendChild(el('span', 'dot', '·')); who.appendChild(timeEl(it)); }
+    meta.appendChild(who);
+    meta.appendChild(iconButton('share', 'Share', ICONS.share, function(){
+      var A = bridge();
+      if (A && A.shareUrl) A.shareUrl(it.link, it.title || '');
+    }));
+    meta.appendChild(iconButton('more', 'More options', ICONS.more, function(){
+      var A = bridge();
+      if (A && A.storyMenu) A.storyMenu(it.link, it.title || '', pub.name || '', it.domain || '');
+    }));
+    return meta;
+  }
+  function playBadge(){ var p = el('span', 'play'); p.innerHTML = ICONS.play; return p; }
+
+  // The featured story: the same card, a size up.
   function buildHero(it){
     var a = el('a', 'hero');
     a.href = it.link;
     a.setAttribute('data-press', '');
     a.addEventListener('click', function(e){ openStory(e, it); });
-
     it._node = a;
     var media = el('span', 'hero-media');
     fillMedia(media, it.image, function(){ dropStory(it); });
-    media.appendChild(el('span', 'hero-scrim'));
+    var tag = el('span', 'tag');
+    tag.appendChild(el('i'));
+    tag.appendChild(document.createTextNode('Top story'));
+    media.appendChild(tag);
+    if (isVideo(it)) media.appendChild(playBadge());
     a.appendChild(media);
-    if (it.category) a.appendChild(el('span', 'cat', it.category));
-
     var body = el('span', 'hero-body');
     body.appendChild(el('span', 'hero-title', it.title));
-    if (it.summary) body.appendChild(el('span', 'hero-sum', it.summary));
-
-    var meta = el('span', 'hero-meta');
-    var fw = el('span', 'favwrap'); favicon(fw, it); meta.appendChild(fw);
-    meta.appendChild(el('span', 'src', it.source));
-    if (it.published) { meta.appendChild(el('span', 'sep')); meta.appendChild(timeEl(it)); }
-    meta.appendChild(el('span', 'grow'));
-
-    var share = el('span', 'hbtn share');
-    share.setAttribute('role', 'button');
-    share.setAttribute('aria-label', 'Share');
-    share.setAttribute('data-press', '');
-    share.innerHTML = ICONS.share;
-    share.addEventListener('click', function(ev){
-      ev.stopPropagation(); ev.preventDefault();
-      var A = bridge();
-      if (A && A.shareUrl) A.shareUrl(it.link, it.title || '');
-    });
-    meta.appendChild(share);
-    var go = el('span', 'hbtn go');
-    go.setAttribute('aria-hidden', 'true');
-    go.innerHTML = ICONS.arrow;
-    meta.appendChild(go);
-    body.appendChild(meta);
+    if (it.summary && !isVideo(it)) body.appendChild(el('span', 'hero-sum', it.summary));
     a.appendChild(body);
+    a.appendChild(buildMeta(it));
     return a;
   }
 
-  // A story card: the full picture with its category, the headline, the
-  // summary, then the publisher's logo, name and age and a share button.
+  // A story on the card: its picture the card's full width, the headline,
+  // the publisher row.
   function buildRow(it){
     var a = el('a', 'row');
     a.href = it.link;
@@ -1232,31 +1247,128 @@
     it._node = a;
     var media = el('span', 'smedia');
     fillMedia(media, it.image, function(){ dropStory(it); });
-    if (it.category) media.appendChild(el('span', 'cat', it.category));
+    if (isVideo(it)) media.appendChild(playBadge());
     a.appendChild(media);
     var body = el('span', 'sbody');
     body.appendChild(el('span', 'stitle', it.title));
-    if (it.summary) body.appendChild(el('span', 'ssum', it.summary));
-    var meta = el('span', 'smeta');
-    var fw = el('span', 'favwrap'); favicon(fw, it); meta.appendChild(fw);
-    meta.appendChild(el('span', 'src', it.source));
-    if (it.published) { meta.appendChild(el('span', 'sep')); meta.appendChild(timeEl(it)); }
-    meta.appendChild(el('span', 'grow'));
-    var share = el('span', 'sbtn');
-    share.setAttribute('role', 'button');
-    share.setAttribute('aria-label', 'Share');
-    share.setAttribute('data-press', '');
-    share.innerHTML = ICONS.share;
-    share.addEventListener('click', function(ev){
-      ev.stopPropagation(); ev.preventDefault();
-      var A = bridge();
-      if (A && A.shareUrl) A.shareUrl(it.link, it.title || '');
-    });
-    meta.appendChild(share);
-    body.appendChild(meta);
     a.appendChild(body);
+    a.appendChild(buildMeta(it));
     return a;
   }
+
+  // ---------- The feed ad's place ----------
+  // The ad is a native card the app lays over the page (AdMob counts views
+  // and clicks only on its own views), so the page keeps an empty box of
+  // exactly the card's size where it belongs - after the second story under
+  // the featured one - and tells the app where that box is
+  // (SearchApp.adSlotAt). With fewer stories it goes after the last one,
+  // and with no stories at all at the end of the page, so the ad never has
+  // nowhere to be. Its height comes from the app (__setAdSlot), once the
+  // card has measured itself with its creative in it.
+  var adSlotEl = null;
+  var adSlotH = 0;
+  var adRep = '';
+  var adRaf = 0;
+  var wrapEl = document.getElementById('wrap');
+  var nightMsgEl = document.getElementById('nightMsg');
+  function seatAdSlot(){
+    if (!adSlotEl) {
+      adSlotEl = el('div', 'adslot');
+      adSlotEl.setAttribute('aria-hidden', 'true');
+      adSlotEl.addEventListener('transitionend', reportAdSlotSoon);
+    }
+    var target = wrapEl, before = nightMsgEl;
+    var list = (storiesEl && feed.shown) ? storiesEl.querySelector('.list') : null;
+    if (list) {
+      var rows = list.querySelectorAll('.row');
+      target = list;
+      before = rows.length >= 2 ? rows[1].nextSibling : null;
+    } else if (storiesEl && feed.shown && storiesEl.querySelector('.hero')) {
+      target = storiesEl; before = null;
+    }
+    if (before === adSlotEl) before = adSlotEl.nextSibling;
+    if (adSlotEl.parentNode !== target || adSlotEl.nextSibling !== before) {
+      target.insertBefore(adSlotEl, before);
+    }
+    sizeAdSlot(false);
+  }
+  // [animate]: open the box smoothly when it is on screen; anywhere else at
+  // once - and when it is above what the reader is looking at, the page is
+  // scrolled by the same amount, so nothing they are reading moves.
+  function sizeAdSlot(animate){
+    if (!adSlotEl || !adSlotEl.parentNode) return;
+    var h = adSlotH, gap = 0;
+    var r = adSlotEl.getBoundingClientRect();
+    var vh = window.innerHeight || document.documentElement.clientHeight;
+    var before = r.height + (parseFloat(adSlotEl.style.marginBottom) || 0);
+    var want = h + gap;
+    if (Math.abs(before - want) < 0.5) { reportAdSlotSoon(); return; }
+    var above = r.bottom <= 0;
+    var anim = animate && !reduceMotion && !above && r.top < vh;
+    adSlotEl.style.transition = anim ? '' : 'none';
+    adSlotEl.style.height = h + 'px';
+    adSlotEl.style.marginBottom = gap + 'px';
+    if (above) window.scrollBy(0, want - before);
+    if (!anim) { void adSlotEl.offsetHeight; adSlotEl.style.transition = ''; }
+    reportAdSlotSoon();
+  }
+  function docTop(e){ var t = 0; while (e) { t += e.offsetTop; e = e.offsetParent; } return t; }
+  function docLeft(e){ var l = 0; while (e) { l += e.offsetLeft; e = e.offsetParent; } return l; }
+  // Layout positions, not on-screen ones: offsetTop ignores the entrance
+  // animations' transforms, so the app is given where the box really is.
+  function reportAdSlot(){
+    adRaf = 0;
+    var A = bridge();
+    if (!A || !A.adSlotAt) return;
+    var top = -1, left = 0, width = 0, h = 0;
+    if (!nightOwl && adSlotEl && adSlotEl.parentNode && adSlotEl.offsetParent !== null) {
+      top = docTop(adSlotEl); left = docLeft(adSlotEl);
+      width = adSlotEl.offsetWidth; h = adSlotEl.offsetHeight;
+    }
+    var key = top + ',' + left + ',' + width + ',' + h;
+    if (key === adRep) return;
+    adRep = key;
+    try { A.adSlotAt(top, left, width, h); } catch (e) {}
+  }
+  function reportAdSlotSoon(){
+    if (!adRaf) adRaf = requestAnimationFrame(reportAdSlot);
+  }
+  window.__setAdSlot = function(px){
+    var h = px > 0 ? Math.round(px) : 0;
+    if (h === adSlotH) { reportAdSlotSoon(); return; }
+    adSlotH = h;
+    if (!adSlotEl || !adSlotEl.parentNode) seatAdSlot();
+    else sizeAdSlot(true);
+  };
+  // Asked again by the app whenever it needs the place (a new card, a tab
+  // switch back to home), even if nothing moved.
+  window.__adSlotWhere = function(){ adRep = ''; reportAdSlot(); };
+  // Anything that moves the box - pictures and tiles arriving above it, a
+  // text size change, a rotation - changes the page's size, which is when
+  // its place is sent again.
+  if (window.ResizeObserver) { try { new ResizeObserver(reportAdSlotSoon).observe(wrapEl); } catch (e) {} }
+  window.addEventListener('resize', reportAdSlotSoon);
+  window.addEventListener('load', reportAdSlotSoon);
+
+  // A story or a publisher the reader hid from the card menu: off the page
+  // now, and kept off (the app remembers it for the next loads).
+  window.__hideStories = function(kind, value){
+    if (!value) return;
+    var keep = feed.items.filter(function(it){
+      return kind === 'source' ? it.domain !== value : it.link !== value;
+    });
+    if (keep.length === feed.items.length) return;
+    feed.items = keep;
+    if (!keep.length) { renderFeed([]); return; }
+    feed.cats = categoriesOf(keep);
+    if (feed.cat !== 'All' && feed.cats.indexOf(feed.cat) < 0) feed.cat = 'All';
+    feed.canExpand = keep.length > COLLAPSED_ROWS + 1 || feed.cats.length > 1;
+    if (!feed.canExpand) feed.expanded = false;
+    renderChips();
+    chipsEl.classList.toggle('hidden', !chipsVisible());
+    renderStories('soft');
+    syncLabels();
+  };
 
   function buildFoot(){
     var b = el('button', 'list-foot');
@@ -1300,18 +1412,24 @@
   // mode: 'enter' (first arrival, staggered), 'soft' (filter change), or
   // nothing (a background refresh, which should not perform at the reader).
   function renderStories(mode){
+    renderStoriesOnly(mode);
+    seatAdSlot();
+  }
+  function renderStoriesOnly(mode){
     var list = visibleItems();
     storiesEl.innerHTML = '';
     if (!list.length) return;
+    var sheet = el('div', 'sheet');
     var hero = buildHero(list[0]);
-    storiesEl.appendChild(hero);
+    sheet.appendChild(hero);
+    storiesEl.appendChild(sheet);
     var rest = list.slice(1);
     var rows = feed.expanded ? rest : rest.slice(0, COLLAPSED_ROWS);
     var needFoot = feed.canExpand;
     var anim = reduceMotion ? null : mode;
-    if (anim) { hero.classList.add(anim); }
-    if (!rows.length && !needFoot) return;
+    if (anim) { sheet.classList.add(anim); }
     var card = el('div', 'list');
+    sheet.appendChild(card);
     rows.forEach(function(it, i){
       var r = buildRow(it);
       if (anim) {
@@ -1324,10 +1442,8 @@
     if (needFoot) {
       var f = buildFoot();
       if (anim) { f.classList.add('soft'); f.style.animationDelay = (anim === 'enter' ? 420 : 120) + 'ms'; }
-      card.appendChild(f);
+      storiesEl.appendChild(f);
     }
-    if (anim === 'enter') { card.classList.add('enter'); card.style.animationDelay = '90ms'; }
-    storiesEl.appendChild(card);
   }
 
   function showSkeletons(){
@@ -1336,17 +1452,18 @@
     chipsEl.classList.add('hidden');
     seeAllEl.classList.add('off');
     var html =
-      '<div class="sk-hero"><div class="sk sk-media"></div><div class="sk-body">' +
+      '<div class="sk-sheet"><div class="sk-hero"><div class="sk sk-media"></div><div class="sk-body">' +
       '<div class="sk sk-line h w95"></div><div class="sk sk-line h w60"></div>' +
-      '<div class="sk sk-line w30" style="margin-top:16px"></div></div></div>' +
+      '<div class="sk-meta"><div class="sk sk-dot"></div><div class="sk sk-line w30"></div></div></div></div>' +
       '';
     for (var i = 0; i < 2; i++) {
       html += '<div class="sk-card"><div class="sk sk-media"></div><div class="sk-body">' +
         '<div class="sk sk-line h ' + (i % 2 ? 'w80' : 'w95') + '"></div>' +
-        '<div class="sk sk-line ' + (i % 2 ? 'w60' : 'w80') + '"></div>' +
-        '<div class="sk sk-line w30" style="margin-top:16px"></div></div></div>';
+        '<div class="sk sk-line h ' + (i % 2 ? 'w45' : 'w60') + '"></div>' +
+        '<div class="sk-meta"><div class="sk sk-dot"></div><div class="sk sk-line w30"></div></div></div></div>';
     }
-    storiesEl.innerHTML = html;
+    storiesEl.innerHTML = html + '</div>';
+    seatAdSlot();
   }
 
   function renderFeed(raw, mode){
@@ -1355,6 +1472,7 @@
       feedHost.classList.add('hidden');
       if (storiesEl) storiesEl.innerHTML = '';
       feed.items = []; feed.shown = false;
+      seatAdSlot();
       return;
     }
     ensureFrame();
@@ -1370,6 +1488,9 @@
     syncLabels();
     feedHost.classList.remove('hidden');
     feed.shown = true;
+    // Only now is the list the feed's own, so only now can the ad's place
+    // be found in it (renderStories ran while feed.shown was still false).
+    seatAdSlot();
   }
 
   // ----- Expand, collapse, filter -----
@@ -1420,9 +1541,9 @@
   }
 
   function expand(){
-    var hero = storiesEl.querySelector('.hero');
+    var hero = storiesEl.querySelector('.sheet');
     var card = storiesEl.querySelector('.list');
-    var foot = card && card.querySelector('.list-foot');
+    var foot = storiesEl.querySelector('.list-foot');
     if (!card || !foot) { feed.expanded = true; renderChips(); chipsEl.classList.toggle('hidden', !chipsVisible()); renderStories(null); syncLabels(); return; }
     var heroTop = hero ? topOf(hero) : 0, cardTop = card ? topOf(card) : 0;
     var footOff = foot ? foot.offsetTop : 0;
@@ -1435,8 +1556,9 @@
     rest.forEach(function(it, i){
       var r = buildRow(it);
       if (!reduceMotion) { r.classList.add('unfold'); r.style.animationDelay = (60 + Math.min(i, 10) * 32) + 'ms'; }
-      card.insertBefore(r, foot);
+      card.appendChild(r);
     });
+    seatAdSlot();
     syncLabels();
 
     if (showChips && !reduceMotion) {
@@ -1445,7 +1567,6 @@
       });
     }
     if (hero) glide(hero, heroTop - topOf(hero));
-    if (card) glide(card, cardTop - topOf(card));
     // The foot rides down over the rows it uncovers, like a drawer opening.
     if (foot) glide(foot, footOff - foot.offsetTop, 520);
   }
@@ -1461,9 +1582,8 @@
       if (feed.cat !== 'All') leaving.push(storiesEl.querySelector('.hero'));
       fadeOut(leaving, 150, function(){
         if (token !== feed.token) return;
-        var hero = storiesEl.querySelector('.hero');
+        var hero = storiesEl.querySelector('.sheet');
         var heroTop = hero ? topOf(hero) : 0;
-        var cardTop = card ? topOf(card) : 0;
         var refilter = feed.cat !== 'All';
         feed.expanded = false;
         feed.cat = 'All';
@@ -1473,8 +1593,8 @@
           renderStories('soft');
         } else {
           extra.forEach(function(r){ if (r.parentNode) r.parentNode.removeChild(r); });
+          seatAdSlot();
           if (hero) glide(hero, heroTop - topOf(hero), 420);
-          if (card) glide(card, cardTop - topOf(card), 420);
         }
         syncLabels();
       });
@@ -1673,11 +1793,6 @@
   }
   renderShield();
 
-  // Native reserves the tail of the page for the feed ad and parks its own view
-  // in the gap. Height arrives in CSS px, already including the inter-card gap.
-  window.__setAdSlot = function(px){
-    root.style.setProperty('--adslot', (px > 0 ? px : 0) + 'px');
-  };
 
   // The accent is read once at load, so a change made in Settings has to be
   // pushed into the live page or the page keeps the old colour until reload.

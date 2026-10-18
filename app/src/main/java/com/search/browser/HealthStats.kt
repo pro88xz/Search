@@ -60,6 +60,11 @@ object HealthStats {
     const val AD_FILLED = "ad_filled"
     const val AD_FAILED = "ad_failed"
     const val AD_SEEN = "ad_seen"
+    // The app open ad (AppOpenAds): asked for, loaded, failed, shown.
+    const val AO_REQUESTS = "ao_requests"
+    const val AO_FILLED = "ao_filled"
+    const val AO_FAILED = "ao_failed"
+    const val AO_SHOWN = "ao_shown"
 
     // Timings (milliseconds), kept as a sum and a count for an average.
     const val COLD_START = "cold_start"
@@ -273,6 +278,8 @@ object HealthStats {
             ", low " + v.n(MEMORY_LOW)
         out += "Feed ad: asked " + v.n(AD_REQUESTS) + ", filled " + v.n(AD_FILLED) +
             ", failed " + v.n(AD_FAILED) + ", on screen " + v.n(AD_SEEN)
+        out += "App open ad: asked " + v.n(AO_REQUESTS) + ", loaded " + v.n(AO_FILLED) +
+            ", failed " + v.n(AO_FAILED) + ", shown " + v.n(AO_SHOWN)
         return out
     }
 
@@ -294,6 +301,16 @@ object HealthStats {
             .apply()
     }
 
+    private const val KEY_AO_ERROR = "ao_last_error"
+    private const val KEY_AO_ERROR_AT = "ao_last_error_at"
+
+    fun noteAppOpenError(c: Context, code: Int, message: String?) {
+        prefs(c).edit()
+            .putString(KEY_AO_ERROR, code.toString() + "|" + (message ?: "").take(160))
+            .putLong(KEY_AO_ERROR_AT, System.currentTimeMillis())
+            .apply()
+    }
+
     /** Why no request was made, when one was not (consent, supporter, Night Owl). */
     fun noteAdGate(c: Context, why: String) {
         prefs(c).edit().putString(KEY_AD_GATE, why).apply()
@@ -310,14 +327,18 @@ object HealthStats {
             out += "Supporter: yes - the feed ad is off on this phone"
         }
         p.getString(KEY_AD_GATE, null)?.let { out += "Last time no ad was asked for: $it" }
-        val raw = p.getString(KEY_AD_ERROR, null) ?: return out
+        errorLines(p.getString(KEY_AD_ERROR, null), p.getLong(KEY_AD_ERROR_AT, 0L), "Last feed ad error", out)
+        errorLines(p.getString(KEY_AO_ERROR, null), p.getLong(KEY_AO_ERROR_AT, 0L), "Last app open ad error", out)
+        return out
+    }
+
+    private fun errorLines(raw: String?, at: Long, label: String, out: MutableList<String>) {
+        if (raw == null) return
         val code = raw.substringBefore('|').toIntOrNull() ?: -1
         val msg = raw.substringAfter('|', "")
-        val at = p.getLong(KEY_AD_ERROR_AT, 0L)
         val ago = if (at > 0) " (" + ((System.currentTimeMillis() - at) / 60_000L).coerceAtLeast(0) + " min ago)" else ""
-        out += "Last ad error: code $code - " + adErrorMeaning(code) + ago
+        out += "$label: code $code - " + adErrorMeaning(code) + ago
         if (msg.isNotBlank()) out += "AdMob said: $msg"
-        return out
     }
 
     /** What an AdMob LoadAdError code means, and what to do about it. */

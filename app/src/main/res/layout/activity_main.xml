@@ -232,19 +232,20 @@
                 android:elevation="4dp"
                 android:visibility="gone" />
 
-            <!-- ===== Native feed ad. 14dp gutters match .wrap in home.html,
-                 so the card lines up with the feed cards above it. Hidden
-                 until one loads. Inside the page's own frame, so it is
-                 positioned against the bottom of the page and clipped there,
-                 and can never ride over the bottom bar. -->
+            <!-- ===== Native feed ad. Laid over its place in the home feed,
+                 after the second story under the featured one: home.html
+                 keeps an empty box the card's size there and reports where
+                 it is (SearchApp.adSlotAt), and MainActivity.positionAdSlot
+                 moves the card onto it as the page scrolls, at its width.
+                 Hidden until one loads. Inside the page's own frame, so it
+                 is clipped to the page and the bars pass over it as they
+                 pass over the stories. -->
             <com.search.browser.AdSlotLayout
                 android:id="@+id/adSlot"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_gravity="bottom"
-                android:layout_marginStart="14dp"
-                android:layout_marginEnd="14dp"
-                android:layout_marginBottom="68dp"
+                android:layout_gravity="top|start"
+                android:alpha="0"
                 android:visibility="gone" />
         </FrameLayout>
 

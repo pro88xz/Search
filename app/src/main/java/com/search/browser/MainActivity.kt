@@ -1570,6 +1570,8 @@ class MainActivity : AppCompatActivity() {
         // Release the splash ~1.2s after the animation so it settles, then enters.
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
             keepSplash = false
+            // An app open ad that arrived behind the splash may show now.
+            AppOpenAds.poke()
         }, 1500L)
         enableEdgeToEdge()
         // The bottom bar paints behind the navigation bar itself
@@ -1601,6 +1603,12 @@ class MainActivity : AppCompatActivity() {
         Settings.applyAccent(this)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        // The app open ad watches opens from here on, and asks this activity
+        // whether it may be asked for and shown (AppOpenAds).
+        AppOpenAds.install(application)
+        AppOpenAds.gate = appOpenGate
+        AppOpenAds.canShowOver = appOpenOver
+        if (opensForATask(intent)) AppOpenAds.skipThisOpen()
         // The owl's hello, asked for now so its first frame after the splash
         // is already the sleeping owl; it plays once the bar is on screen and
         // the app has settled (OwlButtonView.requestGreet). A fresh start, or
@@ -1876,6 +1884,8 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        // Brought up to open a link or a shortcut: no app open ad over that.
+        if (opensForATask(intent)) AppOpenAds.skipThisOpen()
         if (handleShortcut(intent)) return
         // Settings > Browsing data > Downloads.
         if (intent.getStringExtra(BrowsingData.EXTRA_OPEN) == BrowsingData.OPEN_DOWNLOADS) {
@@ -2230,6 +2240,29 @@ class MainActivity : AppCompatActivity() {
             val tiles = Settings.getBool(this@MainActivity, Settings.HOME_SHOW_TILES, true)
             return "{\"background\":\"$bg\",\"accent\":\"$accent\",\"tiles\":$tiles,\"nightOwl\":$nightOwl}"
         }
+        /** home.html: the stories and publishers the reader hid (FeedHidden). */
+        @JavascriptInterface
+        fun getFeedHidden(): String {
+            if (!privileged) return "{}"
+            return try { FeedHidden.json(this@MainActivity) } catch (e: Exception) { "{}" }
+        }
+
+        /** home.html: a story card's menu (its three dots). */
+        @JavascriptInterface
+        fun storyMenu(link: String, title: String, source: String, domain: String) {
+            if (!privileged) return
+            if (!(link.startsWith("https://") || link.startsWith("http://"))) return
+            runOnUiThread { showStoryMenu(link, title, source, domain) }
+        }
+
+        /** home.html: where the feed ad's place is now, in CSS px; top -1 for none. */
+        @JavascriptInterface
+        fun adSlotAt(top: Int, left: Int, width: Int, height: Int) {
+            if (!privileged) return
+            val from = this
+            runOnUiThread { onAdSlotReported(from, top, left, width, height) }
+        }
+
         @JavascriptInterface
         fun getFeed(requestId: Int) {
             if (!privileged) return
@@ -5767,6 +5800,21 @@ class MainActivity : AppCompatActivity() {
     /** The card has been on screen with its current ad (counted once per ad). */
     private var adSeen = false
     /**
+     * The ad's place in home's feed, as the page last reported it
+     * (SearchApp.adSlotAt), in CSS px from the top-left of the document;
+     * top -1 when the page has no place for it. [adSlotFrom] is the WebView
+     * that reported: another tab's home page must not place the card.
+     */
+    private var adSlotFrom: android.webkit.WebView? = null
+    private var adSlotTopCss = -1
+    private var adSlotLeftCss = 0
+    private var adSlotWidthCss = 0
+    private var adSlotHCss = 0
+    /** The card has faded in over its place (reset whenever it is parked). */
+    private var adCardShown = false
+    private val adLocWeb = IntArray(2)
+    private val adLocSlot = IntArray(2)
+    /**
      * Failed requests in a row this session. A failure used to be the end of
      * it: one empty answer at launch - routine for a new ad unit, or with no
      * signal - and the feed had no ad until the app was next started. Now it
@@ -5789,6 +5837,13 @@ class MainActivity : AppCompatActivity() {
         // Gestures are mirrored onto the page so it scrolls under the card;
         // only the tap that halts a fling is withheld.
         binding.adSlot.page = { activeWeb() }
+        // The card's height follows its width (set from the page) and its
+        // creative; whenever it changes, the page's place for it must too.
+        binding.adSlot.addOnLayoutChangeListener { v, _, top, _, bottom, _, oldTop, _, oldBottom ->
+            if (bottom - top != oldBottom - oldTop && v.visibility == View.VISIBLE) {
+                v.post { if (!isFinishing && !isDestroyed) syncAdSlotReserve() }
+            }
+        }
         binding.adSlot.blocked = {
             android.os.SystemClock.uptimeMillis() - lastWebScroll < 300L
         }
@@ -5840,6 +5895,8 @@ class MainActivity : AppCompatActivity() {
                     // so initialization finishing DURING a private session is
                     // handled by the same test as every other path in.
                     loadFeedAd()
+                    // And the app open ad, gated the same way (appOpenGate).
+                    AppOpenAds.sdkReady()
                 }
             }
         }.start()
@@ -5998,75 +6055,168 @@ class MainActivity : AppCompatActivity() {
         val view = layoutInflater.inflate(
             R.layout.native_ad_feed_card, binding.adSlot, false)
             as com.google.android.gms.ads.nativead.NativeAdView
-
-        // An explicit outline: deriving one from the background drawable is not
-        // reliable here, and without it the media runs square over the corners.
-        val card = view.findViewById<View>(R.id.adCard)
-        val radius = 20f * resources.displayMetrics.density
-        card.outlineProvider = object : android.view.ViewOutlineProvider() {
-            override fun getOutline(v: View, outline: android.graphics.Outline) {
-                outline.setRoundRect(0, 0, v.width, v.height, radius)
-            }
-        }
-        card.clipToOutline = true
-
         val headline = view.findViewById<android.widget.TextView>(R.id.adHeadline)
         headline.text = ad.headline
         view.headlineView = headline
 
+        // Full width, as tall as the creative's shape (AdMediaFrame clamps it).
+        val frame = view.findViewById<AdMediaFrame>(R.id.adMediaFrame)
+        frame.ratio = ad.mediaContent?.aspectRatio ?: (16f / 9f)
         val media = view.findViewById<com.google.android.gms.ads.nativead.MediaView>(R.id.adMedia)
-        // Square thumbnail, cropped to fill, so any creative ratio reads the same.
-        val frame = view.findViewById<View>(R.id.adMediaFrame)
-        val thumbR = 12f * resources.displayMetrics.density
-        frame.outlineProvider = object : android.view.ViewOutlineProvider() {
-            override fun getOutline(v: View, outline: android.graphics.Outline) {
-                outline.setRoundRect(0, 0, v.width, v.height, thumbR)
-            }
-        }
-        frame.clipToOutline = true
-        // 120dp tall is the floor for video inventory, but the creative's own
-        // ratio decides the width: vertical video does serve here, and cropping
-        // 9:16 into a square throws most of the frame away. Clamped either side
-        // so the text column keeps usable room.
-        val tall = 120f * resources.displayMetrics.density
-        val ratio = ad.mediaContent?.aspectRatio ?: 1f
-        val wide = if (ratio > 0f) tall * ratio else tall
-        frame.layoutParams.width = wide.coerceIn(tall * 0.75f, tall * 1.25f).toInt()
         media.setImageScaleType(android.widget.ImageView.ScaleType.CENTER_CROP)
         ad.mediaContent?.let { media.mediaContent = it }
         view.mediaView = media
 
+        val body = view.findViewById<android.widget.TextView>(R.id.adBody)
+        val bodyText = ad.body
+        if (!bodyText.isNullOrBlank()) {
+            body.text = bodyText
+            body.visibility = View.VISIBLE
+            view.bodyView = body
+        }
+
+        // The advertiser in the publisher's place. With none given, a plain
+        // "Sponsored" stands there - not registered, as it is not an asset.
         val advertiser = view.findViewById<android.widget.TextView>(R.id.adAdvertiser)
-        val who = ad.advertiser ?: ad.store ?: ""
-        advertiser.text = who
-        advertiser.visibility = if (who.isBlank()) View.GONE else View.VISIBLE
-        view.advertiserView = advertiser
+        val who = ad.advertiser ?: ad.store
+        if (!who.isNullOrBlank()) {
+            advertiser.text = who
+            view.advertiserView = advertiser
+        } else advertiser.text = "Sponsored"
+
+        // The call to action and the "Ad" label in the accent, as the feed's
+        // own buttons are; the Ink accent on a dark card would vanish, so it
+        // turns light there.
+        var accent = try { android.graphics.Color.parseColor(Settings.getHomeAccent(this)) }
+            catch (e: Exception) { 0xFF8B6BD8.toInt() }
+        val night = (resources.configuration.uiMode and
+            android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
+        if (night && android.graphics.Color.luminance(accent) < 0.08f) accent = 0xFFF4F3F7.toInt()
+        val onAccent = if (android.graphics.Color.luminance(accent) > 0.6f)
+            0xFF16151B.toInt() else android.graphics.Color.WHITE
+        val tint = android.content.res.ColorStateList.valueOf(accent)
 
         val cta = view.findViewById<android.widget.TextView>(R.id.adCta)
         cta.text = ad.callToAction
         cta.visibility = if (ad.callToAction.isNullOrBlank()) View.GONE else View.VISIBLE
+        cta.backgroundTintList = tint
+        cta.setTextColor(onAccent)
         view.callToActionView = cta
+
+        val badge = view.findViewById<android.widget.TextView>(R.id.adBadge)
+        badge.backgroundTintList = tint
+        badge.setTextColor(onAccent)
 
         val icon = view.findViewById<android.widget.ImageView>(R.id.adIcon)
         val art = ad.icon?.drawable
         if (art != null) {
             icon.setImageDrawable(art)
             icon.visibility = View.VISIBLE
+            icon.outlineProvider = object : android.view.ViewOutlineProvider() {
+                override fun getOutline(v: View, outline: android.graphics.Outline) {
+                    outline.setOval(0, 0, v.width, v.height)
+                }
+            }
+            icon.clipToOutline = true
             view.iconView = icon
         } else icon.visibility = View.GONE
 
         view.setNativeAd(ad)
         binding.adSlot.removeAllViews()
         binding.adSlot.addView(view)
+        // A new card fades in afresh once its place has opened to its size.
+        parkAdSlot()
         refreshAdSlot()
     }
 
     /**
-     * The reserved gap is the last stretch of the document, so at full scroll it
-     * occupies exactly the bottom of the viewport - which is where the card
-     * already sits. Anywhere earlier, push it down by whatever scrolling is
-     * left, and it rides up into the gap as the end of the feed arrives.
+     * A story's menu on home, as Discover's three dots offer: open it in the
+     * background or in Night Owl, copy or share it, or see less - this story,
+     * or everything from its publisher (FeedHidden; Undo on the snackbar).
      */
+    private fun showStoryMenu(link: String, title: String, source: String, domain: String) {
+        if (isFinishing || isDestroyed) return
+        val name = source.ifBlank { domain }.ifBlank { "this site" }
+        val labels = mutableListOf("Open in new tab", "Open in Night Owl tab", "Copy link", "Share\u2026",
+            "Not interested in this story")
+        val canHideSource = domain.isNotBlank()
+        if (canHideSource) labels.add("Hide stories from $name")
+        Haptics.tick(binding.root)
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(this, R.style.Theme_Search_Dialog)
+            .setTitle(title.ifBlank { name })
+            .setItems(labels.toTypedArray()) { _, which ->
+                when (which) {
+                    0 -> addBackgroundTab(link)
+                    1 -> enterNightOwl(link)
+                    2 -> copyText("Link", link)
+                    3 -> shareLink(link, title)
+                    4 -> {
+                        FeedHidden.hideLink(this, link)
+                        hideOnHome("link", link)
+                        toast("You'll see less like this")
+                    }
+                    5 -> if (canHideSource) {
+                        FeedHidden.hideSource(this, domain)
+                        hideOnHome("source", domain)
+                        com.google.android.material.snackbar.Snackbar
+                            .make(binding.root, "Stories from $name hidden", com.google.android.material.snackbar.Snackbar.LENGTH_LONG)
+                            .setAction("Undo") {
+                                FeedHidden.showSource(this, domain)
+                                // Back on the next load of the feed.
+                                activeWeb()?.takeIf { it.url == homePage }?.evaluateJavascript(
+                                    "window.__reloadFeedOnline && window.__reloadFeedOnline()", null)
+                            }
+                            .show()
+                    }
+                }
+            }
+            .show()
+    }
+
+    private fun hideOnHome(kind: String, value: String) {
+        val web = activeWeb() ?: return
+        if (web.url != homePage) return
+        web.evaluateJavascript("window.__hideStories && window.__hideStories(" +
+            org.json.JSONObject.quote(kind) + "," + org.json.JSONObject.quote(value) + ")", null)
+    }
+
+    /** The page reported where the ad's place is (SearchApp.adSlotAt). */
+    private fun onAdSlotReported(from: SearchAppBridge, top: Int, left: Int, width: Int, height: Int) {
+        if (isFinishing || isDestroyed) return
+        val web = activeWeb() ?: return
+        // A home page in a tab that is not on screen does not place the card.
+        if (web.tag !== from) return
+        adSlotFrom = web
+        adSlotTopCss = top
+        adSlotLeftCss = left
+        adSlotWidthCss = width
+        adSlotHCss = height
+        fitAdSlotWidth(web)
+        if (binding.adSlot.visibility == View.VISIBLE && isLiveWeb(web)) positionAdSlot(web, web.scrollY)
+    }
+
+    /** The card as wide as its place in the feed (the feed's column, on a tablet too). */
+    @Suppress("DEPRECATION") // getScale(): see positionAdSlot.
+    private fun fitAdSlotWidth(web: android.webkit.WebView) {
+        if (adSlotWidthCss <= 0 || !isLiveWeb(web)) return
+        val scale = web.scale.takeIf { it > 0f } ?: resources.displayMetrics.density
+        val w = Math.round(adSlotWidthCss * scale)
+        val lp = binding.adSlot.layoutParams ?: return
+        if (lp.width != w) {
+            lp.width = w
+            binding.adSlot.layoutParams = lp
+        }
+    }
+
+    /** Out of sight below the page, and faded out, until it has a place to go. */
+    private fun parkAdSlot() {
+        binding.adSlot.translationY = adSlotParkedY()
+        binding.adSlot.animate().cancel()
+        binding.adSlot.alpha = 0f
+        adCardShown = false
+    }
+
     // Far enough down to be off screen whatever the card's height, so a slot
     // that is switched on before its place is known shows nothing at all.
     private fun adSlotParkedY(): Float =
@@ -6096,54 +6246,76 @@ class MainActivity : AppCompatActivity() {
     private fun isLiveWeb(web: android.webkit.WebView): Boolean =
         !isFinishing && !isDestroyed && tabs.tabs.any { it.webView === web }
 
+    /**
+     * Lays the card over its place in the feed: the place's top in the
+     * document (CSS px, from the page) scaled to the screen, less how far the
+     * page has scrolled, plus where the page itself sits - which moves while
+     * the bars slide or a tab is swiped aside. Called on every scroll of the
+     * page, so it does no layout of its own, only translation.
+     */
     private fun positionAdSlot(web: android.webkit.WebView, scrollY: Int) {
-        // Belt as well as braces: the two posted callers check this before
+        // Belt as well as braces: the posted callers check this before
         // calling, and this covers the scroll listener and anything added
         // later without either having to remember.
         if (!isLiveWeb(web)) return
         if (binding.adSlot.visibility != View.VISIBLE) return
-        // Only ever against the home page on screen. A pass posted for one
-        // page, or a scroll from a tab in the background, measured whatever
-        // that WebView held - and seated the card over a site or a search.
-        if (web !== activeWeb() || web.url != homePage) {
-            binding.adSlot.translationY = adSlotParkedY()
+        // Only ever against the home page on screen, and only at the place
+        // that page reported. A pass posted for one page, or a scroll from a
+        // tab in the background, would otherwise seat the card over a site.
+        if (web !== activeWeb() || web.url != homePage || adSlotFrom !== web || adSlotTopCss < 0) {
+            parkAdSlot()
             return
         }
-        val content = (web.contentHeight * web.scale).toInt()
-        // contentHeight reads 0 while the page lays out. Taken at face value it
-        // gives maxScroll 0, so remaining is 0, so the card seats itself at the
-        // bottom of the viewport mid-load and then jumps away once the real
-        // height lands. Stay parked instead until there is a document to
-        // measure against; a late correction is invisible from up there.
-        if (content <= 0) {
-            binding.adSlot.translationY = adSlotParkedY()
-            return
+        // contentHeight reads 0 while the page lays out; nothing to place
+        // against until it has one.
+        if (web.contentHeight <= 0) { parkAdSlot(); return }
+        val scale = web.scale.takeIf { it > 0f } ?: return
+        val frame = binding.adSlot.parent as? View ?: return
+        web.getLocationInWindow(adLocWeb)
+        frame.getLocationInWindow(adLocSlot)
+        binding.adSlot.translationX = (adLocWeb[0] - adLocSlot[0]) + adSlotLeftCss * scale
+        binding.adSlot.translationY = (adLocWeb[1] - adLocSlot[1]) + adSlotTopCss * scale - scrollY
+        // Shown once its place has opened to the card's height; until then
+        // the card would lie over the story below it.
+        val h = binding.adSlot.height
+        val ready = h > 0 && adSlotHCss * scale >= h - 3f * resources.displayMetrics.density
+        if (ready && !adCardShown) {
+            adCardShown = true
+            binding.adSlot.animate().cancel()
+            if (Motion.animationsOn()) {
+                binding.adSlot.animate().alpha(1f).setDuration(220L)
+                    .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
+            } else binding.adSlot.alpha = 1f
+        } else if (!ready && adCardShown) {
+            adCardShown = false
+            binding.adSlot.animate().cancel()
+            binding.adSlot.alpha = 0f
         }
-        val maxScroll = (content - web.height).coerceAtLeast(0)
-        // contentHeight * scale is a rounded estimate, so the last few pixels
-        // never arrive; settle the card once it is within a hair of seated.
-        val slack = 12f * resources.displayMetrics.density
-        val remaining = (maxScroll - scrollY).coerceAtLeast(0).toFloat()
-        binding.adSlot.translationY = if (remaining <= slack) 0f else remaining
         // Counted once per ad when half of the card is in view, for the
         // numbers in Performance & health (the SDK counts real impressions).
-        if (!adSeen && binding.adSlot.height > 0 &&
-            binding.adSlot.translationY < binding.adSlot.height / 2f) {
-            adSeen = true
-            HealthStats.count(this, HealthStats.AD_SEEN)
+        if (ready && !adSeen) {
+            val y = binding.adSlot.translationY
+            if (y < frame.height - h / 2f && y > -h / 2f) {
+                adSeen = true
+                HealthStats.count(this, HealthStats.AD_SEEN)
+            }
         }
     }
 
-    // Tells the page how much room to leave. Sent after layout, since the card's
-    // height is not known until it has measured with a creative in it.
+    // Tells the page how tall the card is, so its place in the feed is
+    // exactly that tall, and asks where that place is. Sent after layout,
+    // since the card's height is not known until it has measured with a
+    // creative in it, and again whenever that height changes.
     @Suppress("DEPRECATION") // See positionAdSlot: same getScale() call.
     private fun syncAdSlotReserve() {
         val web = activeWeb() ?: return
+        if (!isLiveWeb(web)) return
         val scale = web.scale.takeIf { it > 0f } ?: 1f
         val visible = binding.adSlot.visibility == View.VISIBLE
         val h = binding.adSlot.height
-        val css = if (visible && h > 0) (h / scale).toInt() else 0
-        web.evaluateJavascript("window.__setAdSlot && window.__setAdSlot($css)", null)
+        val css = if (visible && h > 0) Math.ceil((h / scale).toDouble()).toInt() else 0
+        web.evaluateJavascript("window.__setAdSlot && window.__setAdSlot($css);" +
+            "window.__adSlotWhere && window.__adSlotWhere();", null)
         if (visible) {
             // isLiveWeb before each, and outside positionAdSlot, so that even
             // the argument expression web.scrollY is not evaluated against a
@@ -6151,17 +6323,13 @@ class MainActivity : AppCompatActivity() {
             binding.adSlot.post {
                 if (isLiveWeb(web)) positionAdSlot(web, web.scrollY)
             }
-            // The reserve above lengthens the document, and contentHeight only
-            // catches up after the page re-lays out - which has not happened by
-            // the time the post above runs. One late pass settles the card. It
-            // stays parked until then, so the wait costs nothing on screen.
-            //
-            // This 250ms is the SIGTRAP window: freezeTab can destroy `web`
-            // inside it, and the reads in positionAdSlot would then abort the
-            // process rather than fail.
+            // The page answers through the bridge, a frame or so later, and
+            // opens the place over a third of a second; one late pass makes
+            // sure the card is seated whatever the timing. It stays parked
+            // until then, so the wait costs nothing on screen.
             binding.adSlot.postDelayed({
                 if (isLiveWeb(web)) positionAdSlot(web, web.scrollY)
-            }, 250L)
+            }, 450L)
         }
     }
 
@@ -6185,7 +6353,12 @@ class MainActivity : AppCompatActivity() {
         // A different page under the card - another home tab, or home loaded
         // again - starts it parked too, rather than where the last one had it.
         val page = web to shown
-        if (show && page != adSlotPage) binding.adSlot.translationY = adSlotParkedY()
+        if (show && page != adSlotPage) {
+            parkAdSlot()
+            // That page's place is not known until it says (__adSlotWhere,
+            // asked in syncAdSlotReserve).
+            if (adSlotFrom !== web) adSlotTopCss = -1
+        }
         adSlotPage = if (show) page else null
         // THE FLICKER. translationY 0 means "seated at the bottom of the
         // viewport", which is exactly where a fully scrolled page shows the
@@ -6193,7 +6366,7 @@ class MainActivity : AppCompatActivity() {
         // paints it on screen for a frame, then shoves it down out of the way -
         // read as a flash on app open, because that is when the ad arrives.
         // Park it first; positionAdSlot brings it to wherever it belongs.
-        if (show && changed) binding.adSlot.translationY = adSlotParkedY()
+        if (show && changed) parkAdSlot()
         binding.adSlot.visibility = if (show) View.VISIBLE else View.GONE
         // Home again after a long stay on sites: an hour-old card is swapped
         // for a new one, the old staying up until it arrives.
@@ -6205,7 +6378,68 @@ class MainActivity : AppCompatActivity() {
         if (changed || show) binding.adSlot.post { syncAdSlotReserve() }
     }
 
+    // ---------- The app open ad's questions (AppOpenAds) ----------
+
+    /** Asked for and shown only where the feed ad may be: consent, no Night Owl, no supporter. */
+    private val appOpenGate: () -> Boolean = {
+        !isFinishing && !isDestroyed && adsReady && !nightOwl && !nightOwlLaunchPending &&
+            !Settings.getBool(this, Settings.IS_SUPPORTER, false) &&
+            AdConsent.canRequestAds(this) && !AdConsent.formShowing
+    }
+
+    /** Over this browser screen only, once the splash has gone, and never over a full-screen video. */
+    private val appOpenOver: (android.app.Activity) -> Boolean = { a ->
+        a === this && !isFinishing && !isDestroyed && !keepSplash && fullscreenView == null
+    }
+
+    /**
+     * Opened to do something specific - a link or text from another app, a
+     * launcher shortcut, the widget or the tile, a download notification -
+     * rather than to browse: that is put straight in front, with no ad first.
+     */
+    private fun opensForATask(i: android.content.Intent?): Boolean {
+        if (i == null) return false
+        if (urlFromIntent(i) != null) return true
+        if (i.hasExtra(BrowsingData.EXTRA_OPEN)) return true
+        return when (i.action) {
+            android.content.Intent.ACTION_SEND, android.content.Intent.ACTION_PROCESS_TEXT,
+            android.content.Intent.ACTION_WEB_SEARCH, android.content.Intent.ACTION_VIEW,
+            ACTION_SEARCH, ACTION_NEW_TAB, ACTION_NIGHT_OWL, ACTION_SCAN, ACTION_VOICE -> true
+            else -> false
+        }
+    }
+
+    // Everything this screen starts passes through here (startActivity
+    // included). Sent to another app - a picker, the share sheet, a link that
+    // opens elsewhere - the user's coming back is not an open (AppOpenAds).
+    @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
+    override fun startActivityForResult(intent: android.content.Intent, requestCode: Int, options: Bundle?) {
+        val target = intent.component?.packageName ?: intent.`package`
+        if (target != packageName) AppOpenAds.leftForOtherApp()
+        super.startActivityForResult(intent, requestCode, options)
+    }
+
+    // In-app updates and some Play flows start through an IntentSender.
+    @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
+    override fun startIntentSenderForResult(
+        intent: android.content.IntentSender, requestCode: Int, fillInIntent: android.content.Intent?,
+        flagsMask: Int, flagsValues: Int, extraFlags: Int, options: Bundle?
+    ) {
+        AppOpenAds.leftForOtherApp()
+        super.startIntentSenderForResult(intent, requestCode, fillInIntent, flagsMask, flagsValues, extraFlags, options)
+    }
+
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        // In use now: no app open ad interrupts this open any more.
+        AppOpenAds.userInteracted()
+    }
+
     override fun onDestroy() {
+        // A recreated activity has already put its own questions in; only
+        // take back ours, so the object does not keep this one alive.
+        if (AppOpenAds.gate === appOpenGate) AppOpenAds.gate = { false }
+        if (AppOpenAds.canShowOver === appOpenOver) AppOpenAds.canShowOver = { false }
         nativeAd?.destroy()
         nativeAd = null
         // MediaService.onControl is a companion field holding a lambda that
