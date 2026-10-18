@@ -6690,13 +6690,23 @@ class MainActivity : AppCompatActivity() {
         uiHandler.removeCallbacks(splashGuard)
         AppOpenAds.onResult = null
         splashAdWanted = false
-        // The splash goes once the ad covers it, so home is drawn behind the
-        // ad and is simply there when it closes.
-        AppOpenAds.showNow(this, onShowing = { releaseSplash() }, onDone = { shown ->
-            if (!shown) releaseSplash()
+        var onScreen = false
+        // Some of AdMob's app open creatives are a card on a see-through
+        // screen, and home showed through them. So the splash picture stays
+        // behind the ad: the moment the ad is up, the same picture goes over
+        // the browser (the launch cover, as on a return from the background)
+        // and only then does the splash let go; closing the ad uncovers home.
+        AppOpenAds.showNow(this, onShowing = {
+            onScreen = true
+            showLaunchCover()
+            releaseSplash()
+        }, onDone = {
+            releaseSplash()
+            hideLaunchCover()
         })
-        // Should the SDK say nothing either way, the browser still opens.
-        uiHandler.postDelayed({ releaseSplash() }, 5000L)
+        // Should the SDK say nothing either way, the browser still opens; an
+        // ad on screen keeps its cover until it is closed.
+        uiHandler.postDelayed({ if (!onScreen) releaseSplash() }, 5000L)
     }
 
     private fun releaseSplash() {
