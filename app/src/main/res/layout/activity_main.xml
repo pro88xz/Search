@@ -650,9 +650,12 @@
                 android:layout_marginBottom="4dp"
                 android:background="@color/cardLine" />
 
-            <!-- The rows scroll, so a short screen, landscape or a large font
-                 never cuts any of them off: the panel is held between its top
-                 and bottom margins and this takes what is left. -->
+            <!-- Six rows at most, similar things together: a group opens a strip
+                 of its actions under it, swiped sideways, so opening one never
+                 makes the menu much taller. Every action keeps its id (and its
+                 handler in MainActivity); the strips are set up and closed by
+                 setupMenuGroups / openMenu. The rows scroll, so a short screen,
+                 landscape or a large font never cuts any of them off. -->
             <ScrollView
                 android:id="@+id/menuScroll"
                 android:layout_width="match_parent"
@@ -666,30 +669,42 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical">
 
-            <LinearLayout android:id="@+id/menuHome" style="@style/MenuRow">
-                <ImageView android:layout_width="22dp" android:layout_height="22dp"
-                    android:src="@drawable/menu_home" android:layout_marginEnd="18dp" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:text="Take me home" android:textSize="16sp"
-                    android:textColor="?android:attr/textColorPrimary" />
-            </LinearLayout>
-            <LinearLayout android:id="@+id/menuNewTab" style="@style/MenuRow">
+            <LinearLayout android:id="@+id/menuGroupTabs" style="@style/MenuRow">
                 <ImageView android:layout_width="22dp" android:layout_height="22dp"
                     android:src="@drawable/menu_newtab" android:layout_marginEnd="18dp" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:text="New tab" android:textSize="16sp"
-                    android:textColor="?android:attr/textColorPrimary" />
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_weight="1" android:orientation="vertical">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:text="Tabs" android:textSize="16sp"
+                        android:textColor="?android:attr/textColorPrimary" />
+                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:text="New tab · Reopen · Home" android:textSize="12sp" android:maxLines="1"
+                        android:ellipsize="end" android:textColor="@color/feedMuted" />
+                </LinearLayout>
+                <ImageView android:layout_width="18dp" android:layout_height="18dp"
+                    android:layout_marginStart="8dp" android:tag="chevron"
+                    android:src="@drawable/menu_chevron" android:importantForAccessibility="no" />
             </LinearLayout>
-            <!-- The last tab closed, back with its address. Only while there is
-                 one to bring back; set from code (openMenu). -->
-            <LinearLayout android:id="@+id/menuReopen" style="@style/MenuRow"
-                android:visibility="gone">
-                <ImageView android:layout_width="22dp" android:layout_height="22dp"
-                    android:src="@drawable/menu_reopen" android:layout_marginEnd="18dp" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:text="Reopen closed tab" android:textSize="16sp"
-                    android:textColor="?android:attr/textColorPrimary" />
-            </LinearLayout>
+            <HorizontalScrollView android:id="@+id/menuStripTabs" style="@style/MenuStrip">
+                <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+                <LinearLayout android:id="@+id/menuNewTab" style="@style/MenuTile">
+                    <ImageView style="@style/MenuTileIcon" android:src="@drawable/menu_newtab" />
+                    <TextView style="@style/MenuTileLabel" android:text="New tab" />
+                </LinearLayout>
+                <!-- The last tab closed, back with its address: only while there is one (openMenu). -->
+                <LinearLayout android:id="@+id/menuReopen" style="@style/MenuTile"
+                    android:visibility="gone">
+                    <ImageView style="@style/MenuTileIcon" android:src="@drawable/menu_reopen" />
+                    <TextView style="@style/MenuTileLabel" android:text="Reopen closed tab" />
+                </LinearLayout>
+                <!-- Home, or on the home page the way out (openMenu sets which). -->
+                <LinearLayout android:id="@+id/menuHome" style="@style/MenuTile">
+                    <ImageView style="@style/MenuTileIcon" android:src="@drawable/menu_home" />
+                    <TextView style="@style/MenuTileLabel" android:text="Home" />
+                </LinearLayout>
+                </LinearLayout>
+            </HorizontalScrollView>
             <LinearLayout android:id="@+id/menuNightOwl" style="@style/MenuRow">
                 <ImageView android:layout_width="22dp" android:layout_height="22dp"
                     android:src="@drawable/menu_nightowl" android:layout_marginEnd="18dp" />
@@ -697,105 +712,147 @@
                     android:text="Night Owl" android:textSize="16sp"
                     android:textColor="?android:attr/textColorPrimary" />
             </LinearLayout>
-            <LinearLayout android:id="@+id/menuDesktop" style="@style/MenuRow">
+            <LinearLayout android:id="@+id/menuGroupPage" style="@style/MenuRow">
                 <ImageView android:layout_width="22dp" android:layout_height="22dp"
-                    android:src="@drawable/menu_desktop" android:layout_marginEnd="18dp" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:text="Desktop mode" android:textSize="16sp"
-                    android:textColor="?android:attr/textColorPrimary" />
+                    android:src="@drawable/menu_page_tools" android:layout_marginEnd="18dp" />
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_weight="1" android:orientation="vertical">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:text="Page tools" android:textSize="16sp"
+                        android:textColor="?android:attr/textColorPrimary" />
+                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:text="Find · Zoom · Reader &amp; more" android:textSize="12sp" android:maxLines="1"
+                        android:ellipsize="end" android:textColor="@color/feedMuted" />
+                </LinearLayout>
+                <ImageView android:layout_width="18dp" android:layout_height="18dp"
+                    android:layout_marginStart="8dp" android:tag="chevron"
+                    android:src="@drawable/menu_chevron" android:importantForAccessibility="no" />
             </LinearLayout>
-            <LinearLayout android:id="@+id/menuHistory" style="@style/MenuRow">
+            <HorizontalScrollView android:id="@+id/menuStripPage" style="@style/MenuStrip">
+                <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+                <LinearLayout android:id="@+id/menuFind" style="@style/MenuTile">
+                    <ImageView style="@style/MenuTileIcon" android:src="@drawable/menu_find" />
+                    <TextView style="@style/MenuTileLabel" android:text="Find in page" />
+                </LinearLayout>
+                <LinearLayout android:id="@+id/menuZoom" style="@style/MenuTile">
+                    <ImageView style="@style/MenuTileIcon" android:src="@drawable/menu_zoom" />
+                    <TextView style="@style/MenuTileLabel" android:text="Zoom" />
+                </LinearLayout>
+                <LinearLayout android:id="@+id/menuReader" style="@style/MenuTile">
+                    <ImageView style="@style/MenuTileIcon" android:src="@drawable/menu_reader" />
+                    <TextView style="@style/MenuTileLabel" android:text="Reader view" />
+                </LinearLayout>
+                <LinearLayout android:id="@+id/menuTranslate" style="@style/MenuTile">
+                    <ImageView style="@style/MenuTileIcon" android:src="@drawable/menu_translate" />
+                    <TextView style="@style/MenuTileLabel" android:text="Translate" />
+                </LinearLayout>
+                <LinearLayout android:id="@+id/menuDesktop" style="@style/MenuTile">
+                    <ImageView style="@style/MenuTileIcon" android:src="@drawable/menu_desktop" />
+                    <TextView style="@style/MenuTileLabel" android:text="Desktop site" />
+                </LinearLayout>
+                <!-- Only while ad blocking is on and a website is showing (openMenu). -->
+                <LinearLayout android:id="@+id/menuSiteAds" style="@style/MenuTile"
+                    android:visibility="gone">
+                    <ImageView style="@style/MenuTileIcon" android:src="@drawable/set_adblock" />
+                    <TextView style="@style/MenuTileLabel" android:text="Allow ads here" />
+                </LinearLayout>
+                </LinearLayout>
+            </HorizontalScrollView>
+            <LinearLayout android:id="@+id/menuGroupLibrary" style="@style/MenuRow">
                 <ImageView android:layout_width="22dp" android:layout_height="22dp"
                     android:src="@drawable/menu_history" android:layout_marginEnd="18dp" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:text="History" android:textSize="16sp"
-                    android:textColor="?android:attr/textColorPrimary" />
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_weight="1" android:orientation="vertical">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:text="History &amp; downloads" android:textSize="16sp"
+                        android:textColor="?android:attr/textColorPrimary" />
+                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:text="History · Downloads" android:textSize="12sp" android:maxLines="1"
+                        android:ellipsize="end" android:textColor="@color/feedMuted" />
+                </LinearLayout>
+                <ImageView android:layout_width="18dp" android:layout_height="18dp"
+                    android:layout_marginStart="8dp" android:tag="chevron"
+                    android:src="@drawable/menu_chevron" android:importantForAccessibility="no" />
             </LinearLayout>
-            <LinearLayout android:id="@+id/menuDownloads" style="@style/MenuRow">
-                <ImageView android:layout_width="22dp" android:layout_height="22dp"
-                    android:src="@drawable/menu_downloads" android:layout_marginEnd="18dp" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:text="Downloads" android:textSize="16sp"
-                    android:textColor="?android:attr/textColorPrimary" />
-            </LinearLayout>
-            <LinearLayout android:id="@+id/menuFind" style="@style/MenuRow">
-                <ImageView android:layout_width="22dp" android:layout_height="22dp"
-                    android:src="@drawable/menu_find" android:layout_marginEnd="18dp" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:text="Find in page" android:textSize="16sp"
-                    android:textColor="?android:attr/textColorPrimary" />
-            </LinearLayout>
-            <LinearLayout android:id="@+id/menuZoom" style="@style/MenuRow">
-                <ImageView android:layout_width="22dp" android:layout_height="22dp"
-                    android:src="@drawable/menu_zoom" android:layout_marginEnd="18dp" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:text="Zoom" android:textSize="16sp"
-                    android:textColor="?android:attr/textColorPrimary" />
-            </LinearLayout>
-            <!-- For a website only: on the home page each says to open a page
-                 first. -->
-            <LinearLayout android:id="@+id/menuShare" style="@style/MenuRow">
+            <HorizontalScrollView android:id="@+id/menuStripLibrary" style="@style/MenuStrip">
+                <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+                <LinearLayout android:id="@+id/menuHistory" style="@style/MenuTile">
+                    <ImageView style="@style/MenuTileIcon" android:src="@drawable/menu_history" />
+                    <TextView style="@style/MenuTileLabel" android:text="History" />
+                </LinearLayout>
+                <LinearLayout android:id="@+id/menuDownloads" style="@style/MenuTile">
+                    <ImageView style="@style/MenuTileIcon" android:src="@drawable/menu_downloads" />
+                    <TextView style="@style/MenuTileLabel" android:text="Downloads" />
+                </LinearLayout>
+                </LinearLayout>
+            </HorizontalScrollView>
+            <LinearLayout android:id="@+id/menuGroupShare" style="@style/MenuRow">
                 <ImageView android:layout_width="22dp" android:layout_height="22dp"
                     android:src="@drawable/menu_share" android:layout_marginEnd="18dp" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:text="Share…" android:textSize="16sp"
-                    android:textColor="?android:attr/textColorPrimary" />
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_weight="1" android:orientation="vertical">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:text="Share &amp; save" android:textSize="16sp"
+                        android:textColor="?android:attr/textColorPrimary" />
+                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:text="Share · Home screen · PDF" android:textSize="12sp" android:maxLines="1"
+                        android:ellipsize="end" android:textColor="@color/feedMuted" />
+                </LinearLayout>
+                <ImageView android:layout_width="18dp" android:layout_height="18dp"
+                    android:layout_marginStart="8dp" android:tag="chevron"
+                    android:src="@drawable/menu_chevron" android:importantForAccessibility="no" />
             </LinearLayout>
-            <LinearLayout android:id="@+id/menuTranslate" style="@style/MenuRow">
-                <ImageView android:layout_width="22dp" android:layout_height="22dp"
-                    android:src="@drawable/menu_translate" android:layout_marginEnd="18dp" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:text="Translate page" android:textSize="16sp"
-                    android:textColor="?android:attr/textColorPrimary" />
-            </LinearLayout>
-            <LinearLayout android:id="@+id/menuReader" style="@style/MenuRow">
-                <ImageView android:layout_width="22dp" android:layout_height="22dp"
-                    android:src="@drawable/menu_reader" android:layout_marginEnd="18dp" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:text="Reader view" android:textSize="16sp"
-                    android:textColor="?android:attr/textColorPrimary" />
-            </LinearLayout>
-            <LinearLayout android:id="@+id/menuAddHome" style="@style/MenuRow">
-                <ImageView android:layout_width="22dp" android:layout_height="22dp"
-                    android:src="@drawable/menu_add_home" android:layout_marginEnd="18dp" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:text="Add to Home screen" android:textSize="16sp"
-                    android:textColor="?android:attr/textColorPrimary" />
-            </LinearLayout>
-            <LinearLayout android:id="@+id/menuPrint" style="@style/MenuRow">
-                <ImageView android:layout_width="22dp" android:layout_height="22dp"
-                    android:src="@drawable/menu_print" android:layout_marginEnd="18dp" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:text="Print or save as PDF" android:textSize="16sp"
-                    android:textColor="?android:attr/textColorPrimary" />
-            </LinearLayout>
-            <!-- Ad blocking off or back on for the site on screen. Only while
-                 ad blocking is on and a website is showing; set from code
-                 (openMenu). -->
-            <LinearLayout android:id="@+id/menuSiteAds" style="@style/MenuRow"
-                android:visibility="gone">
-                <ImageView android:layout_width="22dp" android:layout_height="22dp"
-                    android:src="@drawable/set_adblock" android:layout_marginEnd="18dp" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:text="Allow ads on this site" android:textSize="16sp"
-                    android:textColor="?android:attr/textColorPrimary" />
-            </LinearLayout>
-            <LinearLayout android:id="@+id/menuSupport" style="@style/MenuRow">
-                <ImageView android:layout_width="22dp" android:layout_height="22dp"
-                    android:src="@drawable/menu_coffee" android:layout_marginEnd="18dp" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:text="Buy me a coffee" android:textSize="16sp"
-                    android:textColor="?android:attr/textColorPrimary" />
-            </LinearLayout>
-            <LinearLayout android:id="@+id/menuGames" style="@style/MenuRow">
+            <HorizontalScrollView android:id="@+id/menuStripShare" style="@style/MenuStrip">
+                <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+                <LinearLayout android:id="@+id/menuShare" style="@style/MenuTile">
+                    <ImageView style="@style/MenuTileIcon" android:src="@drawable/menu_share" />
+                    <TextView style="@style/MenuTileLabel" android:text="Share" />
+                </LinearLayout>
+                <LinearLayout android:id="@+id/menuAddHome" style="@style/MenuTile">
+                    <ImageView style="@style/MenuTileIcon" android:src="@drawable/menu_add_home" />
+                    <TextView style="@style/MenuTileLabel" android:text="Add to Home screen" />
+                </LinearLayout>
+                <LinearLayout android:id="@+id/menuPrint" style="@style/MenuTile">
+                    <ImageView style="@style/MenuTileIcon" android:src="@drawable/menu_print" />
+                    <TextView style="@style/MenuTileLabel" android:text="Print or PDF" />
+                </LinearLayout>
+                </LinearLayout>
+            </HorizontalScrollView>
+            <LinearLayout android:id="@+id/menuGroupMore" style="@style/MenuRow">
                 <ImageView android:layout_width="22dp" android:layout_height="22dp"
                     android:src="@drawable/menu_games" android:layout_marginEnd="18dp" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:text="Play games" android:textSize="16sp"
-                    android:textColor="?android:attr/textColorPrimary" />
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_weight="1" android:orientation="vertical">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:text="Games &amp; support" android:textSize="16sp"
+                        android:textColor="?android:attr/textColorPrimary" />
+                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:text="Play games · Buy me a coffee" android:textSize="12sp" android:maxLines="1"
+                        android:ellipsize="end" android:textColor="@color/feedMuted" />
+                </LinearLayout>
+                <ImageView android:layout_width="18dp" android:layout_height="18dp"
+                    android:layout_marginStart="8dp" android:tag="chevron"
+                    android:src="@drawable/menu_chevron" android:importantForAccessibility="no" />
             </LinearLayout>
+            <HorizontalScrollView android:id="@+id/menuStripMore" style="@style/MenuStrip">
+                <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+                <LinearLayout android:id="@+id/menuGames" style="@style/MenuTile">
+                    <ImageView style="@style/MenuTileIcon" android:src="@drawable/menu_games" />
+                    <TextView style="@style/MenuTileLabel" android:text="Play games" />
+                </LinearLayout>
+                <LinearLayout android:id="@+id/menuSupport" style="@style/MenuTile">
+                    <ImageView style="@style/MenuTileIcon" android:src="@drawable/menu_coffee" />
+                    <TextView style="@style/MenuTileLabel" android:text="Buy me a coffee" />
+                </LinearLayout>
+                </LinearLayout>
+            </HorizontalScrollView>
             </LinearLayout>
             </ScrollView>
+
         </com.search.browser.DragPanel>
     </FrameLayout>
 

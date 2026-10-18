@@ -59,6 +59,7 @@
     <color name="widgetPill">#FFFFFF</color>
     <color name="widgetLine">#1F000000</color>
     <color name="widgetHint">#5F6368</color>
+    <color name="menuTileBg">#F0EFF3</color>
     <color name="widgetPress">#14000000</color>
     <color name="widgetShadow">#1A000000</color>
 </resources>

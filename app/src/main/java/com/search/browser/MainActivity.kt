@@ -5678,7 +5678,7 @@ class MainActivity : AppCompatActivity() {
             ?.setImageResource(
                 if (menuOnHome) R.drawable.menu_close else R.drawable.menu_home)
         (binding.menuHome.getChildAt(1) as? android.widget.TextView)?.text =
-            if (menuOnHome) "Close Search" else "Take me home"
+            if (menuOnHome) "Close Search" else "Home"
         // Reflect current Night Owl state in the menu label.
         (binding.menuNightOwl.getChildAt(1) as? android.widget.TextView)?.text =
             if (nightOwl) "Exit Night Owl" else "Night Owl"
@@ -5687,15 +5687,15 @@ class MainActivity : AppCompatActivity() {
             if (closedTabs.isNotEmpty() && !nightOwl) View.VISIBLE else View.GONE
         // A page Google Translate is showing offers the way back.
         (binding.menuTranslate.getChildAt(1) as? android.widget.TextView)?.text =
-            if (PageTranslate.isTranslated(menuUrl)) "Show original" else "Translate page"
+            if (PageTranslate.isTranslated(menuUrl)) "Show original" else "Translate"
         // Ads on this site: only while ad blocking is on and a website is on
         // screen, labelled with what tapping it will do.
         val adsHost = siteForAds()
         binding.menuSiteAds.visibility = if (adsHost != null) View.VISIBLE else View.GONE
         if (adsHost != null) {
             (binding.menuSiteAds.getChildAt(1) as? android.widget.TextView)?.text =
-                if (AdBlockSites.isAllowed(this, adsHost)) "Block ads on this site"
-                else "Allow ads on this site"
+                if (AdBlockSites.isAllowed(this, adsHost)) "Block ads here"
+                else "Allow ads here"
         }
         // While the page is still loading, Reload is Stop, so a slow page can
         // always be called off.
@@ -5705,6 +5705,8 @@ class MainActivity : AppCompatActivity() {
         binding.menuRefresh.contentDescription = if (stop) "Stop" else "Reload"
         androidx.core.view.ViewCompat.setTooltipText(
             binding.menuRefresh, binding.menuRefresh.contentDescription)
+        // Every group starts closed, so the menu opens at its short height.
+        showMenuGroup(null, animate = false)
         menuDragSpring.cancel()
         menuSpring.cancel()
         val panel = binding.menuPanel
@@ -5728,6 +5730,72 @@ class MainActivity : AppCompatActivity() {
     }
 
     private var menuOpenSeq = 0
+
+    // ---------- Menu groups ----------
+    //
+    // Similar actions share one row, so the menu is six rows under Back,
+    // Forward and Reload and their hairline instead of seventeen; tapping a
+    // row opens a strip of its actions under it - swiped sideways when there
+    // are more than fit - and closes any other.
+
+    private val menuGroups by lazy {
+        listOf(
+            binding.menuGroupTabs to binding.menuStripTabs,
+            binding.menuGroupPage to binding.menuStripPage,
+            binding.menuGroupLibrary to binding.menuStripLibrary,
+            binding.menuGroupShare to binding.menuStripShare,
+            binding.menuGroupMore to binding.menuStripMore)
+    }
+
+    private fun setupMenuGroups() {
+        menuGroups.forEach { (row, strip) ->
+            row.setOnClickListener {
+                Haptics.tap(it)
+                showMenuGroup(if (strip.visibility == View.VISIBLE) null else strip, animate = true)
+            }
+            // Read out as a button that says whether its group is open.
+            row.accessibilityDelegate = object : View.AccessibilityDelegate() {
+                override fun onInitializeAccessibilityNodeInfo(
+                    host: View, info: android.view.accessibility.AccessibilityNodeInfo
+                ) {
+                    super.onInitializeAccessibilityNodeInfo(host, info)
+                    info.className = android.widget.Button::class.java.name
+                    if (Build.VERSION.SDK_INT >= 30) {
+                        info.stateDescription = if (strip.visibility == View.VISIBLE) "Expanded" else "Collapsed"
+                    }
+                }
+            }
+        }
+    }
+
+    /** Opens [strip]'s group and closes the others; null closes them all. */
+    private fun showMenuGroup(strip: View?, animate: Boolean) {
+        val moving = animate && Motion.animationsOn() && binding.menuScrim.visibility == View.VISIBLE
+        if (moving) {
+            android.transition.TransitionManager.beginDelayedTransition(binding.menuScrim,
+                android.transition.AutoTransition().setDuration(200L)
+                    .setInterpolator(android.view.animation.DecelerateInterpolator()))
+        }
+        menuGroups.forEach { (row, s) ->
+            val open = s === strip
+            if (open && s.visibility != View.VISIBLE) s.scrollTo(0, 0)
+            s.visibility = if (open) View.VISIBLE else View.GONE
+            val chevron = row.findViewWithTag<View>("chevron")
+            val turn = if (open) 180f else 0f
+            if (chevron != null) {
+                if (moving) chevron.animate().rotation(turn).setDuration(200L).start()
+                else { chevron.animate().cancel(); chevron.rotation = turn }
+            }
+        }
+        // On a short screen the rows scroll: bring the opened strip into view.
+        if (strip != null) {
+            binding.menuScroll.postDelayed({
+                if (strip.visibility == View.VISIBLE) {
+                    strip.requestRectangleOnScreen(android.graphics.Rect(0, 0, strip.width, strip.height), !moving)
+                }
+            }, if (moving) 220L else 0L)
+        }
+    }
 
     private fun endMenuLayer() {
         binding.menuPanel.setLayerType(View.LAYER_TYPE_NONE, null)
@@ -9105,6 +9173,8 @@ class MainActivity : AppCompatActivity() {
         // Menu scrim tap closes the menu
         binding.menuScrim.setOnClickListener { closeMenu() }
 
+        setupMenuGroups()
+
         // Menu items
         binding.menuNewTab.setOnClickListener {
             closeMenuNow(); addNewTab(homePage)
@@ -9578,7 +9648,7 @@ class MainActivity : AppCompatActivity() {
         fun walk(v: View) {
             if (v is android.view.ViewGroup) {
                 for (i in 0 until v.childCount) walk(v.getChildAt(i))
-            } else if (v is android.widget.ImageView) {
+            } else if (v is android.widget.ImageView && v.tag != "chevron") {
                 v.imageTintList = tint
             }
         }
