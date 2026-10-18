@@ -44,9 +44,10 @@ object AdConsent {
                 // A form that could not be shown where one is required - no
                 // message published in AdMob, Privacy & messaging, for this
                 // region, say - leaves no ads at all, and used to say nothing.
-                if (error != null && !info.canRequestAds()) {
-                    HealthStats.noteAdGate(activity,
-                        "consent form failed: " + error.errorCode + " " + error.message)
+                if (!info.canRequestAds()) {
+                    HealthStats.noteAdGate(activity, if (error != null)
+                        "consent form failed: " + error.errorCode + " " + error.message
+                        else "consent does not allow ads yet")
                 }
                 onDone(info.canRequestAds())
             }

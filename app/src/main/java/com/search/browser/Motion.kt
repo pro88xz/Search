@@ -16,15 +16,20 @@ object Motion {
     private val pressIn = android.view.animation.PathInterpolator(0.4f, 0f, 1f, 1f)
     private val release = android.view.animation.OvershootInterpolator(1.6f)
 
-    fun pressable(v: View, depth: Float = 0.9f) {
+    /** [onPress]: told when the finger comes down (true) and leaves or is taken (false). */
+    fun pressable(v: View, depth: Float = 0.9f, onPress: ((Boolean) -> Unit)? = null) {
         v.setOnTouchListener { view, ev ->
             when (ev.actionMasked) {
-                MotionEvent.ACTION_DOWN -> if (animationsOn()) {
-                    view.animate().cancel()
-                    view.animate().scaleX(depth).scaleY(depth)
-                        .setDuration(90L).setInterpolator(pressIn).start()
+                MotionEvent.ACTION_DOWN -> {
+                    onPress?.invoke(true)
+                    if (animationsOn()) {
+                        view.animate().cancel()
+                        view.animate().scaleX(depth).scaleY(depth)
+                            .setDuration(90L).setInterpolator(pressIn).start()
+                    }
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    onPress?.invoke(false)
                     view.animate().cancel()
                     if (animationsOn()) {
                         view.animate().scaleX(1f).scaleY(1f)

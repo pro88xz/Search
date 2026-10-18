@@ -112,6 +112,8 @@ object BrowsingData {
     fun clearHistory(c: Context) {
         History.clear(c)
         SiteVisits.clear(c)
+        // The sites given their own zoom are a list of sites visited too.
+        SiteZoom.clearAll(c)
         c.getSharedPreferences("favicon_cache", Context.MODE_PRIVATE).edit().clear().apply()
     }
 

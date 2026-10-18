@@ -724,6 +724,13 @@
                     android:text="Find in page" android:textSize="16sp"
                     android:textColor="?android:attr/textColorPrimary" />
             </LinearLayout>
+            <LinearLayout android:id="@+id/menuZoom" style="@style/MenuRow">
+                <ImageView android:layout_width="22dp" android:layout_height="22dp"
+                    android:src="@drawable/menu_zoom" android:layout_marginEnd="18dp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="Zoom" android:textSize="16sp"
+                    android:textColor="?android:attr/textColorPrimary" />
+            </LinearLayout>
             <!-- For a website only: on the home page each says to open a page
                  first. -->
             <LinearLayout android:id="@+id/menuShare" style="@style/MenuRow">

@@ -295,11 +295,19 @@ These were built without a phone to run them on. Check each once:
       return to the app if it was in the background). Leave the app for over
       an hour and come back to home: a new card replaces the old one. No
       request in Night Owl, none for supporters ("Supporter: yes" shows).
-- [ ] (1.8.0) The owl: on a cold start it rises, opens its eyes, looks at
-      you, tilts and winks, once; again after 20 minutes away. Blinks look
-      natural (sometimes twice), the eyes dart and settle, it squashes when
-      tapped with a firm tick; while a page loads it looks up at the ring.
-      With animations off (Developer options) it holds still.
+- [ ] (1.8.0) The owl: on a cold start it is asleep low in its window as the
+      splash leaves, then rises, wakes (groggy by day, at once at night),
+      looks at you, tilts and winks, once - not on rotation. With the consent
+      form up it waits (or just rises after 15 s). Back after 20 minutes: drowsy
+      eyes open wide; after 3-20 minutes: a slow blink and nod; after Settings:
+      nothing. Blinks look natural, eyes dart and settle, the head follows.
+      Press: it squashes with a click; release: a hop and a light tick; a
+      sideways swipe starting on it leaves no squash behind; long press: it
+      fluffs up and the "Search" tooltip shows. Loading: the eyes follow the
+      ring round; done: a slow blink and nod; switch to a loaded tab mid-load:
+      the eyes stop following. Same motion on a 60Hz and a 120Hz phone. With
+      animations off it holds still, looking at you. Touch feedback off
+      (system) or Vibration on tap off: no vibration at all on the bar.
 - [ ] (1.8.0) Haptics: Home, Bookmarks, Tabs, Menu and New tab tick and
       spring under the finger; pull to refresh, closing a tab and a tab
       swipe confirm. Settings > Customize > Vibration on tap off: none.
@@ -323,5 +331,9 @@ These were built without a phone to run them on. Check each once:
       to reorder (order kept after a restart); overflow: Close all, Close
       others, Close duplicate tabs (n), Reopen closed tab, Delete last 15
       minutes (history from the last 15 minutes is gone).
+- [ ] (1.8.0) Menu > Zoom on a site: the page grows and shrinks live; open
+      another site (normal size), come back (kept). Settings > Accessibility
+      lists it; tapping it there returns it to normal. In Night Owl the
+      size is not kept.
 - [ ] (1.8.0) Open a link from another app, then Back: the tab closes and
       that app comes back.

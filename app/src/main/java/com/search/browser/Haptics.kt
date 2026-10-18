@@ -31,10 +31,27 @@ object Haptics {
         if (Build.VERSION.SDK_INT >= 30) HapticFeedbackConstants.CONFIRM
         else HapticFeedbackConstants.VIRTUAL_KEY)
 
-    /** The owl: a touch firmer than a bar button. */
-    fun owl(v: View?) = feel(v,
-        if (Build.VERSION.SDK_INT >= 30) HapticFeedbackConstants.CONFIRM
-        else HapticFeedbackConstants.KEYBOARD_TAP)
+    /** Whether the app's switch allows them, for views whose own (system) feedback it should silence too. */
+    val isOn: Boolean get() = enabled
+
+    private var owlPressAt = 0L
+
+    /**
+     * The owl, as the system's navigation keys do it: a click as the finger
+     * goes down (the owl squashes with it), and a lighter tick as it lifts
+     * into a tap. Several fingers or a fast double tap give one click.
+     */
+    fun owlPress(v: View?) {
+        val now = android.os.SystemClock.uptimeMillis()
+        if (now - owlPressAt < 80L) return
+        owlPressAt = now
+        feel(v, HapticFeedbackConstants.VIRTUAL_KEY)
+    }
+
+    /** The release of a tap on the owl; nothing before Android 8.1, where the press is enough. */
+    fun owlRelease(v: View?) {
+        if (Build.VERSION.SDK_INT >= 27) feel(v, HapticFeedbackConstants.VIRTUAL_KEY_RELEASE)
+    }
 
     private fun feel(v: View?, kind: Int) {
         if (!enabled || v == null) return

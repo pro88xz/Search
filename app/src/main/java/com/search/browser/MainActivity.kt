@@ -41,6 +41,9 @@ class MainActivity : AppCompatActivity() {
         // Same reasoning for the review prompt, and more so: two Play dialogs
         // in one session would be a lot to put in front of someone.
         private var didOfferReview = false
+        // The owl's first hello is once per process: a rotation or a theme
+        // change recreates the activity and must not greet again.
+        private var greetedThisProcess = false
 
         /**
          * Where every CookieManager call that waits for an answer is made.
@@ -567,6 +570,7 @@ class MainActivity : AppCompatActivity() {
             Settings.getBool(this, Settings.SEC_SAFE_BROWSING, true),
             Settings.getBool(this, Settings.SEC_BLOCK_3P_COOKIES, false),
             Settings.getTextScale(this),
+            SiteZoom.signature(this),
             Settings.getBool(this, Settings.DARK_WEB, false)
         ).joinToString("|")
     }
@@ -1028,7 +1032,10 @@ class MainActivity : AppCompatActivity() {
         sheet.translationY = 44 * d
         sheet.animate().alpha(1f).translationY(0f)
             .setDuration(380L).setStartDelay(60L)
-            .setInterpolator(searchEase).start()
+            .setInterpolator(searchEase)
+            // The page now hides the owl: it stops drawing until search closes.
+            .withEndAction { if (searchMode) binding.navOwl.covered = true }
+            .start()
     }
 
     /**
@@ -1039,6 +1046,7 @@ class MainActivity : AppCompatActivity() {
      * would empty itself and then fade an empty panel out.
      */
     private fun animateSearchOut() {
+        binding.navOwl.covered = false
         val d = resources.displayMetrics.density
         val sheet = binding.suggestBackdrop
         sheet.animate().cancel()
@@ -1202,12 +1210,17 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         refreshScrollPrefs()
-        // Back after a while (20 minutes or more): the owl greets you again;
-        // after four hours, home is where it opens.
-        val away = if (leftAt > 0L) android.os.SystemClock.uptimeMillis() - leftAt else 0L
-        if (away > 20L * 60_000L) {
-            uiHandler.postDelayed({ if (!isFinishing) binding.navOwl.greet() }, 350L)
+        // Back after a while: the owl says hello - wide awake after twenty
+        // minutes or more, a nod after a few. Not for a trip to Settings, a
+        // permission dialog or the share sheet. After four hours, home is
+        // where it opens.
+        val away = if (leftAt > 0L) android.os.SystemClock.elapsedRealtime() - leftAt else 0L
+        when {
+            away >= 20L * 60_000L -> binding.navOwl.requestGreet(OwlButtonView.Hello.RETURN)
+            away >= 3L * 60_000L -> binding.navOwl.requestGreet(OwlButtonView.Hello.NOD)
         }
+        // Nothing opaque can still be over the owl unless search or the deck is up.
+        if (!searchMode && !deckVisible) binding.navOwl.covered = false
         if (away > AWAY_FOR_HOME_MS && !searchMode && !deckVisible && fullscreenView == null &&
             urlFromIntent(intent) == null) {
             showHomeAfterAway()
@@ -1246,7 +1259,6 @@ class MainActivity : AppCompatActivity() {
         if (sig == lastSiteSig) return  // nothing changed -> don't touch anything
         lastSiteSig = sig
 
-        val zoom = Settings.getTextScale(this)
         val js = Settings.getBool(this, Settings.SITE_JAVASCRIPT, true)
         val blockImg = Settings.getBool(this, Settings.SITE_BLOCK_IMAGES, false)
         val blockAutoplay = Settings.getBool(this, Settings.SITE_BLOCK_AUTOPLAY, true)
@@ -1254,7 +1266,7 @@ class MainActivity : AppCompatActivity() {
         val block3p = Settings.getBool(this, Settings.SEC_BLOCK_3P_COOKIES, false)
         tabs.tabs.forEach { tab ->
             tab.webView?.settings?.apply {
-                textZoom = zoom
+                textZoom = zoomFor(tab.webView?.url ?: tab.url)
                 javaScriptEnabled = js
                 blockNetworkImage = blockImg
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
@@ -1274,12 +1286,16 @@ class MainActivity : AppCompatActivity() {
         // because reloading wipes the tab's back/forward history. Changes take
         // full effect on the next navigation.
     }
-    /** When the browser was last left (uptime), for the owl's hello on coming back. */
+    /**
+     * When the browser was last left, on the clock that keeps running while
+     * the phone sleeps (uptime stops, so a night away read as minutes): for
+     * the owl's hello and for home after a long break.
+     */
     private var leftAt = 0L
 
     override fun onPause() {
         super.onPause()
-        leftAt = android.os.SystemClock.uptimeMillis()
+        leftAt = android.os.SystemClock.elapsedRealtime()
         Settings.setLong(this, Settings.LEFT_AT, System.currentTimeMillis())
         PrivacyStats.flush(this)
         unregisterNetworkWatch()
@@ -1555,10 +1571,6 @@ class MainActivity : AppCompatActivity() {
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
             keepSplash = false
         }, 1500L)
-        // The owl says hello once the splash has gone (OwlButtonView.greet).
-        if (savedInstanceState == null) {
-            uiHandler.postDelayed({ if (::binding.isInitialized && !isFinishing) binding.navOwl.greet() }, 1750L)
-        }
         enableEdgeToEdge()
         // The bottom bar paints behind the navigation bar itself
         // (NavSheetView.bottomInset), so Android's own shade over the buttons
@@ -1589,6 +1601,21 @@ class MainActivity : AppCompatActivity() {
         Settings.applyAccent(this)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        // The owl's hello, asked for now so its first frame after the splash
+        // is already the sleeping owl; it plays once the bar is on screen and
+        // the app has settled (OwlButtonView.requestGreet). A fresh start, or
+        // a restore after twenty minutes away, gets the full hello; a quick
+        // restore or a link from another app, a nod.
+        if (!greetedThisProcess) {
+            greetedThisProcess = true
+            val leftWall = Settings.getLong(this, Settings.LEFT_AT, 0L)
+            val awayWall = if (leftWall > 0L) System.currentTimeMillis() - leftWall else Long.MAX_VALUE
+            binding.navOwl.requestGreet(when {
+                urlFromIntent(intent) != null -> OwlButtonView.Hello.NOD
+                savedInstanceState == null || awayWall >= 20L * 60_000L -> OwlButtonView.Hello.COLD
+                else -> OwlButtonView.Hello.NOD
+            })
+        }
         // The bottom bar's overlap as laid out (the home page's), before
         // anything moves it (applyBarOverlap, setPageUnderBars).
         barRestOverlap = -((binding.bottomBar.layoutParams as? android.widget.LinearLayout.LayoutParams)?.topMargin ?: 0)
@@ -1745,6 +1772,12 @@ class MainActivity : AppCompatActivity() {
         setupToolbar()
         setupDeck()
         setupFindBar()
+        // Opened from the Night Owl tile or shortcut: Night Owl is switched on
+        // a moment later (handleShortcut, posted), and no ad request may slip
+        // out in between - the SDK can finish starting first.
+        // The same test as `fresh` below, which decides whether the shortcut is acted on.
+        nightOwlLaunchPending = savedInstanceState == null && tabStore.snapshot == null &&
+            intent?.action == ACTION_NIGHT_OWL
         initAds()
         // Notification media buttons -> drive the page's media element.
         MediaService.onControl = mediaControl
@@ -1806,7 +1839,11 @@ class MainActivity : AppCompatActivity() {
         // Started from a launcher shortcut: once the browser is laid out.
         if (fresh) {
             val launch = intent
-            binding.root.post { if (!isFinishing && !isDestroyed) handleShortcut(launch) }
+            binding.root.post {
+                if (!isFinishing && !isDestroyed) handleShortcut(launch)
+                // Whatever happened, the hold on ads for a Night Owl launch ends here.
+                nightOwlLaunchPending = false
+            }
         }
 
     }
@@ -1825,6 +1862,7 @@ class MainActivity : AppCompatActivity() {
             ACTION_NIGHT_OWL -> {
                 leaveTransientUi(); closeDeckIfOpen()
                 if (nightOwl) addNewTab(homePage) else enterNightOwl()
+                nightOwlLaunchPending = false
             }
             ACTION_SCAN -> { leaveTransientUi(); launchScan() }
             ACTION_VOICE -> { leaveTransientUi(); closeDeckIfOpen(); launchVoiceSearch() }
@@ -2721,6 +2759,8 @@ class MainActivity : AppCompatActivity() {
                 (view?.tag as? SearchAppBridge)?.privileged =
                     url != null && url.startsWith("file:///android_asset/")
                 (view as? BrowserWebView)?.notePageSite(url)
+                // The site's own zoom (Menu > Zoom), or the size from Settings.
+                view?.settings?.let { s -> zoomFor(url).let { z -> if (s.textZoom != z) s.textZoom = z } }
                 if (searchMode && url != null && url != homePage && view != null &&
                     view === activeWeb()) exitSearchMode()
                 super.onPageStarted(view, url, favicon)
@@ -3006,7 +3046,7 @@ class MainActivity : AppCompatActivity() {
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
                 if (view == tabs.activeTab?.webView) {
                     // The owl watches the ring while the page comes in.
-                    binding.navOwl.setBusy(newProgress in 1..99)
+                    binding.navOwl.setLoad(newProgress)
                     if (newProgress >= 100) endPullRefresh()
                     // The ring around the New tab button, not a line over the page.
                     binding.loadRing.setProgress(newProgress)
@@ -3209,6 +3249,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun refreshScrollPrefs() {
         Haptics.refresh(this)
+        // Vibration on tap off silences the system's own feedback on the bar
+        // too (a tooltip's long press), not only the app's.
+        if (::binding.isInitialized) {
+            listOf(binding.navHome, binding.navBookmarks, binding.navNewTab, binding.navTabs,
+                binding.navMenu, binding.settingsBtn, binding.starBtn, binding.menuBack,
+                binding.menuForward, binding.menuRefresh
+            ).forEach { it.isHapticFeedbackEnabled = Haptics.isOn }
+        }
         hideBarsPref = Settings.getBool(this, Settings.HIDE_BARS_ON_SCROLL, true)
         tintBarsPref = Settings.getBool(this, Settings.TINT_BARS, false)
         touchExploration = (getSystemService(ACCESSIBILITY_SERVICE) as?
@@ -4986,6 +5034,7 @@ class MainActivity : AppCompatActivity() {
         // The loading ring shows this tab's load, not the one just left, and
         // so does the connection pill.
         binding.loadRing.jumpTo(tab.webView?.progress ?: 0)
+        binding.navOwl.setLoad(tab.webView?.progress ?: 0, jump = true)
         updateLoadStatus()
         // A tab left on the offline page tries again when opened, if the
         // network has come back since.
@@ -5706,8 +5755,13 @@ class MainActivity : AppCompatActivity() {
      * up long after AdMob had stopped counting it.
      */
     private var nativeAdAt = 0L
-    /** When the last request went out (elapsed real time), for the re-ask on resume. */
+    /** When the last request went out (elapsed real time): no new one sooner than AD_MIN_GAP_MS after it. */
     private var lastAdAttemptAt = 0L
+    /** The last request's error code, or -1: a set-up fault (1, 8) is not asked again by itself. */
+    private var lastAdError = -1
+    /** Launched into Night Owl, which is not on yet: no request (see onCreate). */
+    private var nightOwlLaunchPending = false
+    private val AD_MIN_GAP_MS = 30_000L
     /** The consent update is out; a resume while it is does not send another. */
     private var consentInFlight = false
     /** The card has been on screen with its current ad (counted once per ad). */
@@ -5763,8 +5817,9 @@ class MainActivity : AppCompatActivity() {
         AdConsent.gather(this) { allowed ->
             consentInFlight = false
             if (isFinishing || isDestroyed) return@gather
+            // Why not, when not, is written by AdConsent itself, with the
+            // form's or the server's error where there was one.
             if (allowed) startAdsSdk()
-            else HealthStats.noteAdGate(this, "consent does not allow ads yet")
         }
         if (AdConsent.canRequestAds(this)) startAdsSdk()
     }
@@ -5801,7 +5856,7 @@ class MainActivity : AppCompatActivity() {
         // Night Owl: no request at all. The card being hidden is not the point
         // - an ad request carries device signals for targeting, and a private
         // session is exactly when those should not be sent.
-        if (nightOwl) { HealthStats.noteAdGate(this, "Night Owl was on"); return }
+        if (nightOwl || nightOwlLaunchPending) { HealthStats.noteAdGate(this, "Night Owl was on"); return }
         // Supporters bought the feed back. Tested before the request rather
         // than at bind time: an ad request carries device signals for targeting
         // whether or not the card is ever shown.
@@ -5832,6 +5887,7 @@ class MainActivity : AppCompatActivity() {
                 if (nightOwl) { ad.destroy(); return@forNativeAd }
                 HealthStats.count(this, HealthStats.AD_FILLED)
                 adFailures = 0
+                lastAdError = -1
                 nativeAd?.destroy()
                 nativeAd = ad
                 nativeAdAt = android.os.SystemClock.elapsedRealtime()
@@ -5852,11 +5908,16 @@ class MainActivity : AppCompatActivity() {
                     // never in a tight loop, which AdMob treats as abuse. Not
                     // after an invalid request (1) or a missing app ID (8):
                     // those are set-up faults that the same request repeats.
+                    lastAdError = e.code
                     val fixable = e.code != 1 && e.code != 8
-                    if (fixable && adFailures < AD_RETRY_MS.size && !isFinishing && !isDestroyed) {
-                        uiHandler.postDelayed(adRetry, AD_RETRY_MS[adFailures])
+                    // A failed replacement leaves the old card up and is not
+                    // chased: the next return to home after the spacing asks again.
+                    if (!replace) {
+                        if (fixable && adFailures < AD_RETRY_MS.size && !isFinishing && !isDestroyed) {
+                            uiHandler.postDelayed(adRetry, AD_RETRY_MS[adFailures])
+                        }
+                        adFailures++
                     }
-                    adFailures++
                     // Debug only. Without this a missing ad and a broken one
                     // look identical from the phone, which is no way to tell
                     // routine no-fill from a wiring fault. Never in release:
@@ -5886,7 +5947,15 @@ class MainActivity : AppCompatActivity() {
         if (Settings.getBool(this, Settings.IS_SUPPORTER, false)) return
         when {
             !adsStarted -> gatherConsentThenStart()
-            adsReady && nativeAd == null && !adLoading -> { adFailures = 0; loadFeedAd() }
+            // Spaced, so a connection dropping in and out does not become a
+            // request every few seconds; never after a set-up fault (1, 8);
+            // the backoff starts over only when the last failure was the
+            // network's (2), which is what coming back online fixes.
+            adsReady && nativeAd == null && !adLoading && lastAdError != 1 && lastAdError != 8 &&
+                android.os.SystemClock.elapsedRealtime() - lastAdAttemptAt >= AD_MIN_GAP_MS -> {
+                if (lastAdError == 2) adFailures = 0
+                loadFeedAd()
+            }
         }
     }
 
@@ -5894,6 +5963,9 @@ class MainActivity : AppCompatActivity() {
     private fun refreshStaleFeedAd() {
         if (nativeAd == null || adLoading || !adsReady) return
         if (android.os.SystemClock.elapsedRealtime() - nativeAdAt < 60L * 60_000L) return
+        // A replacement that came back empty is not asked again on every
+        // return to home: five minutes apart at least.
+        if (android.os.SystemClock.elapsedRealtime() - lastAdAttemptAt < 5L * 60_000L) return
         loadFeedAd(replace = true)
     }
 
@@ -5909,7 +5981,7 @@ class MainActivity : AppCompatActivity() {
         if (!hasNetwork()) return
         when {
             !adsStarted -> gatherConsentThenStart()
-            adsReady && nativeAd == null && !adLoading &&
+            adsReady && nativeAd == null && !adLoading && lastAdError != 1 && lastAdError != 8 &&
                 android.os.SystemClock.elapsedRealtime() - lastAdAttemptAt > 15L * 60_000L -> {
                 adFailures = 0
                 loadFeedAd()
@@ -6335,7 +6407,11 @@ class MainActivity : AppCompatActivity() {
         val seq = ++deckOpenSeq
         androidx.core.view.OneShotPreDrawListener.add(deck) {
             if (seq == deckOpenSeq && deckVisible) {
-                deckSpring.animate(0f, 1f) { endDeckLayer() }
+                deckSpring.animate(0f, 1f) {
+                    endDeckLayer()
+                    // The deck covers the owl now; no drawing under it.
+                    if (deckVisible) binding.navOwl.covered = true
+                }
             }
         }
     }
@@ -6368,6 +6444,7 @@ class MainActivity : AppCompatActivity() {
         placeDeck(1f)
         binding.tabDeck.visibility = View.GONE
         deckVisible = false
+        binding.navOwl.covered = false
         androidx.core.view.ViewCompat.requestApplyInsets(binding.root)
         // refreshAdSlot() refuses to show the card while the deck is up, and
         // closing the deck is the moment that condition clears. Without this,
@@ -6601,6 +6678,95 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun needAPage() = toast("Open a page first")
+
+    /** The text size for [url]: its own (Menu > Zoom) or the one from Settings. */
+    private fun zoomFor(url: String?): Int =
+        SiteZoom.get(this, url) ?: Settings.getTextScale(this)
+
+    /**
+     * Menu > Zoom: a minus, a slider and a plus in 10% steps, the page
+     * reflowing under it as it moves, and the size kept for the site. At the
+     * bottom of the screen with a light scrim, so the page can be read while
+     * it is set. Reset returns the site to the size in Settings.
+     */
+    private fun showZoom() {
+        val web = activeWeb()
+        val url = webPageUrl()
+        val site = SiteZoom.keyOf(url)
+        if (web == null || url == null || site == null) { needAPage(); return }
+        val def = Settings.getTextScale(this)
+        val d = resources.displayMetrics.density
+        fun dp(v: Int) = (v * d).toInt()
+        var pct = web.settings.textZoom.coerceIn(SiteZoom.MIN, SiteZoom.MAX)
+
+        val label = android.widget.TextView(this).apply {
+            textSize = 16f
+            gravity = android.view.Gravity.CENTER
+            minWidth = dp(64)
+            setTextColor(androidx.core.content.ContextCompat.getColor(this@MainActivity, R.color.navIcon))
+        }
+        val bar = android.widget.SeekBar(this).apply {
+            max = (SiteZoom.MAX - SiteZoom.MIN) / SiteZoom.STEP
+            progress = (pct - SiteZoom.MIN) / SiteZoom.STEP
+        }
+        val ripple = android.util.TypedValue().also {
+            theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, it, true)
+        }.resourceId
+        fun stepButton(text: String, desc: String) = android.widget.TextView(this).apply {
+            this.text = text
+            textSize = 24f
+            gravity = android.view.Gravity.CENTER
+            contentDescription = desc
+            setBackgroundResource(ripple)
+            layoutParams = android.widget.LinearLayout.LayoutParams(dp(48), dp(48))
+        }
+        val minus = stepButton("\u2212", "Zoom out")
+        val plus = stepButton("+", "Zoom in")
+        fun apply(next: Int, fromBar: Boolean) {
+            val v = next.coerceIn(SiteZoom.MIN, SiteZoom.MAX)
+            if (v != pct) Haptics.tick(bar)
+            pct = v
+            label.text = "$v%"
+            if (!fromBar) bar.progress = (v - SiteZoom.MIN) / SiteZoom.STEP
+            // Still the page it was opened on; the size reflows it live.
+            if (activeWeb() === web) web.settings.textZoom = v
+            // Night Owl: applied, never written down.
+            if (!nightOwl) {
+                if (v == def) SiteZoom.forget(this, site) else SiteZoom.set(this, url, v)
+            }
+        }
+        label.text = "$pct%"
+        minus.setOnClickListener { apply(pct - SiteZoom.STEP, false) }
+        plus.setOnClickListener { apply(pct + SiteZoom.STEP, false) }
+        bar.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(s: android.widget.SeekBar?, p: Int, user: Boolean) {
+                if (user) apply(SiteZoom.MIN + p * SiteZoom.STEP, true)
+            }
+            override fun onStartTrackingTouch(s: android.widget.SeekBar?) {}
+            override fun onStopTrackingTouch(s: android.widget.SeekBar?) {}
+        })
+        val row = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(dp(16), dp(8), dp(16), 0)
+            addView(minus)
+            addView(bar, android.widget.LinearLayout.LayoutParams(0, dp(48), 1f))
+            addView(plus)
+            addView(label)
+        }
+        val dialog = com.google.android.material.dialog.MaterialAlertDialogBuilder(this, R.style.Theme_Search_Dialog)
+            .setTitle(site.removePrefix("www."))
+            .setMessage(if (nightOwl) "Not kept after Night Owl." else "Kept for this site.")
+            .setView(row)
+            .setPositiveButton("Done", null)
+            .setNeutralButton("Reset") { _, _ -> apply(def, false) }
+            .create()
+        dialog.window?.let { w ->
+            w.setGravity(android.view.Gravity.BOTTOM)
+            w.setDimAmount(0.12f)
+        }
+        dialog.show()
+    }
 
     /**
      * Page info, from a tap on the site's icon, as the lock opens it in
@@ -7899,7 +8065,7 @@ class MainActivity : AppCompatActivity() {
         // does. It opened a new tab for every search, which only filled the
         // tab list with tabs nobody went back to.
         binding.navNewTab.setOnClickListener {
-            Haptics.owl(it)
+            Haptics.owlRelease(it)
             binding.navOwl.pop()
             if (findActive) closeFindBar()
             if (!searchMode) enterSearchMode()
@@ -7943,7 +8109,13 @@ class MainActivity : AppCompatActivity() {
         listOf(binding.navHome, binding.navBookmarks, binding.navTabs, binding.navMenu,
             binding.settingsBtn, binding.starBtn, binding.menuBack, binding.menuForward,
             binding.menuRefresh).forEach { Motion.pressable(it, 0.88f) }
-        Motion.pressable(binding.navNewTab, 0.93f)
+        // The owl squashes and the phone clicks as the finger lands; held, it fluffs up.
+        Motion.pressable(binding.navNewTab, 0.93f) { down ->
+            binding.navOwl.press(down)
+            if (down) Haptics.owlPress(binding.navNewTab)
+        }
+        // false: the "Search" tooltip still shows, with its own vibration.
+        binding.navNewTab.setOnLongClickListener { binding.navOwl.fluff(); false }
         refreshNav()
     }
 
@@ -8295,6 +8467,10 @@ class MainActivity : AppCompatActivity() {
         binding.menuFind.setOnClickListener {
             closeMenuNow()
             openFindBar()
+        }
+        binding.menuZoom.setOnClickListener {
+            closeMenuNow()
+            showZoom()
         }
         binding.menuPrint.setOnClickListener {
             closeMenuNow()

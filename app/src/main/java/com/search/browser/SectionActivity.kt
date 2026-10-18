@@ -250,6 +250,44 @@ class SectionActivity : AppCompatActivity() {
             Settings.A11Y_FORCE_ZOOM, false
         )
         addNote("Takes effect as pages load.")
+
+        siteZoomList = group("Sites with their own zoom")
+        fillSiteZoom()
+        addNote("Set from Menu > Zoom on a site. Tap one to return it to the text size above.")
+    }
+
+    private var siteZoomList: LinearLayout? = null
+
+    private fun fillSiteZoom() {
+        val list = siteZoomList ?: return
+        list.removeAllViews()
+        val sites = SiteZoom.all(this)
+        if (sites.isEmpty()) {
+            val t = TextView(this)
+            t.text = "None yet."
+            t.textSize = 14f
+            t.setTextColor(0xFF8A8A8F.toInt())
+            t.setPadding(dp(18), dp(16), dp(18), dp(16))
+            list.addView(t)
+            return
+        }
+        sites.forEach { (site, pct) ->
+            val t = TextView(this)
+            t.text = "$site  \u00b7  $pct%"
+            t.textSize = 16f
+            t.setTextColor(resolveTextColor())
+            t.setPadding(dp(18), dp(15), dp(18), dp(15))
+            val outValue = android.util.TypedValue()
+            theme.resolveAttribute(android.R.attr.selectableItemBackground, outValue, true)
+            t.setBackgroundResource(outValue.resourceId)
+            t.setOnClickListener {
+                SiteZoom.forget(this, site)
+                android.widget.Toast.makeText(this, "$site: back to your text size",
+                    android.widget.Toast.LENGTH_SHORT).show()
+                fillSiteZoom()
+            }
+            addInto(list, t)
+        }
     }
 
     private fun applyTextSize(label: String, pct: Int) {
