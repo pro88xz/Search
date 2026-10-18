@@ -5965,7 +5965,9 @@ class MainActivity : AppCompatActivity() {
             // The splash may be waiting on this answer before asking for the ad.
             continueSplashAd()
         }
-        if (AdConsent.canRequestAds(this)) startAdsSdk()
+        // Outside the regions that require consent, and wherever an earlier
+        // answer allows it, the SDK starts now, alongside the check.
+        if (AdConsent.adsAllowed(this)) startAdsSdk()
     }
 
     // Initialization does disk work and can take a moment, so it runs off the
@@ -6020,7 +6022,7 @@ class MainActivity : AppCompatActivity() {
         // Never without consent where it is required. Checked here as well as
         // at startup because this is reached from other paths - leaving Night
         // Owl - and the answer can change in Settings, Ad privacy choices.
-        if (!AdConsent.canRequestAds(this)) {
+        if (!AdConsent.adsAllowed(this)) {
             HealthStats.noteAdGate(this, "consent does not allow ads yet")
             return
         }
@@ -6553,7 +6555,7 @@ class MainActivity : AppCompatActivity() {
     private val appOpenGate: () -> Boolean = {
         !isFinishing && !isDestroyed && adsSdkCalled && !nightOwl && !nightOwlLaunchPending &&
             !Settings.getBool(this, Settings.IS_SUPPORTER, false) &&
-            AdConsent.canRequestAds(this) && !AdConsent.formShowing
+            AdConsent.adsAllowed(this) && !AdConsent.formShowing
     }
 
     // ---------- Opening through the app open ad: splash, ad, home ----------
@@ -6593,9 +6595,10 @@ class MainActivity : AppCompatActivity() {
     /** The next step of the splash's wait: consent answered, then the ad loaded, then shown. */
     private fun continueSplashAd() {
         if (!keepSplash || !splashAdWanted) return
-        // Still asking whether ads may be shown: this runs again when it answers.
-        if (consentInFlight) return
-        if (!AdConsent.canRequestAds(this)) { splashAdWanted = false; releaseSplash(); return }
+        // Where consent is required the consent check is waited for (this runs
+        // again when it answers); everywhere else the ad does not wait on it.
+        if (consentInFlight && AdConsent.regulated(this)) return
+        if (!AdConsent.adsAllowed(this)) { splashAdWanted = false; releaseSplash(); return }
         if (AppOpenAds.readyNow()) { splashAd(); return }
         AppOpenAds.onResult = { loaded ->
             AppOpenAds.onResult = null
