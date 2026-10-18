@@ -1209,6 +1209,9 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        // Back from the background: an app open ad that is ready opens the
+        // way in (a launch is handled by the splash: onSplashMinimumDone).
+        if (AppOpenAds.takeOpen() == AppOpenAds.WARM_OPEN) warmOpenAd()
         refreshScrollPrefs()
         // Back after a while: the owl says hello - wide awake after twenty
         // minutes or more, a nod after a few. Not for a trip to Settings, a
@@ -1576,13 +1579,11 @@ class MainActivity : AppCompatActivity() {
         setTheme(R.style.Theme_Search)
         val splash = installSplashScreen()
         splash.setKeepOnScreenCondition { keepSplash }
-        // Release the splash ~1.2s after the animation so it settles, then enters.
+        // Release the splash ~1.2s after the animation so it settles, then
+        // enters - or, on an open with an app open ad, hold it for the ad,
+        // which is shown over it, so the browser opens splash, ad, home.
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-            keepSplash = false
-            // An app open ad that arrived behind the splash may show now.
-            AppOpenAds.poke()
-            // A fresh install: the owl's introduction to the modes.
-            uiHandler.postDelayed({ maybeShowModeIntro() }, 250L)
+            onSplashMinimumDone()
         }, 1500L)
         enableEdgeToEdge()
         // The bottom bar paints behind the navigation bar itself
@@ -1623,9 +1624,15 @@ class MainActivity : AppCompatActivity() {
         // whether it may be asked for and shown (AppOpenAds).
         AppOpenAds.install(application)
         AppOpenAds.gate = appOpenGate
-        AppOpenAds.canShowOver = appOpenOver
         if (opensForATask(intent)) AppOpenAds.skipThisOpen()
         launchedForTask = opensForATask(intent)
+        // A plain launch (not a link, not a recreation), consent already
+        // given on an earlier launch, an ad possible: the splash will wait a
+        // moment for the app open ad. Never on the very first launch, which
+        // has the consent message and the owl's introduction to get through.
+        splashAdWanted = savedInstanceState == null && !launchedForTask &&
+            BrowsingMode.introDone(this) && !Settings.getBool(this, Settings.IS_SUPPORTER, false) &&
+            AdConsent.canRequestAds(this) && hasNetwork()
         // The owl's hello, asked for now so its first frame after the splash
         // is already the sleeping owl; it plays once the bar is on screen and
         // the app has settled (OwlButtonView.requestGreet). A fresh start, or
@@ -1754,6 +1761,10 @@ class MainActivity : AppCompatActivity() {
             override fun handleOnBackPressed() {
                 val web = activeWeb()
                 when {
+                    // The splash picture is up while the app open ad loads:
+                    // it is the way in, as the splash is, and Back does not
+                    // act on the page hidden under it.
+                    launchCover != null -> {}
                     // Fullscreen is a mode over the whole app, so it unwinds first.
                     fullscreenView != null -> exitFullscreen()
                     findActive -> closeFindBar()
@@ -6493,9 +6504,126 @@ class MainActivity : AppCompatActivity() {
             AdConsent.canRequestAds(this) && !AdConsent.formShowing
     }
 
-    /** Over this browser screen only, once the splash has gone, and never over a full-screen video. */
-    private val appOpenOver: (android.app.Activity) -> Boolean = { a ->
-        a === this && !isFinishing && !isDestroyed && !keepSplash && fullscreenView == null
+    // ---------- Opening through the app open ad: splash, ad, home ----------
+
+    /**
+     * Only a safeguard, for an ad request that never answers at all (the
+     * SDK reports every failure, a lost connection included, long before
+     * this): the splash and the cover wait for the ad's own answer, not for
+     * a clock. Even then the request is not cancelled - its ad is kept for
+     * the next open.
+     */
+    private val AD_WAIT_GUARD_MS = 12_000L
+    private var splashAdWanted = false
+    private var launchCover: View? = null
+    private var coverAdShowing = false
+
+    /**
+     * The splash has been up its usual 1.5 s. With an app open ad wanted it
+     * stays until the ad has loaded, and the ad is shown over it; only a
+     * failed request lets the browser open without one. Nothing is ever
+     * shown over home once it is up.
+     */
+    private fun onSplashMinimumDone() {
+        if (isFinishing || isDestroyed) { keepSplash = false; return }
+        if (!splashAdWanted || !AppOpenAds.wantedThisOpen()) { releaseSplash(); return }
+        if (AppOpenAds.readyNow()) { splashAd(); return }
+        // Still loading (or the SDK still starting - its answer comes all the
+        // same): the splash waits for it.
+        AppOpenAds.onResult = { loaded ->
+            AppOpenAds.onResult = null
+            if (keepSplash && splashAdWanted) {
+                if (loaded) splashAd() else { splashAdWanted = false; releaseSplash() }
+            }
+        }
+        AppOpenAds.requestNow()
+        uiHandler.postDelayed(splashGuard, AD_WAIT_GUARD_MS)
+    }
+
+    private val splashGuard = Runnable {
+        if (keepSplash && splashAdWanted) { splashAdWanted = false; releaseSplash() }
+    }
+
+    private fun splashAd() {
+        uiHandler.removeCallbacks(splashGuard)
+        AppOpenAds.onResult = null
+        splashAdWanted = false
+        // The splash goes once the ad covers it, so home is drawn behind the
+        // ad and is simply there when it closes.
+        AppOpenAds.showNow(this, onShowing = { releaseSplash() }, onDone = { shown ->
+            if (!shown) releaseSplash()
+        })
+        // Should the SDK say nothing either way, the browser still opens.
+        uiHandler.postDelayed({ releaseSplash() }, 5000L)
+    }
+
+    private fun releaseSplash() {
+        uiHandler.removeCallbacks(splashGuard)
+        AppOpenAds.onResult = null
+        if (!keepSplash) return
+        keepSplash = false
+        // A fresh install: the owl's introduction to the modes.
+        uiHandler.postDelayed({ maybeShowModeIntro() }, 250L)
+    }
+
+    /**
+     * Back to the browser from the background: the splash's picture goes up
+     * over the browser before its first frame, the ad is shown over it -
+     * at once if it is ready, or as soon as it has loaded - and closing the
+     * ad uncovers home: the same splash, ad, home as a launch. Only when no
+     * ad can come (none can be asked for right now, or the request fails)
+     * does the browser open without one.
+     */
+    private fun warmOpenAd() {
+        if (keepSplash || isFinishing || isDestroyed || fullscreenView != null) return
+        if (!AppOpenAds.wantedThisOpen() || !appOpenGate()) return
+        if (AppOpenAds.readyNow()) { showLaunchCover(); coverAd(); return }
+        if (!AppOpenAds.requestNow()) return
+        showLaunchCover()
+        AppOpenAds.onResult = { loaded ->
+            AppOpenAds.onResult = null
+            if (launchCover != null) { if (loaded) coverAd() else hideLaunchCover() }
+        }
+        uiHandler.postDelayed(coverGuard, AD_WAIT_GUARD_MS)
+    }
+
+    private fun coverAd() {
+        uiHandler.removeCallbacks(coverGuard)
+        coverAdShowing = false
+        AppOpenAds.showNow(this, onShowing = { coverAdShowing = true }, onDone = { hideLaunchCover() })
+        uiHandler.postDelayed(coverSafety, 5000L)
+    }
+
+    private val coverGuard = Runnable {
+        if (launchCover != null && !coverAdShowing) { AppOpenAds.onResult = null; hideLaunchCover() }
+    }
+
+    private val coverSafety = Runnable { if (!coverAdShowing) hideLaunchCover() }
+
+    /** The splash picture (the owl on the splash colour) over the whole window. */
+    private fun showLaunchCover() {
+        if (launchCover != null) return
+        val v = View(this)
+        v.background = androidx.core.content.ContextCompat.getDrawable(this, R.drawable.splash_window)
+        v.isClickable = true
+        v.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        v.elevation = 64f * resources.displayMetrics.density
+        (window.decorView as? android.view.ViewGroup)?.addView(v,
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT)
+            ?: return
+        launchCover = v
+    }
+
+    private fun hideLaunchCover() {
+        uiHandler.removeCallbacks(coverSafety)
+        uiHandler.removeCallbacks(coverGuard)
+        val v = launchCover ?: return
+        launchCover = null
+        coverAdShowing = false
+        if (Motion.animationsOn()) {
+            v.animate().alpha(0f).setDuration(260L)
+                .withEndAction { (v.parent as? android.view.ViewGroup)?.removeView(v) }.start()
+        } else (v.parent as? android.view.ViewGroup)?.removeView(v)
     }
 
     /**
@@ -6535,17 +6663,11 @@ class MainActivity : AppCompatActivity() {
         super.startIntentSenderForResult(intent, requestCode, fillInIntent, flagsMask, flagsValues, extraFlags, options)
     }
 
-    override fun onUserInteraction() {
-        super.onUserInteraction()
-        // In use now: no app open ad interrupts this open any more.
-        AppOpenAds.userInteracted()
-    }
-
     override fun onDestroy() {
         // A recreated activity has already put its own questions in; only
         // take back ours, so the object does not keep this one alive.
         if (AppOpenAds.gate === appOpenGate) AppOpenAds.gate = { false }
-        if (AppOpenAds.canShowOver === appOpenOver) AppOpenAds.canShowOver = { false }
+        AppOpenAds.onResult = null
         nativeAd?.destroy()
         nativeAd = null
         // MediaService.onControl is a companion field holding a lambda that
