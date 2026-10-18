@@ -21,7 +21,7 @@ const FRAMES = [
   { head: 'Smart [web search]', sub: 'Suggestions as you type, voice search and QR scanner.' },
   { head: '[Night Owl] private browsing', sub: 'No history, cookies or form data saved.' },
   { head: 'Three ways to [browse]', sub: 'Explore, Focus or Zen. Switch any time.' },
-  { head: 'Every tool [one tap] away', sub: 'Find, translate, reader mode and more.' },
+  { head: 'Every tool [one tap] away', sub: 'Tabs, Night Owl, page tools and more in one short menu.' },
   { head: 'Tabs, bookmarks and [downloads]', sub: 'Switch tabs, save pages and get files.' },
   { head: 'Search [widget] for your home screen', sub: 'Search, voice and QR scan in one tap.' },
 ];
