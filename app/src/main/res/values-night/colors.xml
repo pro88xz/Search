@@ -33,4 +33,7 @@
     <color name="accentAmber">#F5B94E</color>
     <color name="accentRose">#F28B9D</color>
     <color name="accentInk">#E8E8EA</color>
+    <color name="widgetPill">#232327</color>
+    <color name="widgetLine">#24FFFFFF</color>
+    <color name="widgetHint">#C4C4C9</color>
 </resources>

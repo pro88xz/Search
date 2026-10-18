@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Long-press the launcher icon: straight to a new tab, search, Night Owl
+     or the QR scanner, as Chrome offers. Handled in MainActivity
+     (handleShortcut) by the intent's action. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="search"
+        android:enabled="true"
+        android:icon="@drawable/shortcut_search"
+        android:shortcutShortLabel="@string/shortcut_search"
+        android:shortcutLongLabel="@string/shortcut_search_long">
+        <intent
+            android:action="com.search.browser.action.SEARCH"
+            android:targetPackage="com.devbangs.search"
+            android:targetClass="com.search.browser.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="new_tab"
+        android:enabled="true"
+        android:icon="@drawable/shortcut_newtab"
+        android:shortcutShortLabel="@string/shortcut_new_tab"
+        android:shortcutLongLabel="@string/shortcut_new_tab">
+        <intent
+            android:action="com.search.browser.action.NEW_TAB"
+            android:targetPackage="com.devbangs.search"
+            android:targetClass="com.search.browser.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="night_owl"
+        android:enabled="true"
+        android:icon="@drawable/shortcut_nightowl"
+        android:shortcutShortLabel="@string/shortcut_night_owl"
+        android:shortcutLongLabel="@string/shortcut_night_owl_long">
+        <intent
+            android:action="com.search.browser.action.NIGHT_OWL"
+            android:targetPackage="com.devbangs.search"
+            android:targetClass="com.search.browser.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="scan"
+        android:enabled="true"
+        android:icon="@drawable/shortcut_scan"
+        android:shortcutShortLabel="@string/shortcut_scan"
+        android:shortcutLongLabel="@string/shortcut_scan_long">
+        <intent
+            android:action="com.search.browser.action.SCAN"
+            android:targetPackage="com.devbangs.search"
+            android:targetClass="com.search.browser.MainActivity" />
+    </shortcut>
+</shortcuts>

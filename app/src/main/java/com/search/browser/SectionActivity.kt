@@ -131,6 +131,14 @@ class SectionActivity : AppCompatActivity() {
             Settings.ADBLOCK_ENABLED, false
         )
         addNote("Reload open pages after changing this for it to take full effect.")
+        val week = PrivacyStats.week(this)
+        val all = PrivacyStats.total(this)
+        if (all > 0) {
+            addNote(java.text.NumberFormat.getIntegerInstance().format(week) + " ads and trackers " +
+                "blocked this week, " + java.text.NumberFormat.getIntegerInstance().format(all) +
+                " in all - about " + android.text.format.Formatter.formatShortFileSize(this,
+                PrivacyStats.bytesSaved(week)) + " of data saved this week.")
+        }
         allowedSitesList = group("Sites where ads are allowed")
         fillAllowedSites()
         addNote("Turn blocking off for one site from the menu while you're on it: " +
@@ -242,6 +250,44 @@ class SectionActivity : AppCompatActivity() {
             Settings.A11Y_FORCE_ZOOM, false
         )
         addNote("Takes effect as pages load.")
+
+        siteZoomList = group("Sites with their own zoom")
+        fillSiteZoom()
+        addNote("Set from Menu > Zoom on a site. Tap one to return it to the text size above.")
+    }
+
+    private var siteZoomList: LinearLayout? = null
+
+    private fun fillSiteZoom() {
+        val list = siteZoomList ?: return
+        list.removeAllViews()
+        val sites = SiteZoom.all(this)
+        if (sites.isEmpty()) {
+            val t = TextView(this)
+            t.text = "None yet."
+            t.textSize = 14f
+            t.setTextColor(0xFF8A8A8F.toInt())
+            t.setPadding(dp(18), dp(16), dp(18), dp(16))
+            list.addView(t)
+            return
+        }
+        sites.forEach { (site, pct) ->
+            val t = TextView(this)
+            t.text = "$site  \u00b7  $pct%"
+            t.textSize = 16f
+            t.setTextColor(resolveTextColor())
+            t.setPadding(dp(18), dp(15), dp(18), dp(15))
+            val outValue = android.util.TypedValue()
+            theme.resolveAttribute(android.R.attr.selectableItemBackground, outValue, true)
+            t.setBackgroundResource(outValue.resourceId)
+            t.setOnClickListener {
+                SiteZoom.forget(this, site)
+                android.widget.Toast.makeText(this, "$site: back to your text size",
+                    android.widget.Toast.LENGTH_SHORT).show()
+                fillSiteZoom()
+            }
+            addInto(list, t)
+        }
     }
 
     private fun applyTextSize(label: String, pct: Int) {
@@ -287,6 +333,12 @@ class SectionActivity : AppCompatActivity() {
             "Display the quick links (Google, YouTube, etc.) on the home page.",
             Settings.HOME_SHOW_TILES, true
         )
+        addToggle(
+            "Open home after 4 hours away",
+            "Coming back after a break starts on the home page, with Jump back in to " +
+                "the page you left. The page stays open in its tab.",
+            Settings.HOME_AFTER_AWAY, true
+        )
         addNote("Open a new tab to see your changes.")
 
         group("Bars")
@@ -299,6 +351,12 @@ class SectionActivity : AppCompatActivity() {
             "Page colours in the bars",
             "The bars and the search box take on each site's own colour, as Chrome's do.",
             Settings.TINT_BARS, false
+        )
+        addToggle(
+            "Vibration on tap",
+            "A light tap in the hand from the bar buttons, the owl and pull to refresh. " +
+                "Follows the phone's own touch feedback setting.",
+            Settings.HAPTICS, true
         )
         if (android.os.Build.VERSION.SDK_INT >= 33) {
             group("Websites")
@@ -503,6 +561,16 @@ class SectionActivity : AppCompatActivity() {
             finish()
         }
         group()
+        addAction("Delete last 15 minutes",
+            "Pages from the last 15 minutes come off history and home's " +
+                "shortcuts. Cookies and cached files stay.") {
+            val n = BrowsingData.deleteRecent(this)
+            android.widget.Toast.makeText(this,
+                if (n == 0) "Nothing from the last 15 minutes"
+                else "Deleted " + n + (if (n == 1) " page" else " pages") + " from the last 15 minutes",
+                android.widget.Toast.LENGTH_SHORT).show()
+            refreshSizes(300L)
+        }
         addAction("Clear all browsing data",
             "History, cookies, cached files and site data. Bookmarks and " +
                 "downloads are kept.", danger = true) {
@@ -636,6 +704,23 @@ class SectionActivity : AppCompatActivity() {
                 card.addView(t)
             }
             endGroup()
+        }
+        // Why the home-feed ad did or did not show, in words: a release build
+        // has no log, and a missing card looks the same whatever the cause.
+        val adLines = HealthStats.adLines(this)
+        if (adLines.isNotEmpty()) {
+            val card = group("Feed ad")
+            adLines.forEachIndexed { n, line ->
+                val t = TextView(this)
+                t.text = line
+                t.textSize = 13f
+                t.setTextColor(0xFF8A8A8F.toInt())
+                t.setPadding(dp(18), if (n == 0) dp(12) else dp(2), dp(18),
+                    if (n == adLines.size - 1) dp(12) else dp(2))
+                card.addView(t)
+            }
+            addNote("Code 3 (no fill) is AdMob having no ad to give: usual for a new ad unit, " +
+                "or while the app is being reviewed in AdMob. It is not a fault in the app.")
         }
         group()
         addAction("Share report",

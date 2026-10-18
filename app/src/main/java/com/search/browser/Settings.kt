@@ -129,6 +129,9 @@ object Settings {
     const val TINT_BARS = "tint_bars"                  // default false: bars keep the app's surface; on, they take the site's colour
     const val HOME_ACCENT = "home_accent"              // hex string
     const val HOME_SHOW_TILES = "home_show_tiles"      // default true
+    const val HOME_AFTER_AWAY = "home_after_away"      // default true: open on home after 4 hours away
+    const val LEFT_AT = "left_at"                      // wall clock when the browser was last left
+    const val HAPTICS = "haptics"                      // default true: a light vibration on bar and owl taps
     const val DARK_WEB = "dark_web_pages"              // default false: darken sites with no dark look of their own, in dark theme (Android 13+)
 
     fun getHomeBackground(c: Context): String =

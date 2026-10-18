@@ -59,6 +59,15 @@ object History {
         save(context, list)
     }
 
+    /** Removes every entry visited at or after [since]; returns how many went. */
+    @Synchronized
+    fun deleteSince(context: Context, since: Long): Int {
+        val list = load(context)
+        val kept = list.filter { it.time < since }
+        if (kept.size != list.size) save(context, kept)
+        return list.size - kept.size
+    }
+
     @Synchronized
     fun clear(context: Context) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)

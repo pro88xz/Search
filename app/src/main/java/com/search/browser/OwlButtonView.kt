@@ -22,9 +22,12 @@ import java.util.Calendar
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
+import kotlin.math.exp
+import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
+import kotlin.math.sqrt
 
 /**
  * Sky maths for the owl button, kept free of Android types so it can be
@@ -78,16 +81,32 @@ object OwlSky {
     }
 }
 
+
 /**
  * The round button in the middle of the bottom bar: the Search owl peeking up
  * from the bottom of a window onto a sky that follows the phone's clock - a
  * blue sky with the sun and drifting clouds by day, an orange horizon with the
  * sun sinking behind the owl at dusk, and stars and the moon in tonight's real
- * phase at night. The owl blinks and looks about; [pop] bounces it for a tap.
+ * phase at night.
  *
- * Everything is drawn in a 120x120 box scaled to the view. It animates at about
- * 30fps only while it is on screen, and holds a still frame when the phone's
- * animations are off. Night Owl tabs ([privateMode]) always show the night.
+ * The owl is alive the way a small animal is: its eyes hold on something and
+ * dart to the next (quick for a small glance, slower and with a little settle
+ * for a big one), the head follows the eyes a beat later, it blinks at uneven
+ * intervals - now and then twice, now and then only half way - breathes in
+ * shorter than it breathes out, and now and then tilts its head at what it is
+ * looking at. It says hello when the browser opens ([requestGreet]), squashes
+ * under a finger ([press]) and hops when tapped ([pop]), fluffs up under a
+ * long press ([fluff]), follows the loading ring round with its eyes
+ * ([setLoad]) and blinks contentedly when the page is in.
+ *
+ * Everything is drawn in a 120x120 box scaled to the view. The springs are
+ * solved exactly for each frame's length, so a hop is the same hop at 30, 60
+ * or 120fps. Frames: every display frame (at most 60fps) only while something
+ * is moving, 30fps for half a minute after the owl appears or is tapped, 15fps
+ * when it just sits there, and slower in Battery Saver; nothing at all while
+ * it is off screen or [covered], and a still frame looking at you when the
+ * phone's animations are off. Night Owl tabs ([privateMode]) always show the
+ * night.
  */
 class OwlButtonView @JvmOverloads constructor(
     context: Context,
@@ -95,19 +114,57 @@ class OwlButtonView @JvmOverloads constructor(
     defStyleAttr: Int = 0,
 ) : View(context, attrs, defStyleAttr) {
 
-    /** Night Owl: always the night sky. */
+    /**
+     * The owl's hellos. COLD: the browser has just started - it rises into its
+     * window, wakes (groggily by day, at once at night, being an owl), looks
+     * at you, tilts its head and winks. RETURN: back after twenty minutes or
+     * more - it was dozing, opens its eyes wide and tilts its head. NOD: back
+     * after a few minutes - a look, a slow blink and a small nod.
+     */
+    enum class Hello { COLD, RETURN, NOD }
+
+    /** Night Owl: always the night sky. Turned on, the owl's pupils widen and it blinks slowly. */
     var privateMode = false
         set(value) {
             if (field == value) return
             field = value
             targetAt = 0L
+            if (animationsOn() && isAttachedToWindow) {
+                val now = SystemClock.uptimeMillis()
+                if (value) {
+                    surpriseUntil = now + 700L
+                    wideUntil = now + 700L
+                    slowBlinkNext = true
+                    nextBlinkAt = now + 500L
+                } else {
+                    nextBlinkAt = now + 150L
+                }
+                smoothUntil = max(smoothUntil, now + 900L)
+                kick()
+            }
             invalidate()
+        }
+
+    /**
+     * Something opaque is over the owl - the search page, the tab deck - so
+     * nothing is drawn at all. Uncovered, it is caught looking up at the page
+     * and glances back at you.
+     */
+    var covered = false
+        set(value) {
+            if (field == value) return
+            field = value
+            if (value) {
+                cutPendingGreeting()
+                stop()
+            } else {
+                peekAt = SystemClock.uptimeMillis()
+                kick()
+            }
         }
 
     private var shownDay = -1f       // eased toward the clock's value, so a jump plays as a short transition
     private var shownTwilight = 0f
-    private var pop = 0f
-    private var popV = 0f
     private var lastFrame = 0L
     private val clock0 = SystemClock.uptimeMillis()
     private var running = false
@@ -115,11 +172,119 @@ class OwlButtonView @JvmOverloads constructor(
     private var moonAgeAt = 0L
     private var target = floatArrayOf(1f, 0f)
     private var targetAt = 0L
-    private var frameMs = FRAME_MS
     private var powerAt = 0L
-    /** Until when the owl moves at its full rate; after that it settles into a calmer one. */
-    private var livelyUntil = 0L
     private var powerSave = false
+    /** One display frame, and the shortest gap between frames while something moves (at most 60fps). */
+    private var vsyncMs = 16.67f
+    private var eventMs = 16.67f
+    /** Until when the owl moves at 30fps; after that it settles into a calmer rate. */
+    private var livelyUntil = 0L
+    /** Until when every display frame is drawn: a tap, a glance, a blink in progress. */
+    private var smoothUntil = 0L
+    private var hiddenSince = -1L
+    private var peekAt = -1L
+
+    // ---- A damped spring, solved exactly for each frame ----
+    //
+    // Stepping a spring by Euler's method gives a different motion at every
+    // frame rate: the tap's hop came out at less than half its height at
+    // 20fps. The closed form below lands in the same place whatever the step.
+    private class Sp(var x: Float, private val w: Float, private val z: Float) {
+        var v = 0f
+        var target = x
+        fun step(dt: Float) {
+            if (dt <= 0f) return
+            val a = x - target
+            if (z < 1f) {
+                val wd = w * sqrt(1f - z * z)
+                val b = (v + z * w * a) / wd
+                val e = exp(-z * w * dt)
+                val c = cos(wd * dt)
+                val s = sin(wd * dt)
+                x = target + e * (a * c + b * s)
+                v = e * ((b * wd - z * w * a) * c - (a * wd + z * w * b) * s)
+            } else {
+                val e = exp(-w * dt)
+                val k = v + w * a
+                x = target + (a + k * dt) * e
+                v = (v - w * k * dt) * e
+            }
+        }
+        fun snap(to: Float) { x = to; v = 0f; target = to }
+        fun moving(): Boolean = abs(x - target) > 0.002f || abs(v) > 0.02f
+    }
+
+    private val hop = Sp(0f, 16.12f, 0.45f)       // units below its rest; negative is up
+    private val squash = Sp(0f, 30f, 0.8f)        // under the finger: < 0 squashed, > 0 fluffed up
+    private val wide = Sp(1f, 17.3f, 0.5f)        // eye size
+    private val headX = Sp(0f, 12f, 1f)           // the head following the eyes
+    private val headY = Sp(0f, 12f, 1f)
+    private val tilt = Sp(0f, 9.49f, 0.55f)       // degrees: curiosity, a tap, a long press
+    private val tufts = Sp(1f, 14f, 0.6f)         // 1 up, 0 flat (asleep), above 1 perked
+    private val surprise = Sp(0f, 12f, 1f)        // pupils wide
+    private val lids = Sp(0f, 25f, 1f)            // eyes closed by a press (a smile) or a long press
+    private val springs = arrayOf(hop, squash, wide, headX, headY, tilt, tufts, surprise, lids)
+    private val pursuitX = Sp(0f, 14f, 1f)        // the eyes following the loading ring
+    private val pursuitY = Sp(YOU_Y, 14f, 1f)
+
+    private val rnd = java.util.Random(SystemClock.uptimeMillis())
+
+    // ---- gaze: hold on something, then a saccade to the next ----
+    private var nextGazeAt = 0L
+    private var gazeAt = -1L
+    private var gazeDur = 95L
+    private var gazeBig = false
+    private var gazeFromX = 0f
+    private var gazeFromY = YOU_Y
+    private var gazeToX = 0f
+    private var gazeToY = YOU_Y
+    private var gazeToYou = true
+    private var gazeFromYou = true
+    private var forceYou = false
+    private var lastLookX = 0f
+    private var lastLookY = YOU_Y
+    private var pickX = 0f
+    private var pickY = 0f
+
+    // ---- blinks ----
+    private var nextBlinkAt = 0L
+    private var blinkAt = -1L
+    private var blinkSlow = false
+    private var blinkShut = 0.06f
+    private var blinkGap = -1L
+    private var slowBlinkNext = false
+
+    // ---- everything else alive ----
+    private var tapAt = -1_000_000L
+    private var surpriseUntil = 0L
+    private var wideUntil = 0L
+    private var perkUntil = 0L
+    private var nodAt = -1L
+    private var nextTiltAt = 0L
+    private var tiltHoldUntil = -1L
+    private var fluffing = false
+    private var breathPh = 0f
+
+    // ---- loading ----
+    private var busy = false
+    private var ringTarget = 0f
+    private var ringShown = 0f
+    private var nextGlanceAt = 0L
+    private var glanceUntil = 0L
+
+    // ---- the greeting ----
+    private var pendingKind = NONE
+    private var pendingSince = 0L
+    private var gatesSince = -1L
+    private var calmFrames = 0
+    private var greetKind = NONE
+    private var greetAt = -1L
+    private var greetOff = 0f
+    private var greetSign = -1f
+    private var greetWink = true
+    private var greetFromX = 0f
+    private var greetFromY = YOU_Y
+    private var lastGreetAt = -1L
 
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
     private val shaded = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -140,6 +305,8 @@ class OwlButtonView @JvmOverloads constructor(
     private val beak = LinearGradient(0f, 98f, 0f, 108f, BEAK0, BEAK1, Shader.TileMode.CLAMP)
     private val moonGlow = RadialGradient(0f, 0f, MOON_R * 2.4f, intArrayOf(0x57D6DEFF, 0x00D6DEFF), floatArrayOf(0.25f, 1f), Shader.TileMode.CLAMP)
     private val moonLitShader = RadialGradient(-3f, -3f, MOON_R + 3f, MOON_LIT, MOON_LIT_EDGE, Shader.TileMode.CLAMP)
+    // The shooting star's trail, in its own coordinates; faded with the paint's alpha.
+    private val starTrail = LinearGradient(0f, 0f, -16f, -5.5f, Color.WHITE, Color.TRANSPARENT, Shader.TileMode.CLAMP)
     private val raysPath = Path().apply {
         for (i in 0 until 12) {
             val a = i * PI / 6
@@ -182,16 +349,128 @@ class OwlButtonView @JvmOverloads constructor(
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
     }
 
-    /** Bounce the owl, as for a tap. */
-    fun pop() {
+    // ---------- What the bar tells it ----------
+
+    /** A finger on the button: the owl squashes a little and smiles; off, it lets go. */
+    fun press(down: Boolean) {
         if (!animationsOn()) return
-        popV += 9f
-        livelyUntil = SystemClock.uptimeMillis() + LIVELY_MS
+        val now = SystemClock.uptimeMillis()
+        if (down) {
+            squash.target = -0.05f
+            lids.target = 0.3f
+        } else {
+            squash.target = 0f
+            lids.target = 0f
+            if (fluffing) { fluffing = false; tilt.target = 0f }
+        }
+        livelyUntil = max(livelyUntil, now + LIVELY_MS)
+        smoothUntil = max(smoothUntil, now + 450L)
         kick()
     }
 
+    /** Held: the owl fluffs up, closes its eyes contentedly and leans in, until let go ([press]). */
+    fun fluff() {
+        if (!animationsOn()) return
+        fluffing = true
+        squash.target = 0.04f
+        lids.target = 0.7f
+        tilt.target = if (rnd.nextBoolean()) 5f else -5f
+        tiltHoldUntil = -1L
+        smoothUntil = max(smoothUntil, SystemClock.uptimeMillis() + 600L)
+        kick()
+    }
+
+    /** A tap: a springy hop - stretching as it goes up, squashing as it lands - wide eyes on you. */
+    fun pop() {
+        if (!animationsOn()) return
+        val now = SystemClock.uptimeMillis()
+        tapAt = now
+        cutPendingGreeting()
+        hop.v = max(-260f, hop.v - 211f)
+        wide.v += 3f
+        lids.target = 0f
+        surpriseUntil = now + 600L
+        perkUntil = now + 300L
+        if (greetKind == NONE || greetKind == RISE) startSaccade(now, 0f, YOU_Y, 60L)
+        if (rnd.nextBoolean()) tilt.v += if (rnd.nextBoolean()) 25f else -25f
+        livelyUntil = now + LIVELY_MS
+        smoothUntil = max(smoothUntil, now + 450L)
+        kick()
+    }
+
+    /**
+     * Asks for a hello. It plays only once the owl can be seen and the app has
+     * settled - the splash gone, nothing in front of it, a few smooth frames in
+     * a row - so it is never half-hidden or stuttering through start-up jank.
+     * A COLD hello puts the owl to sleep low in its window at once, so the
+     * first frame after the splash is already the sleeping owl. Not within a
+     * minute of the last one; nothing when the phone's animations are off.
+     */
+    fun requestGreet(kind: Hello) {
+        if (!animationsOn()) return
+        val now = SystemClock.uptimeMillis()
+        val k = when (kind) {
+            Hello.COLD -> COLD
+            Hello.RETURN -> RETURN
+            Hello.NOD -> NOD
+        }
+        if (greetKind != NONE || pendingKind == COLD || pendingKind == RISE) return
+        if (k != COLD && lastGreetAt >= 0L && now - lastGreetAt < GREET_COOLDOWN_MS) return
+        pendingKind = k
+        pendingSince = now
+        gatesSince = -1L
+        calmFrames = 0
+        if (k == COLD) tufts.snap(0f)
+        kick()
+        invalidate()
+    }
+
+    /**
+     * The tab on screen's load, 0-100. While it loads the owl follows the
+     * ring's head round with its eyes, glancing back at you now and then;
+     * when it is in, a slow contented blink and a small nod. [jump]: a tab
+     * switch - take the new tab's state with no reaction.
+     */
+    fun setLoad(percent: Int, jump: Boolean = false) {
+        val loading = percent in 1..99
+        ringTarget = (percent.coerceIn(0, 100)) / 100f
+        val now = SystemClock.uptimeMillis()
+        if (jump) {
+            ringShown = ringTarget
+            if (loading && !busy) startPursuit(now)
+            busy = loading
+            if (!loading) { gazeFromX = lastLookX; gazeFromY = lastLookY; gazeToX = lastLookX; gazeToY = lastLookY; gazeAt = -1L }
+            return
+        }
+        if (busy == loading) return
+        busy = loading
+        if (loading) {
+            startPursuit(now)
+        } else if (animationsOn() && greetKind == NONE && pendingKind == NONE) {
+            // Done: a contented blink, a little nod, and back to you.
+            startBlink(now, slow = true)
+            nodAt = now
+            startSaccade(now, 0f, YOU_Y)
+            nextGazeAt = now + 1800L
+        } else {
+            gazeFromX = lastLookX; gazeFromY = lastLookY; gazeToX = lastLookX; gazeToY = lastLookY; gazeAt = -1L
+        }
+        kick()
+    }
+
+    private fun startPursuit(now: Long) {
+        pursuitX.snap(lastLookX)
+        pursuitY.snap(lastLookY)
+        ringShown = ringTarget
+        nextGlanceAt = now + lognormal(2200f, 0.4f).toLong()
+        glanceUntil = 0L
+    }
+
+    // ---------- Frames ----------
+
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
+        readVsync()
         kick()
     }
 
@@ -202,21 +481,37 @@ class OwlButtonView @JvmOverloads constructor(
 
     override fun onVisibilityAggregated(isVisible: Boolean) {
         super.onVisibilityAggregated(isVisible)
-        if (isVisible) kick() else stop()
+        val now = SystemClock.uptimeMillis()
+        if (isVisible) {
+            // Back after a while out of sight (the bars hid as a page
+            // scrolled): caught looking up at the page.
+            if (hiddenSince >= 0L && now - hiddenSince >= 1500L) peekAt = now
+            hiddenSince = -1L
+            kick()
+        } else {
+            if (hiddenSince < 0L) hiddenSince = now
+            stop()
+        }
+    }
+
+    override fun onWindowVisibilityChanged(visibility: Int) {
+        super.onWindowVisibilityChanged(visibility)
+        if (visibility == VISIBLE && isShown) kick() else stop()
     }
 
     private val tick = object : Runnable {
         override fun run() {
             if (!running) return
             invalidate()
-            if (animationsOn()) postOnAnimationDelayed(this, frameMs)
-            else postDelayed(this, 60_000L)    // still frame: only follow the clock
+            // The next frame is booked by onDraw, which knows what this one
+            // needs; this is only in case that draw never comes.
+            postOnAnimationDelayed(this, if (animationsOn()) 250L else 60_000L)
         }
     }
 
     private fun kick() {
-        if (running || !isAttachedToWindow || windowVisibility != VISIBLE) return
-        livelyUntil = SystemClock.uptimeMillis() + LIVELY_MS
+        if (running || covered || !isAttachedToWindow || windowVisibility != VISIBLE || !isShown) return
+        livelyUntil = max(livelyUntil, SystemClock.uptimeMillis() + LIVELY_MS)
         running = true
         lastFrame = 0L
         postOnAnimation(tick)
@@ -227,9 +522,11 @@ class OwlButtonView @JvmOverloads constructor(
         removeCallbacks(tick)
     }
 
-    override fun onWindowVisibilityChanged(visibility: Int) {
-        super.onWindowVisibilityChanged(visibility)
-        if (visibility == VISIBLE && isShown) kick() else stop()
+    private fun readVsync() {
+        val hz = display?.refreshRate ?: 60f
+        vsyncMs = 1000f / (if (hz > 1f) hz else 60f)
+        // Every display frame up to 60Hz; every second one above that.
+        eventMs = if (vsyncMs < 14f) vsyncMs * 2f else vsyncMs
     }
 
     private fun animationsOn(): Boolean =
@@ -243,8 +540,11 @@ class OwlButtonView @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         if (width == 0 || height == 0) return
-        val now = SystemClock.uptimeMillis()
-        val dt = if (lastFrame == 0L) 0f else min(0.05f, (now - lastFrame) / 1000f)
+        // The frame's own time (the display's vsync), not the moment this
+        // runs, so motion does not jitter with how late the draw started.
+        val now = drawingTime.let { if (it > 0L) it else SystemClock.uptimeMillis() }
+        val interval = if (lastFrame == 0L) 0L else max(0L, now - lastFrame)
+        val dt = min(0.05f, interval / 1000f)
         lastFrame = now
         val moving = animationsOn()
         val t = if (moving) (now - clock0) / 1000f else 3.3f
@@ -260,19 +560,11 @@ class OwlButtonView @JvmOverloads constructor(
             }
             targetAt = now
         }
-        // Battery: full 30fps for half a minute after the owl appears or is
-        // tapped, then a calm 15fps for as long as it simply sits there, and
-        // 8fps in Battery Saver - the sky moves slowly, so it still looks
-        // alive, at a fraction of the drawing.
         if (now - powerAt > 5000L || powerAt == 0L) {
             val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
             powerSave = pm?.isPowerSaveMode == true
+            readVsync()
             powerAt = now
-        }
-        frameMs = when {
-            powerSave -> 125L
-            now < livelyUntil || pop > 0.01f || popV > 0.01f -> FRAME_MS
-            else -> CALM_FRAME_MS
         }
         if (shownDay < 0f || !moving) {
             shownDay = target[0]; shownTwilight = target[1]
@@ -281,12 +573,7 @@ class OwlButtonView @JvmOverloads constructor(
             shownDay += (target[0] - shownDay) * k
             shownTwilight += (target[1] - shownTwilight) * k
         }
-        if (moving) {                                  // the tap's spring
-            popV += (-pop * 180f - popV * 14f) * dt
-            pop = (pop + popV * dt).coerceIn(-0.2f, 1.2f)
-        } else {
-            pop = 0f; popV = 0f
-        }
+        if (moving && pendingKind != NONE) checkGreetGates(now, interval)
 
         val k = min(width, height) / 120f
         canvas.save()
@@ -297,8 +584,479 @@ class OwlButtonView @JvmOverloads constructor(
             canvas.clipPath(circleClip)
         }
         drawSky(canvas, shownDay, shownTwilight, t)
-        drawOwl(canvas, shownDay, t, if (moving) OwlSky.eyeOpen(t) else 1f, max(0f, pop))
+        if (moving) {
+            drawOwl(canvas, shownDay, pose(now, dt, t))
+        } else {
+            still.reset()
+            drawOwl(canvas, shownDay, still)
+        }
         canvas.restore()
+
+        // The next frame. Every display frame (to 60fps) while something
+        // moves - a blink drawn at 15fps is two frames and reads as a
+        // flicker - 30fps for half a minute after the owl appears or is
+        // tapped, then a calm 15fps for as long as it simply sits there; in
+        // Battery Saver 30fps for moments and 8fps otherwise. Booked half a
+        // display frame early, so it lands on the frame it is meant for.
+        if (running) {
+            removeCallbacks(tick)
+            if (moving) {
+                val eventful = now < smoothUntil || greetKind != NONE || pendingKind != NONE ||
+                    blinkAt >= 0L || (gazeAt >= 0L && now - gazeAt < gazeDur) || nodAt >= 0L ||
+                    springs.any { it.moving() }
+                val budget = when {
+                    powerSave -> if (eventful) 33.3f else 125f
+                    eventful -> eventMs
+                    busy || now < livelyUntil -> 33.3f
+                    else -> 66.7f
+                }
+                val due = now + (budget - vsyncMs / 2f).toLong()
+                postOnAnimationDelayed(tick, max(0L, due - SystemClock.uptimeMillis()))
+            } else {
+                postDelayed(tick, 60_000L)    // still frame: only follow the clock
+            }
+        }
+    }
+
+    // ---------- The greeting ----------
+
+    /** A pending hello starts once the owl is on screen, in front, with the app settled. */
+    private fun checkGreetGates(now: Long, interval: Long) {
+        val age = now - pendingSince
+        if (pendingKind == COLD && age > 15_000L) {
+            // Something held it back all this time: just a plain rise.
+            pendingKind = RISE
+            startGreeting(now)
+            return
+        }
+        if ((pendingKind == RETURN || pendingKind == NOD) && age > 3_000L) { pendingKind = NONE; return }
+        val clear = isShown && hasWindowFocus() && !covered
+        if (!clear) { gatesSince = -1L; calmFrames = 0; return }
+        if (gatesSince < 0L) { gatesSince = now; calmFrames = 0; return }
+        calmFrames = if (interval in 1L..(eventMs * 1.5f + 1f).toLong()) calmFrames + 1 else 0
+        val settled = calmFrames >= 3 || now - gatesSince >= 700L
+        // A cold start waits a moment more, for the splash to finish leaving.
+        val wait = if (pendingKind == COLD) 250L else 0L
+        if (settled && now - gatesSince >= wait) startGreeting(now)
+    }
+
+    /** Covered or tapped before it began: a cold hello becomes a plain rise, the others are dropped. */
+    private fun cutPendingGreeting() {
+        if (pendingKind == COLD) pendingKind = RISE
+        else if (pendingKind == RETURN || pendingKind == NOD) pendingKind = NONE
+    }
+
+    private fun startGreeting(now: Long) {
+        greetKind = pendingKind
+        pendingKind = NONE
+        greetAt = now
+        lastGreetAt = now
+        // An owl is wide awake at night: no grogginess, and it all comes sooner.
+        greetOff = if (greetKind == COLD && (shownDay < 0.3f || privateMode)) -220f else 0f
+        greetSign = -greetSign               // the head tilts the other way each time
+        greetWink = greetKind == COLD || (greetKind == RETURN && rnd.nextBoolean())
+        greetFromX = lastLookX
+        greetFromY = lastLookY
+        blinkAt = -1L
+        val len = greetLength().toLong()
+        nextBlinkAt = now + len + 600L
+        nextGazeAt = now + len + 300L
+        livelyUntil = now + len + LIVELY_MS
+    }
+
+    private fun greetLength(): Float = when (greetKind) {
+        COLD -> 1900f + greetOff
+        RETURN -> 950f
+        NOD -> 420f
+        else -> 300f
+    }
+
+    /** Hands the owl back to its own life from where the greeting left it: no jump in the eyes. */
+    private fun endGreeting(now: Long) {
+        val kind = greetKind
+        greetKind = NONE
+        greetAt = -1L
+        wide.target = 1f
+        surprise.target = 0f
+        tufts.target = 1f
+        if (kind != RISE) {
+            gazeFromX = 0f; gazeToX = 0f; gazeFromY = YOU_Y; gazeToY = YOU_Y
+            gazeAt = -1L
+            gazeToYou = true
+            lastLookX = 0f; lastLookY = YOU_Y
+            // Keeps eye contact a while after saying hello.
+            nextGazeAt = now + (1.6f * lognormal(1600f, 0.5f)).toLong().coerceAtMost(8000L)
+            nextBlinkAt = now + if (kind == COLD) 2400L else blinkInterval(now)
+        }
+        livelyUntil = now + LIVELY_MS
+    }
+
+    /** The greeting, [e] ms in. Sets the pose directly, and the springs' targets for this moment. */
+    private fun greetPose(e: Float, p: Pose) {
+        when (greetKind) {
+            COLD -> {
+                val o = greetOff
+                // The climb: from 30 below, a little past its rest (5%) and back.
+                p.rise = 30f * (1f - easeOutBack((e / 520f).coerceIn(0f, 1f), 1.2f))
+                val lid = if (o == 0f) when {
+                    // By day it wakes groggily: half opens, closes again, then opens.
+                    e < 450f -> 0.05f
+                    e < 610f -> 0.05f + 0.40f * easeOutQuad((e - 450f) / 160f)
+                    e < 730f -> 0.45f
+                    e < 800f -> 0.45f - 0.40f * easeInQuad((e - 730f) / 70f)
+                    else -> 0.05f + 0.95f * easeOutCubic(((e - 800f) / 130f).coerceAtMost(1f))
+                } else {
+                    if (e < 450f) 0.05f else 0.05f + 0.95f * easeOutCubic(((e - 450f) / 130f).coerceAtMost(1f))
+                }
+                p.openL = lid; p.openR = lid
+                val awake = 800f + o
+                wide.target = if (e >= awake && e < 1500f + o) 1.18f else 1f
+                surprise.target = if (e >= awake && e < 1700f + o) 1f else 0f
+                tufts.target = if (e >= awake) 1f else 0f
+                // Drowsy eyes up, then a quick look straight at you.
+                val q = ((e - awake) / 80f).coerceIn(0f, 1f)
+                p.lookX = 0f
+                p.lookY = -2.0f + (YOU_Y + 2.0f) * minJerk(q)
+                p.verge = 0.25f * q
+                p.tilt += greetSign * tiltCurve(e - (1050f + o), 7f, 210f, 140f, 320f)
+                if (greetWink) wink(e - (1300f + o), p)
+            }
+            RETURN -> {
+                // It had dozed off: eyes half shut, then open and wide.
+                val lid = if (e < 120f) 0.55f
+                    else 0.55f + 0.45f * easeOutCubic(((e - 120f) / 130f).coerceAtMost(1f))
+                p.openL = lid; p.openR = lid
+                wide.target = if (e >= 120f && e < 700f) 1.15f else 1f
+                surprise.target = if (e >= 120f && e < 800f) 0.7f else 0f
+                val q = ((e - 120f) / 80f).coerceIn(0f, 1f)
+                lookTowardYou(p, q)
+                p.tilt += greetSign * tiltCurve(e - 380f, 5f, 180f, 80f, 260f)
+                if (greetWink) wink(e - 600f, p)
+            }
+            NOD -> {
+                lookTowardYou(p, (e / 70f).coerceIn(0f, 1f))
+                val b = e - 120f
+                val lid = when {
+                    b < 0f -> 1f
+                    b < 90f -> 1f - 0.94f * easeInOutSine(b / 90f)
+                    b < 120f -> 0.06f
+                    b < 300f -> 0.06f + 0.94f * easeOutCubic((b - 120f) / 180f)
+                    else -> 1f
+                }
+                p.openL = min(p.openL, lid); p.openR = min(p.openR, lid)
+                p.rise += 1.4f * sin(PI.toFloat() * (b / 300f).coerceIn(0f, 1f))
+            }
+            RISE -> p.rise = 30f * (1f - easeOutCubic((e / 300f).coerceIn(0f, 1f)))
+        }
+    }
+
+    private fun lookTowardYou(p: Pose, q: Float) {
+        val m = minJerk(q)
+        p.lookX = greetFromX + (0f - greetFromX) * m
+        p.lookY = greetFromY + (YOU_Y - greetFromY) * m
+        p.verge = 0.25f * q
+    }
+
+    /** Up on a gentle overshoot, held, and back on an ease - velocity continuous all the way. */
+    private fun tiltCurve(e: Float, amp: Float, up: Float, hold: Float, down: Float): Float = when {
+        e <= 0f -> 0f
+        e < up -> amp * easeOutBack(e / up, 1.0f)
+        e < up + hold -> amp
+        e < up + hold + down -> amp * (1f - easeInOutSine((e - up - hold) / down))
+        else -> 0f
+    }
+
+    /** The right eye winks; the left narrows a little with it, as a face does. */
+    private fun wink(e: Float, p: Pose) {
+        if (e <= 0f || e >= 220f) return
+        val r = when {
+            e < 70f -> 1f - 0.95f * easeInQuad(e / 70f)
+            e < 110f -> 0.05f
+            else -> 0.05f + 0.95f * easeOutCubic((e - 110f) / 110f)
+        }
+        p.openR = min(p.openR, r)
+        p.openL = min(p.openL, 1f - 0.15f * sin(PI.toFloat() * e / 220f))
+    }
+
+    // ---------- One frame of the owl ----------
+
+    /** Where everything about the owl is, for one frame. */
+    private class Pose {
+        var rise = 0f          // units down from its rest: the greeting's climb, a nod
+        var hop = 0f           // the tap's hop (negative is up)
+        var squash = 0f        // > 0 taller, < 0 squashed
+        var breath = 0f        // 0 out .. 1 in
+        var tilt = 0f          // degrees, about the bottom of the body
+        var openL = 1f
+        var openR = 1f
+        var wide = 1f
+        var lookX = 0f
+        var lookY = -0.3f
+        var verge = 0f         // both eyes turned in a little: looking at someone close
+        var pupil = 0.38f      // pupil radius, as a share of the eye's
+        var tufts = 1f
+        var headX = 0f
+        var headY = 0f
+        fun reset() {
+            rise = 0f; hop = 0f; squash = 0f; breath = 0f; tilt = 0f; openL = 1f; openR = 1f
+            wide = 1f; lookX = 0f; lookY = -0.3f; verge = 0f; pupil = 0.38f; tufts = 1f
+            headX = 0f; headY = 0f
+        }
+    }
+    private val livePose = Pose()
+    private val still = Pose()
+
+    private fun pose(now: Long, dt: Float, t: Float): Pose {
+        val p = livePose
+        p.reset()
+        val greeting = greetKind == COLD || greetKind == RETURN || greetKind == NOD
+        if (peekAt >= 0L) {
+            if (pendingKind == NONE && greetKind == NONE && !busy) peek(now)
+            peekAt = -1L
+        }
+
+        // ---- gaze ----
+        if (busy && !greeting) {
+            ringShown += (ringTarget - ringShown) * (1f - exp(-dt / 0.16f))
+            if (now >= nextGlanceAt) {
+                glanceUntil = now + 450L
+                nextGlanceAt = now + 450L + lognormal(2200f, 0.4f).toLong()
+            }
+            if (now < glanceUntil) {
+                pursuitX.target = 0f; pursuitY.target = YOU_Y
+            } else {
+                // The head of the ring, going round clockwise from the top.
+                val th = -PI.toFloat() / 2f + 2f * PI.toFloat() * ringShown
+                pursuitX.target = 2.3f * cos(th)
+                pursuitY.target = (2.3f * sin(th)).coerceIn(-2.4f, 0.9f)
+            }
+            pursuitX.step(dt); pursuitY.step(dt)
+            p.lookX = pursuitX.x
+            p.lookY = pursuitY.x
+        } else {
+            if (nextGazeAt == 0L) nextGazeAt = now + 900L
+            if (!greeting && now >= nextGazeAt) newGaze(now)
+            val q = gazeEase(now)
+            p.lookX = gazeFromX + (gazeToX - gazeFromX) * q
+            p.lookY = gazeFromY + (gazeToY - gazeFromY) * q
+            val lin = if (gazeAt < 0L) 1f else ((now - gazeAt) / gazeDur.toFloat()).coerceIn(0f, 1f)
+            p.verge = when {
+                gazeToYou && gazeFromYou -> 0.25f
+                gazeToYou -> 0.25f * lin
+                gazeFromYou -> 0.25f * (1f - lin)
+                else -> 0f
+            }
+        }
+
+        // ---- blinks: uneven, sometimes two at once, sometimes half; fewer while watching a load ----
+        if (!greeting) {
+            if (nextBlinkAt == 0L) nextBlinkAt = now + 1800L + rnd.nextInt(2000)
+            if (blinkAt < 0L && now >= nextBlinkAt) startBlink(now, slowBlinkNext)
+        }
+        if (blinkAt >= 0L) {
+            val e = now - blinkAt
+            var o = blinkOpen(e)
+            if (blinkGap > 0L) o = min(o, blinkOpen(e - blinkGap))
+            p.openL = min(p.openL, o); p.openR = min(p.openR, o)
+            if (e >= blinkSpan()) {
+                blinkAt = -1L
+                nextBlinkAt = now + blinkInterval(now)
+            }
+        }
+
+        // ---- the hello, or the sleeping pose while one waits to start ----
+        when (pendingKind) {
+            COLD -> { p.rise = 30f; p.openL = 0.05f; p.openR = 0.05f; tufts.target = 0f }
+            RISE -> p.rise = 30f
+            RETURN -> { p.openL = min(p.openL, 0.55f); p.openR = min(p.openR, 0.55f) }
+        }
+        if (greetKind != NONE) {
+            val e = (now - greetAt).toFloat().coerceAtLeast(0f)
+            if (e >= greetLength()) endGreeting(now) else greetPose(e, p)
+        }
+        if (nodAt >= 0L) {
+            val q = (now - nodAt) / 300f
+            if (q >= 1f) nodAt = -1L else p.rise += 1.4f * sin(PI.toFloat() * q.coerceAtLeast(0f))
+        }
+
+        // ---- now and then a curious tilt toward what it is looking at ----
+        if (!greeting && !busy && !powerSave && !fluffing) {
+            if (tiltHoldUntil >= 0L) {
+                if (now >= tiltHoldUntil) { tiltHoldUntil = -1L; tilt.target = 0f }
+            } else if (nextTiltAt == 0L) {
+                nextTiltAt = now + lognormal(11000f, 0.5f).toLong()
+            } else if (now >= nextTiltAt) {
+                if (abs(gazeToX) >= 1.2f && gazeAt >= 0L && now - gazeAt >= 250L) {
+                    tilt.target = (if (gazeToX > 0f) 1f else -1f) * (4f + 2f * rnd.nextFloat())
+                    tiltHoldUntil = now + 900L + rnd.nextInt(700)
+                    nextTiltAt = now + lognormal(11000f, 0.5f).coerceIn(4000f, 30000f).toLong()
+                } else {
+                    nextTiltAt = now + 400L
+                }
+            }
+        }
+
+        // ---- springs ----
+        if (!greeting) {
+            wide.target = if (now < wideUntil) 1.1f else 1f
+            surprise.target = if (now < surpriseUntil) 1f else 0f
+            if (pendingKind != COLD) tufts.target = if (now < perkUntil) 1.25f else 1f
+        }
+        // The head follows the eyes a beat behind, the face more than the body.
+        headX.target = (0.55f * p.lookX).coerceIn(-1.3f, 1.3f)
+        headY.target = 0.3f * p.lookY
+        for (s in springs) s.step(dt)
+        if (hop.x < -11f) { hop.x = -11f; if (hop.v < 0f) hop.v = 0f }
+
+        // ---- breathing: in shorter than out, quicker for a while after a tap ----
+        val period = if (busy) 3600f else 4200f - 1200f * exp(-(now - tapAt) / 4000f)
+        breathPh = (breathPh + dt * 1000f / period) % 1f
+        p.breath = if (breathPh < 0.42f) smooth(breathPh / 0.42f) else 1f - smooth((breathPh - 0.42f) / 0.58f)
+
+        lastLookX = p.lookX
+        lastLookY = p.lookY
+        // The faint tremor living eyes have even while they hold still, less
+        // when they hold on you.
+        val drift = if (gazeToYou && !busy) 0.7f else 1f
+        p.lookX += 0.12f * drift * sin(t * 1.7f)
+        p.lookY += 0.1f * drift * sin(t * 1.3f + 1f)
+
+        p.hop = hop.x
+        p.squash = (0.00035f * abs(hop.v) - 0.025f * max(0f, hop.x)).coerceIn(-0.06f, 0.08f) + squash.x
+        p.wide *= wide.x
+        p.tilt += tilt.x
+        p.tufts = tufts.x
+        p.pupil = 0.36f + 0.06f * (1f - shownDay.coerceIn(0f, 1f)) + 0.06f * surprise.x
+        p.headX = headX.x
+        p.headY = headY.x
+        val l = lids.x.coerceIn(0f, 0.95f)
+        if (l > 0.001f) { p.openL = min(p.openL, 1f - l); p.openR = min(p.openR, 1f - l) }
+        return p
+    }
+
+    /** Caught looking up at the page, it glances back at you. */
+    private fun peek(now: Long) {
+        gazeFromX = 0f; gazeToX = 0f; gazeFromY = -2.4f; gazeToY = -2.4f
+        gazeAt = -1L
+        gazeToYou = false; gazeFromYou = false
+        lastLookX = 0f; lastLookY = -2.4f
+        forceYou = true
+        nextGazeAt = now + 140L
+        if (rnd.nextBoolean() && blinkAt < 0L) nextBlinkAt = now + 200L
+    }
+
+    /** Picks what to look at next and goes there. */
+    private fun newGaze(now: Long) {
+        var tries = 0
+        do {
+            pickGaze()
+            tries++
+        } while (tries < 2 && hypot(pickX - lastLookX, pickY - lastLookY) < 0.6f)
+        startSaccade(now, pickX, pickY)
+        val hold = lognormal(1600f, 0.5f).coerceIn(500f, 6000f) * (if (gazeToYou) 1.6f else 1f)
+        nextGazeAt = now + gazeDur + hold.toLong()
+    }
+
+    /**
+     * You, most often; the page above; up to either side; along the bar; or a
+     * small re-fixation near where it already looks.
+     */
+    private fun pickGaze() {
+        if (forceYou) { forceYou = false; pickX = 0f; pickY = YOU_Y; return }
+        val r = rnd.nextFloat()
+        when {
+            r < 0.30f -> { pickX = 0f; pickY = YOU_Y }
+            r < 0.48f -> { pickX = (rnd.nextFloat() * 2f - 1f) * 0.6f; pickY = -2.3f }
+            r < 0.60f -> { pickX = -1.9f; pickY = -1.9f }
+            r < 0.72f -> { pickX = 1.9f; pickY = -1.9f }
+            r < 0.81f -> { pickX = -2.3f; pickY = -0.5f }
+            r < 0.90f -> { pickX = 2.3f; pickY = -0.5f }
+            else -> {
+                fun nudge() = (0.2f + 0.3f * rnd.nextFloat()) * (if (rnd.nextBoolean()) 1f else -1f)
+                pickX = (lastLookX + nudge()).coerceIn(-2.4f, 2.4f)
+                pickY = (lastLookY + nudge()).coerceIn(-2.4f, 0.9f)
+            }
+        }
+    }
+
+    /**
+     * A saccade: small ones quick, big ones slower and landing with a
+     * slight overshoot that settles, as eyes do. A big one often brings a
+     * blink with it.
+     */
+    private fun startSaccade(now: Long, tx: Float, ty: Float, fixedMs: Long = -1L) {
+        gazeFromX = lastLookX; gazeFromY = lastLookY
+        gazeFromYou = abs(lastLookX) < 0.05f && abs(lastLookY - YOU_Y) < 0.05f
+        gazeToX = tx; gazeToY = ty
+        gazeToYou = tx == 0f && ty == YOU_Y
+        val dist = hypot(tx - gazeFromX, ty - gazeFromY)
+        gazeDur = if (fixedMs > 0L) fixedMs else (45f + 18f * dist).toLong()
+        gazeBig = dist >= 1.2f
+        gazeAt = now
+        if (dist >= 2.5f && blinkAt < 0L && greetKind == NONE && rnd.nextFloat() < 0.35f) {
+            startBlink(now, slow = false)
+            nextBlinkAt = max(nextBlinkAt, now + 1200L)
+        }
+        smoothUntil = max(smoothUntil, now + gazeDur + 20L)
+    }
+
+    private fun gazeEase(now: Long): Float {
+        if (gazeAt < 0L) return 1f
+        val q = ((now - gazeAt) / gazeDur.toFloat()).coerceIn(0f, 1f)
+        if (q >= 1f) return 1f
+        return if (gazeBig) easeOutBack(q, 0.9f) else minJerk(q)
+    }
+
+    private fun startBlink(now: Long, slow: Boolean) {
+        blinkAt = now
+        blinkSlow = slow
+        slowBlinkNext = false
+        blinkShut = if (!slow && rnd.nextFloat() < 0.15f) 0.4f else 0.06f
+        blinkGap = if (!slow && rnd.nextFloat() < 0.12f) 170L + rnd.nextInt(71) else -1L
+        smoothUntil = max(smoothUntil, now + blinkSpan())
+    }
+
+    private fun blinkSpan(): Long = (if (blinkSlow) 320L else 240L) + max(0L, blinkGap)
+
+    /** One blink [e] ms in: shut quickly, a moment closed, open a little slower, as lids do. */
+    private fun blinkOpen(e: Long): Float {
+        if (e < 0L) return 1f
+        val shut = blinkShut
+        return if (blinkSlow) when {
+            e < 110L -> 1f - (1f - shut) * easeInOutSine(e / 110f)
+            e < 160L -> shut
+            e < 320L -> shut + (1f - shut) * easeOutCubic((e - 160L) / 160f)
+            else -> 1f
+        } else when {
+            e < 75L -> 1f - (1f - shut) * easeInQuad(e / 75f)
+            e < 100L -> shut
+            e < 240L -> shut + (1f - shut) * easeOutCubic((e - 100L) / 140f)
+            else -> 1f
+        }
+    }
+
+    /** About four seconds, unevenly (1.2-9s); longer while it watches a load or at night, shorter after a tap. */
+    private fun blinkInterval(now: Long): Long {
+        var ms = lognormal(3600f, 0.45f).coerceIn(1200f, 9000f)
+        if (busy) ms *= 1.6f
+        if (shownDay < 0.3f || privateMode) ms *= 1.15f
+        if (now - tapAt < 5000L) ms *= 0.8f
+        return ms.toLong()
+    }
+
+    private fun lognormal(median: Float, sigma: Float): Float =
+        median * exp(sigma * rnd.nextGaussian().toFloat())
+
+    private fun easeOutCubic(x: Float): Float { val u = 1f - x; return 1f - u * u * u }
+    private fun easeOutQuad(x: Float): Float = 1f - (1f - x) * (1f - x)
+    private fun easeInQuad(x: Float): Float = x * x
+    private fun easeInOutSine(x: Float): Float = 0.5f - 0.5f * cos(PI.toFloat() * x)
+    private fun smooth(x: Float): Float = x * x * (3f - 2f * x)
+    private fun minJerk(x: Float): Float = x * x * x * (10f - 15f * x + 6f * x * x)
+    private fun easeOutBack(x: Float, c1: Float = 1.70158f): Float {
+        val c3 = c1 + 1f
+        val u = x - 1f
+        return 1f + c3 * u * u * u + c1 * u * u
     }
 
     private fun drawSky(c: Canvas, d: Float, w: Float, t: Float) {
@@ -328,11 +1086,14 @@ class OwlButtonView @JvmOverloads constructor(
             val sp = (t % 17f) / 0.9f
             if (sp < 1f && starA > 0.5f) {
                 val x0 = 18 + sp * 46; val y0 = 12 + sp * 16
-                stroke.shader = LinearGradient(x0, y0, x0 - 16, y0 - 5.5f,
-                    Color.argb((230 * (1 - sp) * starA).toInt(), 255, 255, 255), Color.TRANSPARENT, Shader.TileMode.CLAMP)
-                stroke.strokeWidth = 1.2f; stroke.alpha = 255
-                c.drawLine(x0, y0, x0 - 16, y0 - 5.5f, stroke)
-                stroke.shader = null
+                // One gradient made once, moved into place, faded by alpha:
+                // no new shader on every frame of the streak.
+                c.save(); c.translate(x0, y0)
+                stroke.shader = starTrail
+                stroke.strokeWidth = 1.2f; stroke.alpha = (230 * (1 - sp) * starA).toInt().coerceIn(0, 255)
+                c.drawLine(0f, 0f, -16f, -5.5f, stroke)
+                stroke.shader = null; stroke.alpha = 255
+                c.restore()
             }
         }
 
@@ -403,31 +1164,47 @@ class OwlButtonView @JvmOverloads constructor(
         }
     }
 
-    private fun drawOwl(c: Canvas, d: Float, t: Float, open: Float, pop: Float) {
-        val bob = -1.2f * (0.5f + 0.5f * sin(t * PI.toFloat() / 2f)) - pop * 6f
-        c.save(); c.translate(0f, bob)
+    private fun drawOwl(c: Canvas, d: Float, pose: Pose) {
+        c.save()
+        // The greeting's climb, a nod, the tap's hop, and the breath.
+        c.translate(0f, pose.rise + pose.hop - 0.9f * pose.breath)
+        // Squash and stretch - taller on the way up, wider as it lands or
+        // under a finger - and the chest filling, all about the bottom of
+        // the body; the head's tilt about the same point.
+        val s = pose.squash
+        c.scale(1f - 0.5f * s, 1f + s, 60f, 120f)
+        c.scale(1f + 0.005f * pose.breath, 1f + 0.014f * pose.breath, 60f, 120f)
+        if (pose.tilt != 0f) c.rotate(pose.tilt, 60f, 118f)
+        // The head turning after the eyes: the face slides furthest, the
+        // tufts less and the body least.
+        val hx = pose.headX.coerceIn(-1.3f, 1.3f)
         shaded.shader = owlBody; shaded.alpha = 255
-        c.drawPath(tuftL, shaded); c.drawPath(tuftR, shaded)
+        val flat = (1f - pose.tufts) * 10f            // degrees: laid back when asleep, perked when surprised
+        c.save(); c.translate(0.7f * hx, 0f)
+        c.save(); c.rotate(-flat, 29f, 84f); c.drawPath(tuftL, shaded); c.restore()
+        c.save(); c.rotate(flat, 91f, 84f); c.drawPath(tuftR, shaded); c.restore()
+        c.restore()
+        c.save(); c.translate(0.4f * hx, 0f)
         c.drawCircle(60f, 112f, 50f, shaded)
         shaded.shader = owlSheen; shaded.alpha = (255 * (0.2f + 0.1f * d)).toInt()
         c.drawCircle(60f, 112f, 50f, shaded)
+        c.restore()
+        c.save(); c.translate(hx, 0f)
         fill.shader = null; fill.color = Color.WHITE; fill.alpha = 31
         path.reset()
         path.addCircle(45f, 86f, 17f, Path.Direction.CW); path.addCircle(75f, 86f, 17f, Path.Direction.CW)
         c.drawPath(path, fill)                        // the facial discs, one shape so the overlap is not doubled
-        // eyes wander, glancing up now and then
-        val sx = sin(t * 0.55f)
-        val lx = 2.2f * sx * min(1f, abs(sx) * 1.6f)
-        val ly = -1.2f + 0.9f * sin(t * 0.31f)
-        val wide = 1 + 0.15f * pop
-        drawEye(c, 45f, 86f, 12.5f, lx, ly, open, wide, scleraL)
-        drawEye(c, 75f, 86f, 12.5f, lx, ly, open, wide, scleraR)
+        c.translate(0f, pose.headY)
+        // Where it is looking, each eye turned in a little when that is you.
+        drawEye(c, 45f, 86f, 12.5f, pose.lookX + pose.verge, pose.lookY, pose.openL, pose.wide, pose.pupil, scleraL)
+        drawEye(c, 75f, 86f, 12.5f, pose.lookX - pose.verge, pose.lookY, pose.openR, pose.wide, pose.pupil, scleraR)
         shaded.shader = beak; shaded.alpha = 255
         c.drawPath(beakPath, shaded)
         c.restore()
+        c.restore()
     }
 
-    private fun drawEye(c: Canvas, cx: Float, cy: Float, r: Float, lx: Float, ly: Float, open: Float, wide: Float, sclera: Shader) {
+    private fun drawEye(c: Canvas, cx: Float, cy: Float, r: Float, lx: Float, ly: Float, open: Float, wide: Float, pupil: Float, sclera: Shader) {
         c.save()
         c.scale(wide, wide * max(0.08f, open), cx, cy)
         fill.shader = null; fill.color = EYE_SHADOW; fill.alpha = 71
@@ -440,7 +1217,7 @@ class OwlButtonView @JvmOverloads constructor(
         c.drawCircle(0f, 0f, r * 0.66f, shaded)
         c.restore()
         fill.color = PUPIL; fill.alpha = 255
-        c.drawCircle(cx + lx * 1.15f, cy + ly * 1.15f, r * 0.38f, fill)
+        c.drawCircle(cx + lx * 1.15f, cy + ly * 1.15f, r * pupil, fill)
         fill.color = Color.WHITE
         c.drawCircle(ix + r * 0.2f, iy - r * 0.22f, r * 0.17f, fill)
         fill.alpha = 217
@@ -484,10 +1261,18 @@ class OwlButtonView @JvmOverloads constructor(
         p.close()
     }
 
+
     private companion object {
-        const val FRAME_MS = 33L
-        const val CALM_FRAME_MS = 66L
         const val LIVELY_MS = 30_000L
+        const val GREET_COOLDOWN_MS = 60_000L
+        /** Where "looking at you" is, in eye units: straight out, a touch up. */
+        const val YOU_Y = -0.3f
+        // Greeting kinds; RISE is a cold hello cut short, a plain climb.
+        const val NONE = 0
+        const val COLD = 1
+        const val RETURN = 2
+        const val NOD = 3
+        const val RISE = 4
         const val SUN_R = 10.5f
         const val MOON_R = 10f
 

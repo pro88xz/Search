@@ -9,11 +9,13 @@ Work included in Search that other people wrote.
 weight, from `@phosphor-icons/core` 2.1.1.
 
 `nav_menu.xml`, the bottom bar's menu button, is Phosphor's `list`, Bold
-weight, and `menu_find.xml` is the Bold `magnifying-glass`, both from the same
+weight, and `menu_find.xml` is the Bold `magnifying-glass` (`menu_zoom.xml` the
+Bold `magnifying-glass-plus`), all from the same
 package with path data copied unchanged. So are the menu's `menu_share.xml`
 (`share-network`), `menu_translate.xml` (`translate`), `menu_reader.xml`
 (`book-open`), `menu_add_home.xml` (`plus-square`) and `menu_reopen.xml`
-(`arrow-counter-clockwise`), and Settings' `set_default.xml` (`browser`),
+(`arrow-counter-clockwise`), Settings' `set_default.xml` (`browser`) and `set_widget.xml`
+(`squares-four`), and the tab deck's `deck_more.xml` (`dots-three-vertical`),
 all Bold.
 
 MIT License

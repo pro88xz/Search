@@ -2,4 +2,19 @@
 <resources>
     <string name="app_name">Search</string>
     <string name="suggest_title">Search suggestions</string>
+    <!-- Launcher shortcuts (xml/shortcuts.xml). Short labels fit under 10 characters. -->
+    <string name="shortcut_search">Search</string>
+    <string name="shortcut_search_long">Search the web</string>
+    <string name="shortcut_new_tab">New tab</string>
+    <string name="shortcut_night_owl">Night Owl</string>
+    <string name="shortcut_night_owl_long">New Night Owl tab</string>
+    <string name="shortcut_scan">Scan QR</string>
+    <string name="shortcut_scan_long">Scan a QR code</string>
+    <!-- Home-screen search widget (SearchWidget). -->
+    <string name="widget_hint">Search the web</string>
+    <string name="widget_voice">Voice search</string>
+    <string name="widget_scan">Scan a QR code</string>
+    <string name="widget_description">Search the web, by voice or with a QR code, from your home screen</string>
+    <!-- Quick Settings tile (OwlTileService). -->
+    <string name="tile_night_owl">Night Owl</string>
 </resources>

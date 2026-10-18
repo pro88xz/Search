@@ -53,6 +53,13 @@
                     android:drawableStart="@drawable/set_default" />
             </LinearLayout>
 
+            <!-- The search widget, where the home screen can take one (SettingsActivity). -->
+            <LinearLayout android:id="@+id/widgetCard" style="@style/SettingsCard">
+                <TextView android:id="@+id/rowWidget" style="@style/SettingsRow"
+                    android:text="Add the search widget to your home screen"
+                    android:drawableStart="@drawable/set_widget" />
+            </LinearLayout>
+
             <!-- Search engine -->
             <TextView style="@style/SettingsCardLabel" android:text="Search engine" />
             <LinearLayout style="@style/SettingsCard">

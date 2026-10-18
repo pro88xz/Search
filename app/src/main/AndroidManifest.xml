@@ -67,6 +67,10 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Long-press the launcher icon: Search, New tab, Night Owl, Scan QR. -->
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
             <!-- Open web links tapped in other apps; required to be offered as a browser. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -80,6 +84,27 @@
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
+
+        <!-- "Search" in other apps' text-selection menus (PROCESS_TEXT) and a
+             plain web search from the system: hands the text to the browser
+             and goes. -->
+        <activity
+            android:name=".ProcessTextActivity"
+            android:label="Search"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.WEB_SEARCH" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
 
@@ -133,6 +158,31 @@
           Notification buttons worked because a PendingIntent carries this
           app's own identity; the hardware ones did not.
         -->
+        <!-- The home-screen search widget. -->
+        <receiver
+            android:name=".SearchWidget"
+            android:label="Search"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/search_widget_info" />
+        </receiver>
+
+        <!-- A Night Owl tile for the Quick Settings shade. -->
+        <service
+            android:name=".OwlTileService"
+            android:label="@string/tile_night_owl"
+            android:icon="@drawable/ic_tile_owl"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
         <receiver
             android:name="androidx.media.session.MediaButtonReceiver"
             android:exported="true">

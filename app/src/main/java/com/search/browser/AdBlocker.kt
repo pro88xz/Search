@@ -144,9 +144,29 @@ object AdBlocker {
     fun isEnabled(c: Context): Boolean =
         Settings.getBool(c, Settings.ADBLOCK_ENABLED, false)
 
+    /**
+     * The host or any domain it sits under is on the list: a.b.criteo.com is
+     * looked up as itself, then b.criteo.com, then criteo.com - a few set
+     * lookups per request instead of comparing it with every entry, on a path
+     * every picture, script and frame of every page goes through.
+     */
     private fun isBlockedHost(host: String): Boolean {
-        val h = host.lowercase().removeSuffix(".")
-        return BLOCKED.any { h == it || h.endsWith("." + it) }
+        var h = host.lowercase().removeSuffix(".")
+        while (true) {
+            if (h in BLOCKED) return true
+            val dot = h.indexOf('.')
+            if (dot < 0 || dot == h.length - 1) return false
+            h = h.substring(dot + 1)
+        }
+    }
+
+    /**
+     * The app's own sites are never blocked, whatever the setting: the games
+     * section's ads (toolsepulse.co) are what pays for the games.
+     */
+    fun isOwnSite(pageHost: String?): Boolean {
+        val h = pageHost?.lowercase() ?: return false
+        return h == "toolsepulse.co" || h.endsWith(".toolsepulse.co")
     }
 
     /**
@@ -156,6 +176,7 @@ object AdBlocker {
      */
     fun check(c: Context, request: WebResourceRequest?, pageHost: String? = null): WebResourceResponse? {
         if (!isEnabled(c)) return null
+        if (isOwnSite(pageHost)) return null
         if (pageHost != null && AdBlockSites.isAllowed(c, pageHost)) return null
         // Never the page itself. A top-level navigation is somewhere the user
         // is going - a link they tapped, or a redirect on the way to one - and
@@ -169,10 +190,13 @@ object AdBlocker {
         val host = uri.host?.lowercase()?.removeSuffix(".") ?: return null
         val path = (uri.path ?: "").lowercase()
         if (isBlockedHost(host)) {
+            PrivacyStats.blocked()
             return if (wantsCallbacks(host, path)) callbacksResponse() else emptyResponse()
         }
-        if (isFacebookPixel(host, path)) return emptyResponse()
-        if (BLOCKED_PATHS.any { (host + path).contains(it) }) return emptyResponse()
+        if (isFacebookPixel(host, path) || BLOCKED_PATHS.any { (host + path).contains(it) }) {
+            PrivacyStats.blocked()
+            return emptyResponse()
+        }
         return null
     }
 
