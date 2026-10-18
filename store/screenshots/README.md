@@ -18,12 +18,12 @@ Volume down takes each one. Save them as `captures/01.png` ... `08.png`:
 | # | Headline | What to capture |
 |---|----------|-----------------|
 | 01 | Private browser with **ad blocker** | A busy news or recipe site, open and clean with ad blocking on |
-| 02 | Top stories and **trending videos** | Home scrolled to Top Stories, with a YouTube video card (play button) in view |
+| 02 | **Top stories** on your home page | Home scrolled into Top Stories, no close-up faces in view |
 | 03 | Smart **web search** | Search open, typing a word (e.g. "weather"), suggestions showing |
 | 04 | **Night Owl** private browsing | Night Owl on, its home page |
 | 05 | Three ways to **browse** | Settings > Browsing mode, the three mode cards |
-| 06 | Every tool **one tap** away | The menu open with the Page tools strip showing |
-| 07 | Tabs, bookmarks and **downloads** | The tab switcher with three or four tabs open |
+| 06 | Every tool **one tap** away | The menu open on the home page |
+| 07 | Tabs, bookmarks and **downloads** | The tab switcher with three or four neutral tabs open (no well-known people, adult topics, artists' videos or cookie pop-ups) |
 | 08 | Search **widget** for your home screen | The phone's home screen with the Search widget on it |
 
 ## Making the frames
