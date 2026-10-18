@@ -1212,6 +1212,11 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        // The browser is on top again, so no ad is: the splash picture laid
+        // behind one comes off even if the ad's "closed" never arrived -
+        // left up, it covered the browser for good, and Back (which it
+        // holds while it is up) did nothing: the app looked frozen.
+        if (launchCover != null && coverAdShowing) hideLaunchCover()
         // Back from the background: an app open ad that is ready opens the
         // way in (a launch is handled by the splash: onSplashMinimumDone).
         if (AppOpenAds.takeOpen() == AppOpenAds.WARM_OPEN) warmOpenAd()
@@ -7052,6 +7057,7 @@ class MainActivity : AppCompatActivity() {
         AppOpenAds.showNow(this, onShowing = {
             onScreen = true
             showLaunchCover()
+            coverAdShowing = true
             releaseSplash()
         }, onDone = {
             releaseSplash()
