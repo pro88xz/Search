@@ -86,8 +86,7 @@ Each must load, scroll, and work as on Chrome:
 2. **Closed testing** — a small group for a few days.
 3. **Production, staged rollout** — start at 5–10%.
 4. **Watch** Play Console → Android vitals (crash rate, ANR rate) for 2–3 days,
-   and your own **Performance & health** screen. Users can send theirs with
-   **Share report**.
+   and your own **Performance & health** screen.
 5. **Increase** to 25% → 50% → 100% only while crash and ANR rates stay at or
    below the previous version. **Halt the rollout** if they rise.
 
@@ -99,9 +98,9 @@ that failed and was fixed, always go through a staged rollout.
 Settings → **Performance & health** keeps each version's numbers separately
 (crash-free sessions, crashes, ANRs, renderer crashes, page failures, start-up
 time, page timings, memory warnings) for the last four versions. Compare the
-new version's block with the previous one; ask testers to **Share report**
-from theirs. Debug builds also log each page's timing line (Menu → Share
-debug log, lines with `metrics`).
+new version's block with the previous one; ask testers for a screenshot
+of theirs. Debug builds also log each page's timing line to logcat
+(`adb logcat -s Search`, lines with `metrics`).
 
 ## Appendix: checks for the October 2026 branch (`claude/lucid-maxwell-5r0bu7`)
 
@@ -131,7 +130,7 @@ These were built without a phone to run them on. Check each once:
       Downloads screen.
 - [ ] Download confirmation shows size, "to Downloads" and free space.
 - [ ] Settings → Performance & health shows numbers after some browsing;
-      Share report works.
+      in a release build there is no Ads card, no ad lines and no Share.
 - [ ] Settings → Site settings → Permissions by site lists sites that asked,
       and changing one takes effect on that site's next request.
 - [ ] Address bar: typing an open tab's site offers "Switch to tab"; copying a
@@ -196,7 +195,7 @@ These were built without a phone to run them on. Check each once:
       plain bars. Settings → Customize → Page colours in the bars off: plain.
 - [ ] Top Stories shows World stories (BBC, Guardian, NPR, Sky, France 24,
       ABC, CBS, UN News) among the first cards, each with a sharp picture, and
-      a "World" filter chip under See all. Menu > Share debug log, "feed"
+      a "World" filter chip under See all. In a debug build, logcat "feed"
       lines: each world source shows the URL that answered and items kept.
       The feed's ad card is where it always was.
 - [ ] Menu > Print or save as PDF on an article: Android's print screen
@@ -352,8 +351,8 @@ These were built without a phone to run them on. Check each once:
 - [ ] (1.9.0) App open ad: open from the launcher a few times (leave with
       Home, come back): the ad shows as it opens (a test ad in debug).
       Not after sharing a link and coming back, not when a link from
-      another app opened the browser, not in Night Owl. Settings >
-      Performance & health > Ads: "App open ad: asked, loaded, failed,
-      shown" counts move.
+      another app opened the browser, not in Night Owl. Debug build only:
+      Settings > Performance & health > Ads: "App open ad: asked, loaded,
+      failed, shown" counts move; a release build shows no ad numbers.
 - [ ] (1.8.0) Open a link from another app, then Back: the tab closes and
       that app comes back.

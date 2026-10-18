@@ -688,7 +688,7 @@ class SectionActivity : AppCompatActivity() {
     private fun buildHealth() {
         addNote("How Search is running on this phone, version by version. Only " +
             "counts and timings are kept - never the sites you visit - and " +
-            "nothing is sent anywhere unless you share it.")
+            "nothing is sent anywhere.")
         val versions = HealthStats.versions(this)
         if (versions.isEmpty()) addNote("Nothing measured yet.")
         versions.forEachIndexed { i, v ->
@@ -706,9 +706,9 @@ class SectionActivity : AppCompatActivity() {
             endGroup()
         }
         // Why the home-feed ad or the app open ad did or did not show, in
-        // words: a release build has no log, and a missing ad looks the same
-        // whatever the cause.
-        val adLines = HealthStats.adLines(this)
+        // words - for testing, so debug builds only: release builds show no
+        // ad numbers at all.
+        val adLines = if (BuildConfig.DEBUG) HealthStats.adLines(this) else emptyList()
         if (adLines.isNotEmpty()) {
             val card = group("Ads")
             adLines.forEachIndexed { n, line ->
@@ -722,17 +722,6 @@ class SectionActivity : AppCompatActivity() {
             }
             addNote("Code 3 (no fill) is AdMob having no ad to give: usual for a new ad unit, " +
                 "or while the app is being reviewed in AdMob. It is not a fault in the app.")
-        }
-        group()
-        addAction("Share report",
-            "Send these numbers, with your Android version and phone model.") {
-            val send = android.content.Intent(android.content.Intent.ACTION_SEND)
-                .setType("text/plain")
-                .putExtra(android.content.Intent.EXTRA_SUBJECT, "Search performance & health")
-                .putExtra(android.content.Intent.EXTRA_TEXT, HealthStats.report(this))
-            try {
-                startActivity(android.content.Intent.createChooser(send, "Share report"))
-            } catch (e: Exception) { /* nothing can share text */ }
         }
     }
 
