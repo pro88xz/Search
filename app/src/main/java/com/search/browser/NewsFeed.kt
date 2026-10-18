@@ -101,12 +101,16 @@ object NewsFeed {
     internal const val TRAVEL = "Travel"
     internal const val DESIGN = "Design"
     internal const val INTERESTING = "Interesting"
+    // The YouTube channels' own categories (YT_CHANNELS); Music is shared with the publishers.
+    internal const val TRENDING = "Trending"
+    internal const val VIRAL = "Viral"
+    internal const val COMEDY = "Comedy"
 
     /** The only values "category" can take. home.html may style each one. */
     internal val CATEGORIES = listOf(
         WORLD, AI, MOBILE, TECH, GAMING, ENTERTAINMENT, MUSIC, CREATORS, INTERNET,
         DEVELOPER, SECURITY, SPACE, SCIENCE, ROBOTICS, AUTO, BUSINESS, SPORTS,
-        TRAVEL, DESIGN, INTERESTING
+        TRAVEL, DESIGN, INTERESTING, TRENDING, VIRAL, COMEDY
     )
 
     private val ANY: Set<String> = CATEGORIES.toSet()
@@ -122,7 +126,8 @@ object NewsFeed {
     private val BROAD: Map<String, Double> = HashMap<String, Double>().apply {
         // The day's world news is the broadest interest there is.
         put(WORLD, 0.8)
-        for (c in listOf(AI, MOBILE, GAMING, ENTERTAINMENT, MUSIC, SPACE, SCIENCE, SPORTS, INTERESTING)) put(c, 0.6)
+        for (c in listOf(AI, MOBILE, GAMING, ENTERTAINMENT, MUSIC, SPACE, SCIENCE, SPORTS, INTERESTING,
+                TRENDING, VIRAL, COMEDY)) put(c, 0.6)
         for (c in listOf(TECH, INTERNET, CREATORS, AUTO, ROBOTICS, TRAVEL, DESIGN, SECURITY)) put(c, 0.3)
         for (c in listOf(BUSINESS, DEVELOPER)) put(c, 0.0)
     }
@@ -178,7 +183,9 @@ object NewsFeed {
      * and creator-economy feeds post too little to earn a request every half
      * hour - while Ars Technica, WIRED, The Verge and TechCrunch cover all of
      * them every day. Creators also gets YouTube's own trending chart when an
-     * API key is configured; see [fetchYouTube].
+     * API key is configured; see [fetchYouTube]. Videos - trending, viral,
+     * comedy and music - come from YouTube channels' own feeds, which need no
+     * key; see [YT_CHANNELS].
      */
     internal val SOURCES: List<Source> = listOf(
         // World news, from international editions rather than one country's
@@ -638,7 +645,9 @@ object NewsFeed {
         // A handful of items is what a flaky connection produces, and a full
         // feed from an hour ago is better than it. Keep the old one and try
         // again shortly - unless the old one is itself stale or absent.
-        if (fresh.size < MIN_FRESH && warm != null && now - cachedAt < STALE_MS) {
+        // Stories only: the videos come from their own copy on disk, so they
+        // would make a refresh in which most publishers failed look full.
+        if (storiesIn(fresh) < MIN_FRESH && warm != null && now - cachedAt < STALE_MS) {
             DebugLog.add { "feed  thin refresh (" + fresh.size + " items), kept the cached feed" }
             retryAt = now + THIN_RETRY_MS
             return warm
@@ -651,6 +660,9 @@ object NewsFeed {
         writeDisk(context, json)
         return json
     }
+
+    /** The publishers' stories in a feed, leaving out the videos. */
+    private fun storiesIn(items: List<Item>): Int = items.count { it.sourceId != YOUTUBE_ID }
 
     // ---------- gather ----------
 
@@ -685,7 +697,7 @@ object NewsFeed {
                 i to try { work() } catch (t: Throwable) { Failed("failed: " + t.javaClass.simpleName) }
             })
             for ((i, s) in sources.withIndex()) task(i) { readSource(s, mem, now, deadline) }
-            task(sources.size) { fetchYouTube(context, mem, now) }
+            task(sources.size) { fetchYouTube(context, mem, now) + fetchYouTubeChannels(context, mem, now) }
 
             var left = n
             var wantEarly = early != null
@@ -696,7 +708,7 @@ object NewsFeed {
                     // The first stories, if there are enough to be a feed;
                     // otherwise tried again as each further source lands.
                     val partial = assemble(results(), youtube(), mem, now, early = true)
-                    if (partial.size >= MIN_FRESH) {
+                    if (storiesIn(partial) >= MIN_FRESH) {
                         early?.invoke(partial)
                         wantEarly = false
                     }
@@ -908,7 +920,7 @@ object NewsFeed {
 
         val stories = rank(kept, now)
         val last = readLead(mem)
-        val out = arrange(stories, now, last)
+        val out = withVideoShelves(arrange(stories, now, last), stories)
         if (early) return out
         if (out.isNotEmpty()) writeLead(mem, out[0], last, now)
 
@@ -1327,6 +1339,11 @@ object NewsFeed {
      */
     internal fun score(rep: Item, outlets: Int, newest: Long, now: Long): Double {
         val ageH = when {
+            // A video stays worth watching longer than a story stays news: a
+            // channel's video ages at a quarter of the pace, from four hours,
+            // and its views per hour stand in for momentum (boost).
+            rep.sourceId == YOUTUBE_ID && rep.published > 0L ->
+                (4.0 + (now - rep.published).coerceAtLeast(0L) / 3_600_000.0 / 4.0).coerceAtMost(60.0)
             rep.sourceId == YOUTUBE_ID -> 6.0
             newest <= 0L -> 24.0
             else -> (now - newest).coerceAtLeast(0L) / 3_600_000.0
@@ -1404,6 +1421,52 @@ object NewsFeed {
         }
         val rest = pool.sortedWith(compareByDescending<Story> { it.score }.thenByDescending { it.newest })
         for (s in rest) { if (out.size >= OUTPUT_ITEMS) break; out.add(s.rep) }
+        return out
+    }
+
+    /**
+     * The videos' categories each get a few videos, so their chips under
+     * "See all" have something to show: [arrange] keeps videos to two of the
+     * first cards (they share one publisher key), and a quiet video category
+     * would otherwise not appear at all. The best-scoring videos not already
+     * shown, by category; then all the videos are spaced through the stories
+     * ([spaceVideos]).
+     */
+    internal fun withVideoShelves(out: List<Item>, stories: List<Story>): List<Item> {
+        if (out.isEmpty()) return out
+        val shown = out.mapTo(HashSet()) { it.link }
+        val result = ArrayList(out)
+        for (cat in listOf(TRENDING, VIRAL, COMEDY, MUSIC)) {
+            var have = out.count { it.sourceId == YOUTUBE_ID && it.category == cat }
+            for (st in stories) {
+                if (have >= VIDEO_SHELF) break
+                val v = st.rep
+                if (v.sourceId != YOUTUBE_ID || v.category != cat || v.imageQuality < Q_OK || !shown.add(v.link)) continue
+                result.add(v)
+                have++
+            }
+        }
+        return spaceVideos(result)
+    }
+
+    /**
+     * The lead and the two stories under it first - the feed ad's place is
+     * after those - then a video in every third place while there are stories
+     * to go between them, each list keeping its own order. Ranked by score
+     * alone, the videos bunched: two straight under the lead, then a run of
+     * eight.
+     */
+    internal fun spaceVideos(items: List<Item>): List<Item> {
+        if (items.size < 3) return items
+        val stories = ArrayDeque(items.drop(1).filter { it.sourceId != YOUTUBE_ID })
+        val videos = ArrayDeque(items.drop(1).filter { it.sourceId == YOUTUBE_ID })
+        val out = ArrayList<Item>(items.size)
+        out.add(items[0])
+        while (stories.isNotEmpty() || videos.isNotEmpty()) {
+            val videoTurn = out.size >= 3 && out.size % 3 == 0
+            out.add(if (videos.isNotEmpty() && (videoTurn || stories.isEmpty())) videos.removeFirst()
+                else stories.removeFirst())
+        }
         return out
     }
 
@@ -2314,6 +2377,293 @@ object NewsFeed {
             // Malformed answer: no videos this time.
         }
         return out
+    }
+
+    // ---------- YouTube channels (RSS, no key) ----------
+
+    internal class YtChannel(val id: String, val name: String, val category: String)
+
+    /**
+     * Videos for the feed, from YouTube channels' own feeds
+     * (youtube.com/feeds/videos.xml?channel_id=), which need no key. YouTube
+     * retired its Trending page and the playlists behind it in 2025, so
+     * "trending" and "viral" are the channels whose uploads are what people
+     * are watching, and the videos among them that are taking off rise on
+     * their views per hour ([ytBoost]).
+     *
+     * Chosen October 2026: every ID confirmed in two independent places, the
+     * music channels from YouTube's own 2026 trending lists for the US, UK,
+     * Nigeria, Ghana, Kenya, South Africa, Korea, Mexico, Brazil and India;
+     * active (weekly or more); fit for a home screen everyone in the house
+     * sees. Left out on purpose: pranks on strangers, fail and injury clips,
+     * re-upload and lyric channels, "- Topic" channels (no uploads of their
+     * own), and shows that have ended (The Late Show, May 2026).
+     */
+    internal val YT_CHANNELS: List<YtChannel> = listOf(
+        // What everyone is watching: trailers, film and TV, sport.
+        YtChannel("UCBR8-60-B28hp2BmDPdntcQ", "YouTube", TRENDING),
+        YtChannel("UCWOA1ZGywLbqmigxE4Qlvuw", "Netflix", TRENDING),
+        YtChannel("UCvC4D8onUfXzvjTOM-dBfEA", "Marvel Entertainment", TRENDING),
+        YtChannel("UCi8e0iOVk1fEOogdfu4YgfA", "Rotten Tomatoes Trailers", TRENDING),
+        YtChannel("UCG5qGWdu8nIRZqJ_GgDwQ-w", "Premier League", TRENDING),
+        YtChannel("UCpcTrCXblq78GZrTUTLWeBw", "FIFA", TRENDING),
+        YtChannel("UCWJ2lWNubArHWmf3FIHbfcQ", "NBA", TRENDING),
+        YtChannel("UCB_qr75-ydFVKSF9Dmo6izg", "FORMULA 1", TRENDING),
+        // Viral: the biggest creators and the feel-good clip channels.
+        YtChannel("UCX6OQ3DkcsbYNE6H8uQQuVA", "MrBeast", VIRAL),
+        YtChannel("UCRijo3ddMTht_IHyNSNXpNQ", "Dude Perfect", VIRAL),
+        YtChannel("UCdC0An4ZPNr_YiFiYoVbwaw", "Daily Dose Of Internet", VIRAL),
+        YtChannel("UCPIvT-zcQl2H0vabdXJGcpg", "The Pet Collective", VIRAL),
+        YtChannel("UCq8DICunczvLuJJq414110A", "Zach King", VIRAL),
+        YtChannel("UC_hK9fOxyy_TM8FJGXIyG8Q", "Dhar Mann Studios", VIRAL),
+        YtChannel("UCT2X19JJaJGUN7mrYuImANQ", "America's Got Talent", VIRAL),
+        YtChannel("UCY1kMZp36IQSyNx_9h4mpCg", "Mark Rober", VIRAL),
+        // Comedy: late night, sketch, clean stand-up, Nigerian skits.
+        YtChannel("UCqFzWxSCi39LnW1JKFR3efg", "Saturday Night Live", COMEDY),
+        YtChannel("UC8-Th83bH_thdKZDJCrn88g", "The Tonight Show", COMEDY),
+        YtChannel("UCa6vGFO9ty8v5KZJXQxdhaw", "Jimmy Kimmel Live", COMEDY),
+        YtChannel("UCVTyTA7-g9nopHeHbeuvpRA", "Late Night with Seth Meyers", COMEDY),
+        YtChannel("UC4PooiX37Pld1T8J5SYT-SQ", "Good Mythical Morning", COMEDY),
+        YtChannel("UCvlVuntLjdURVD3b3Hx7kxw", "Dry Bar Comedy", COMEDY),
+        YtChannel("UCQmZ9BIYOBSkxL-eqqg5z-g", "Mark Angel Comedy", COMEDY),
+        // Music: the labels and artists trending across those countries.
+        YtChannel("UC3IZKseVpdzPSBaWxBxundA", "HYBE LABELS", MUSIC),
+        YtChannel("UCaO6TYtlC8U5ttz62hTrZgg", "JYP Entertainment", MUSIC),
+        YtChannel("UCEf_Bc-KVd7onSeifS3py9g", "SMTOWN", MUSIC),
+        YtChannel("UCqECaJ8Gagnn7YCbPEzWH6g", "Taylor Swift", MUSIC),
+        YtChannel("UCxE5jEls-T0QtlTHT8lI1lw", "Olivia Rodrigo", MUSIC),
+        YtChannel("UCYLNGLIzMhRTi6ZOLjAPSmw", "Shakira", MUSIC),
+        YtChannel("UCz9yS18zJGQObwUL_K-ICnw", "KAROL G", MUSIC),
+        YtChannel("UCoUM-UJ7rirJYP8CQ0EIaHA", "Bruno Mars", MUSIC),
+        YtChannel("UCr2xjaS7CIx1OY7hYwrXb8A", "Tyla", MUSIC),
+        YtChannel("UCQJOYS9v30qM74f6gZDk0TA", "Davido", MUSIC),
+        YtChannel("UCqNsFioLEaG2NQpYGvidLPg", "Asake", MUSIC),
+        YtChannel("UC2IzfN6qRP4ld2H6BKB1uKg", "Ayra Starr", MUSIC),
+        YtChannel("UCAFtWgoo_ajQQ47vRuc7Vxw", "Rema", MUSIC),
+        YtChannel("UCbQqL_yZhxMs5x14KIt18eQ", "Black Sherif", MUSIC)
+    )
+
+    /** Channel feeds change slowly next to the news: asked for every 90 minutes, not 30. */
+    private const val YT_FEEDS_TTL_MS = 90L * 60 * 1000
+    private const val YT_FEEDS_FILE = "yt_feeds.json"
+    /** Older uploads are not what is happening now. */
+    private const val YT_MAX_AGE_MS = 14L * 24 * 60 * 60 * 1000
+    /** Entries read from one channel's feed (newest first), and kept from it. */
+    private const val YT_READ = 8
+    private const val YT_PER_CHANNEL = 3
+    private const val YT_THREADS = 6
+    /** Wall clock for all the channels together, inside the refresh's own budget. */
+    private const val YT_FEEDS_BUDGET_MS = 14_000L
+    /** Videos per video category placed after the stories ([withVideoShelves]). */
+    private const val VIDEO_SHELF = 4
+
+    /**
+     * The channels' newest videos, from the copy on disk while it is under
+     * [YT_FEEDS_TTL_MS] old, otherwise asked for again, six channels at a
+     * time, within [YT_FEEDS_BUDGET_MS]. Only a few entries of each feed are
+     * read and the connection closed, which keeps a refresh to about 10KB a
+     * channel. When too few channels answer, the last good copy fills in for
+     * up to a day.
+     */
+    private fun fetchYouTubeChannels(context: Context, mem: Memory, now: Long): List<Item> {
+        val file = File(context.filesDir, YT_FEEDS_FILE)
+        val saved = readYtFeeds(file)
+        if (saved != null && now - saved.first in 0 until YT_FEEDS_TTL_MS) {
+            DebugLog.add { "feed  YouTube channels  cached  " + saved.second.size + " videos" }
+            return saved.second
+        }
+        val deadline = System.currentTimeMillis() + YT_FEEDS_BUDGET_MS
+        val pool = Executors.newFixedThreadPool(YT_THREADS)
+        val got = ArrayList<Item>()
+        var answered = 0
+        val asked = YT_CHANNELS.filter { !isDead(mem, ytFeedUrl(it), now) }
+        try {
+            val futures = asked.map { ch -> pool.submit(Callable { readYtChannel(ch, mem, now, deadline) }) }
+            for (f in futures) {
+                val left = deadline - System.currentTimeMillis()
+                val r = try { f.get(left.coerceAtLeast(1L), TimeUnit.MILLISECONDS) } catch (e: Exception) { null }
+                if (r != null) { got.addAll(r); answered++ }
+            }
+        } finally {
+            pool.shutdownNow()
+        }
+        DebugLog.add { "feed  YouTube channels  " + answered + "/" + asked.size + " answered  " + got.size + " videos" }
+        val stale = saved?.takeIf { now - it.first in 0 until YT_STALE_MS }?.second
+        if (answered * 2 < asked.size) {
+            // Mostly unanswered - a bad connection, not quiet channels: what
+            // did come joins the last good copy rather than replacing it.
+            if (stale == null) return got
+            val links = got.mapTo(HashSet()) { it.link }
+            return got + stale.filter { it.link !in links }
+        }
+        writeYtFeeds(file, now, got)
+        return got
+    }
+
+    private fun ytFeedUrl(ch: YtChannel) = "https://www.youtube.com/feeds/videos.xml?channel_id=" + ch.id
+
+    /**
+     * One channel's best recent videos: of the newest [YT_READ] entries,
+     * leaving out Shorts (portrait, made for another screen), anything older
+     * than [YT_MAX_AGE_MS] and anything [isGraphic], the [YT_PER_CHANNEL]
+     * gaining views fastest. Null when the channel did not answer; a channel
+     * that answers 404 (gone, or renamed to a new ID) is not asked again for
+     * a day ([markDead]).
+     */
+    private fun readYtChannel(ch: YtChannel, mem: Memory, now: Long, deadline: Long): List<Item>? {
+        val url = ytFeedUrl(ch)
+        var conn: HttpURLConnection? = null
+        try {
+            conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                connectTimeout = TIMEOUT_MS
+                readTimeout = TIMEOUT_MS
+                instanceFollowRedirects = true
+                setRequestProperty("User-Agent", UA)
+                setRequestProperty("Accept", ACCEPT)
+                setRequestProperty("Accept-Encoding", "gzip")
+            }
+            val code = conn.responseCode
+            if (code != 200) {
+                if (code == 404 || code == 410) markDead(mem, url, now)
+                return null
+            }
+            var raw: InputStream = conn.inputStream
+            if ("gzip".equals(conn.contentEncoding, ignoreCase = true)) raw = GZIPInputStream(raw)
+            val entries = BufferedInputStream(Capped(raw, MAX_BYTES, deadline), 16 * 1024).use { parseYtFeed(it) }
+            return entries.asSequence()
+                .filter { !it.short && it.id.isNotEmpty() && it.title.length >= 8 }
+                .filter { it.published > 0L && now - it.published in 0L..YT_MAX_AGE_MS }
+                .filter { !isGraphic(it.title, it.description) }
+                .sortedByDescending { ytVelocity(it.views, it.published, now) }
+                .take(YT_PER_CHANNEL)
+                .map { e ->
+                    Item(
+                        title = e.title,
+                        link = "https://www.youtube.com/watch?v=" + URLEncoder.encode(e.id, "UTF-8"),
+                        // The 1280px frame; home.html falls back to the 480px
+                        // one for a video that has none.
+                        image = "https://i.ytimg.com/vi/" + URLEncoder.encode(e.id, "UTF-8") + "/hq720.jpg",
+                        imageQuality = Q_LARGE,
+                        source = ch.name,
+                        domain = "youtube.com",
+                        category = ch.category,
+                        // The page names the channel from the part before " · ".
+                        summary = listOf(ch.name, if (e.views > 0) compactCount(e.views) + " views" else "")
+                            .filter { it.isNotEmpty() }.joinToString(" · "),
+                        published = e.published,
+                        tier = 2,
+                        sourceId = YOUTUBE_ID,
+                        boost = ytBoost(ytVelocity(e.views, e.published, now))
+                    )
+                }
+                .toList()
+        } catch (e: Exception) {
+            return null
+        } finally {
+            try { conn?.disconnect() } catch (e: Exception) { }
+        }
+    }
+
+    /** Views per hour since upload, counting the first two hours as two. */
+    internal fun ytVelocity(views: Long, published: Long, now: Long): Double {
+        val hours = ((now - published).coerceAtLeast(0L) / 3_600_000.0).coerceAtLeast(2.0)
+        return views / hours
+    }
+
+    /** Momentum for a video taking off: 0 below 5K views an hour, up to 3 at half a million. */
+    internal fun ytBoost(perHour: Double): Double = when {
+        perHour >= 500_000.0 -> 3.0
+        perHour >= 100_000.0 -> 2.2
+        perHour >= 20_000.0 -> 1.4
+        perHour >= 5_000.0 -> 0.7
+        else -> 0.0
+    }
+
+    internal class YtEntry(
+        val id: String, val title: String, val published: Long,
+        val views: Long, val description: String, val short: Boolean
+    )
+
+    /**
+     * A channel feed's entries, newest first as YouTube lists them, stopping
+     * after [YT_READ]. The feed is Atom with YouTube's yt: and Media RSS
+     * extensions: yt:videoId, title, link rel="alternate" (a /shorts/ address
+     * for a Short), published, and media:group holding media:description and
+     * media:community/media:statistics views="".
+     */
+    internal fun parseYtFeed(input: InputStream): List<YtEntry> {
+        val out = ArrayList<YtEntry>()
+        val p = Xml.newPullParser()
+        // Android's parser comes with namespaces on, which would strip the
+        // yt: and media: prefixes this reads by; off, as in [parseFeed].
+        p.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
+        try { p.setFeature(XmlPullParser.FEATURE_PROCESS_DOCDECL, false) } catch (e: Exception) { }
+        try { p.setFeature(RELAXED, true) } catch (e: Exception) { }
+        p.setInput(input, null)
+        var inEntry = false
+        var id = ""; var title = ""; var link = ""; var date = ""; var views = 0L; var desc = ""
+        try {
+            var ev = p.eventType
+            while (ev != XmlPullParser.END_DOCUMENT && out.size < YT_READ) {
+                if (ev == XmlPullParser.START_TAG) {
+                    when (p.name) {
+                        "entry" -> {
+                            inEntry = true
+                            id = ""; title = ""; link = ""; date = ""; views = 0L; desc = ""
+                        }
+                        "yt:videoId" -> if (inEntry) id = p.nextText().trim()
+                        "title" -> if (inEntry) title = htmlToText(p.nextText())
+                        "link" -> if (inEntry && (p.getAttributeValue(null, "rel") ?: "alternate") == "alternate") {
+                            link = p.getAttributeValue(null, "href") ?: link
+                        }
+                        "published" -> if (inEntry) date = p.nextText().trim()
+                        "media:description" -> if (inEntry) desc = p.nextText().take(600)
+                        "media:statistics" -> if (inEntry) {
+                            views = p.getAttributeValue(null, "views")?.trim()?.toLongOrNull() ?: 0L
+                        }
+                    }
+                } else if (ev == XmlPullParser.END_TAG && p.name == "entry" && inEntry) {
+                    inEntry = false
+                    out.add(YtEntry(id, title, parseDate(date), views, desc, link.contains("/shorts/")))
+                }
+                ev = p.next()
+            }
+        } catch (e: Exception) {
+            // A cut-off or malformed feed: the entries read so far stand.
+        }
+        return out
+    }
+
+    private fun readYtFeeds(file: File): Pair<Long, List<Item>>? = try {
+        if (!file.exists()) null else {
+            val o = JSONObject(file.readText())
+            val arr = o.optJSONArray("videos") ?: JSONArray()
+            val items = ArrayList<Item>()
+            for (i in 0 until arr.length()) {
+                val v = arr.optJSONObject(i) ?: continue
+                val link = v.optString("link")
+                val image = v.optString("image")
+                if (!link.startsWith("https://") || !image.startsWith("https://")) continue
+                val cat = v.optString("category").takeIf { it in ANY } ?: continue
+                items.add(Item(
+                    title = v.optString("title"), link = link, image = image, imageQuality = Q_LARGE,
+                    source = v.optString("source"), domain = "youtube.com", category = cat,
+                    summary = v.optString("summary"), published = v.optLong("published"),
+                    tier = 2, sourceId = YOUTUBE_ID, boost = v.optDouble("boost", 0.0)))
+            }
+            o.optLong("at") to items
+        }
+    } catch (e: Exception) { null }
+
+    private fun writeYtFeeds(file: File, at: Long, items: List<Item>) {
+        try {
+            val arr = JSONArray()
+            for (it in items) arr.put(JSONObject()
+                .put("title", it.title).put("link", it.link).put("image", it.image)
+                .put("source", it.source).put("category", it.category).put("summary", it.summary)
+                .put("published", it.published).put("boost", it.boost))
+            file.writeText(JSONObject().put("at", at).put("videos", arr).toString())
+        } catch (e: Exception) { /* best effort */ }
     }
 
     /** 950 / 12K / 1.2M / 3.4B, one decimal below ten. */

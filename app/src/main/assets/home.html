@@ -264,7 +264,7 @@
      tag, a bigger headline and its summary. The feed's ad (native, laid
      over .adslot by the app) is drawn as one more story on the card, with
      its "Ad" label, as it must be. The class names (.list holding .row
-     stories, .list-foot) are what expand, collapse and the filters address. */
+     stories) are what expand, collapse and the filters address. */
   .sheet {
     position:relative; overflow:hidden;
     border-radius:var(--card-r); background:var(--surface);
@@ -370,14 +370,12 @@
      empty box exactly the card's size (SearchApp.adSlotAt / __setAdSlot). */
   .adslot { display:block; height:0; margin:0;
     transition:height .34s var(--ease-out), margin-bottom .34s var(--ease-out); }
-  .list-foot {
-    position:relative; display:flex; align-items:center; justify-content:center;
-    width:100%; height:52px; margin-top:12px; border-radius:26px;
-    background:var(--surface); box-shadow:var(--shadow-card);
-    font-size:14.5px; font-weight:650; color:var(--accent-text);
-    transition:transform .45s var(--ease-spring);
-  }
-  .list-foot.is-pressed { transform:scale(0.97); transition-duration:.15s; }
+  /* Under the stories: an invisible marker that brings in the next stories
+     as the reader nears it (moreObserver), and, once every story is on the
+     page, a quiet line saying so. */
+  .feed-more { display:block; height:1px; }
+  .feed-end { display:block; padding:18px 0 4px; text-align:center;
+    font-size:13px; color:var(--muted); }
 
   /* While a picture loads its box shimmers. A picture that cannot load takes
      its story off the page: the rule is no story without its image. */
@@ -998,7 +996,12 @@
   window.addEventListener('focus', renderTiles);
 
   // ---------- Top Stories ----------
-  var COLLAPSED_ROWS = 4;   // full cards under the featured one, before See all
+  // The featured story and this many cards under it when home opens; the
+  // rest come in BATCH_ROWS at a time as the reader scrolls towards the end
+  // (moreObserver) - no button to press. See all shows them all at once,
+  // with the category chips.
+  var COLLAPSED_ROWS = 11;
+  var BATCH_ROWS = 8;
   var ICONS = {
     flame: '<svg class="flame" viewBox="0 0 24 24" aria-hidden="true"><defs><linearGradient id="flameG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--accent)"/><stop offset="1" style="stop-color:var(--accent-deep)"/></linearGradient></defs><path fill="url(#flameG)" d="M13.6 1.6C14 4.2 15.5 6 17 7.7 18.7 9.6 20.1 11.8 20.1 14.7 20.1 19.1 16.6 22.4 12 22.4 7.4 22.4 3.9 19.1 3.9 14.8 3.9 12.1 5.1 9.9 6.9 8.3 6.9 9.9 7.6 11.1 8.8 11.7 8.5 7.8 10.6 4.2 13.6 1.6Z"/><path fill="#fff" fill-opacity=".5" d="M12.5 11.1C13.3 13 15.7 14.4 15.7 17.2 15.7 19.3 14.1 20.8 12 20.8 9.9 20.8 8.3 19.3 8.3 17.4 8.3 15.8 9.2 14.6 10.4 13.8 10.5 14.9 11 15.6 11.8 16 11.5 14.4 11.8 12.6 12.5 11.1Z"/></svg>',
     chev: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.5 6.5L15 12l-5.5 5.5"/></svg>',
@@ -1008,7 +1011,7 @@
     play: '<svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M240,128a15.74,15.74,0,0,1-7.6,13.51L88.32,229.65a16,16,0,0,1-16.2.3A15.86,15.86,0,0,1,64,216.13V39.87a15.86,15.86,0,0,1,8.12-13.82,16,16,0,0,1,16.2.3L232.4,114.49A15.74,15.74,0,0,1,240,128Z"/></svg>'
   };
 
-  var feed = { items:[], expanded:false, cat:'All', cats:[], canExpand:false, shown:false, token:0 };
+  var feed = { items:[], expanded:false, cat:'All', cats:[], canExpand:false, shown:false, token:0, limit:COLLAPSED_ROWS };
   var headEl, seeAllEl, chipsEl, storiesEl;
   var feedReqId = 0;
   var feedLoaded = false;
@@ -1136,16 +1139,25 @@
     img.decoding = 'async';
     img.setAttribute('loading', 'lazy');
     img.setAttribute('referrerpolicy', 'no-referrer');
+    // A YouTube video's 1280px frame (hq720) is asked for first; a video
+    // without one gets an error or YouTube's 120px grey stand-in, and then
+    // its 480px frame, which every video has, before the story is given up.
+    var yt = /^(https:\/\/i\.ytimg\.com\/vi\/[\w-]+\/)hq720\.jpg$/.exec(src);
+    function stand_in(){ return yt && img.naturalWidth <= 120; }
+    function fail(){
+      if (yt) { var next = yt[1] + 'hqdefault.jpg'; yt = null; img.src = next; return; }
+      if (onFail) onFail();
+    }
     img.onload = function(){
       // A picture with no pixels is a failure that reported success.
-      if (!img.naturalWidth) { if (onFail) onFail(); return; }
+      if (!img.naturalWidth || stand_in()) { fail(); return; }
       img.classList.add('ok'); box.classList.remove('loading');
     };
-    img.onerror = function(){ if (onFail) onFail(); };
+    img.onerror = fail;
     img.src = src;
     // Already in memory (a re-render): show it at once rather than fading in
     // again, so rebuilding the list never flickers.
-    if (img.complete && img.naturalWidth) { img.classList.add('instant', 'ok'); box.classList.remove('loading'); }
+    if (img.complete && img.naturalWidth && !stand_in()) { img.classList.add('instant', 'ok'); box.classList.remove('loading'); }
     box.appendChild(img);
   }
 
@@ -1189,7 +1201,7 @@
     if (!card) return;
     var shown = card.querySelectorAll('.row').length;
     var list = visibleItems();
-    var want = feed.expanded ? list.length - 1 : Math.min(COLLAPSED_ROWS, list.length - 1);
+    var want = feed.expanded ? list.length - 1 : Math.min(feed.limit, list.length - 1);
     for (var k = 1 + shown; shown < want && k < list.length; k++, shown++) {
       card.appendChild(buildRow(list[k]));
     }
@@ -1419,22 +1431,71 @@
     syncLabels();
   };
 
-  function buildFoot(){
-    var b = el('button', 'list-foot');
-    b.type = 'button';
-    b.setAttribute('data-press', '');
-    b.appendChild(el('span', 'lbl', ''));
-    b.addEventListener('click', function(){ setExpanded(!feed.expanded); });
-    return b;
-  }
   function syncLabels(){
     feedHost.classList.toggle('expanded', feed.expanded);
     seeAllEl.classList.toggle('off', !feed.canExpand);
     seeAllEl.firstChild.textContent = feed.expanded ? 'Show less' : 'See all';
     seeAllEl.setAttribute('aria-expanded', feed.expanded ? 'true' : 'false');
-    var foot = storiesEl.querySelector('.list-foot');
-    if (foot) foot.firstChild.textContent = feed.expanded
-      ? 'Show less' : 'See all ' + feed.items.length + ' stories';
+    syncEnd();
+  }
+
+  // ----- More as the reader scrolls -----
+  // A marker after the last card; when it comes within about a screen and a
+  // half of the bottom of the view, the next BATCH_ROWS stories are added
+  // under the ones already there, so the reader never reaches an end that
+  // has more behind it. Nothing above moves, so the ad's place stays put.
+  var moreEl = null, endEl = null, moreObserver = null;
+  function rowsLeft(){
+    var card = storiesEl && storiesEl.querySelector('.list');
+    if (!card || feed.expanded) return 0;
+    return Math.max(0, visibleItems().length - 1 - card.querySelectorAll('.row').length);
+  }
+  function loadMore(){
+    if (!feed.shown || rowsLeft() <= 0) return;
+    var card = storiesEl.querySelector('.list');
+    var shown = card.querySelectorAll('.row').length;
+    var list = visibleItems();
+    feed.limit = shown + BATCH_ROWS;
+    for (var k = 1 + shown, i = 0; k < list.length && shown < feed.limit; k++, shown++, i++) {
+      var r = buildRow(list[k]);
+      if (!reduceMotion) { r.classList.add('unfold'); r.style.animationDelay = Math.min(i, 6) * 40 + 'ms'; }
+      card.appendChild(r);
+    }
+    seatAdSlot();
+    syncEnd();
+    // Still near the end (short cards, a tall screen): look again once laid out.
+    if (moreObserver && moreEl) { moreObserver.unobserve(moreEl); moreObserver.observe(moreEl); }
+  }
+  function syncEnd(){
+    if (!storiesEl) return;
+    if (!moreEl) {
+      moreEl = el('span', 'feed-more');
+      moreEl.setAttribute('aria-hidden', 'true');
+      endEl = el('span', 'feed-end', "You're all caught up");
+      if ('IntersectionObserver' in window) {
+        moreObserver = new IntersectionObserver(function(entries){
+          if (entries[entries.length - 1].isIntersecting) loadMore();
+        }, { rootMargin: '0px 0px 1200px 0px' });
+      }
+    }
+    var hasList = !!storiesEl.querySelector('.list');
+    if (!hasList) {
+      if (moreEl.parentNode) moreEl.parentNode.removeChild(moreEl);
+      if (endEl.parentNode) endEl.parentNode.removeChild(endEl);
+      return;
+    }
+    if (moreEl.parentNode !== storiesEl || storiesEl.lastChild !== moreEl) storiesEl.appendChild(moreEl);
+    var done = rowsLeft() <= 0 && feed.items.length > 1;
+    if (done && endEl.parentNode !== storiesEl) storiesEl.insertBefore(endEl, moreEl);
+    if (!done && endEl.parentNode) endEl.parentNode.removeChild(endEl);
+    if (moreObserver) { moreObserver.unobserve(moreEl); if (!done) moreObserver.observe(moreEl); }
+    else if (!done) {
+      // No IntersectionObserver: the stories are all put on the page at once.
+      var card = storiesEl.querySelector('.list');
+      feed.limit = visibleItems().length;
+      topUp();
+      if (card) syncEnd();
+    }
   }
 
   function visibleItems(){
@@ -1473,8 +1534,7 @@
     sheet.appendChild(hero);
     storiesEl.appendChild(sheet);
     var rest = list.slice(1);
-    var rows = feed.expanded ? rest : rest.slice(0, COLLAPSED_ROWS);
-    var needFoot = feed.canExpand;
+    var rows = feed.expanded ? rest : rest.slice(0, feed.limit);
     var anim = reduceMotion ? null : mode;
     if (anim) { sheet.classList.add(anim); }
     var card = el('div', 'list');
@@ -1488,11 +1548,6 @@
       }
       card.appendChild(r);
     });
-    if (needFoot) {
-      var f = buildFoot();
-      if (anim) { f.classList.add('soft'); f.style.animationDelay = (anim === 'enter' ? 420 : 120) + 'ms'; }
-      storiesEl.appendChild(f);
-    }
   }
 
   function showSkeletons(){
@@ -1526,6 +1581,7 @@
     }
     ensureFrame();
     var first = !feed.shown;
+    if (first) feed.limit = COLLAPSED_ROWS;
     feed.items = items;
     feed.cats = categoriesOf(items);
     if (feed.cat !== 'All' && feed.cats.indexOf(feed.cat) < 0) feed.cat = 'All';
@@ -1592,16 +1648,15 @@
   function expand(){
     var hero = storiesEl.querySelector('.sheet');
     var card = storiesEl.querySelector('.list');
-    var foot = storiesEl.querySelector('.list-foot');
-    if (!card || !foot) { feed.expanded = true; renderChips(); chipsEl.classList.toggle('hidden', !chipsVisible()); renderStories(null); syncLabels(); return; }
-    var heroTop = hero ? topOf(hero) : 0, cardTop = card ? topOf(card) : 0;
-    var footOff = foot ? foot.offsetTop : 0;
+    if (!card) { feed.expanded = true; renderChips(); chipsEl.classList.toggle('hidden', !chipsVisible()); renderStories(null); syncLabels(); return; }
+    var heroTop = hero ? topOf(hero) : 0;
+    var onPage = card.querySelectorAll('.row').length;
 
     feed.expanded = true;
     renderChips();
     var showChips = chipsVisible();
     chipsEl.classList.toggle('hidden', !showChips);
-    var rest = visibleItems().slice(1 + COLLAPSED_ROWS);
+    var rest = visibleItems().slice(1 + onPage);
     rest.forEach(function(it, i){
       var r = buildRow(it);
       if (!reduceMotion) { r.classList.add('unfold'); r.style.animationDelay = (60 + Math.min(i, 10) * 32) + 'ms'; }
@@ -1616,8 +1671,6 @@
       });
     }
     if (hero) glide(hero, heroTop - topOf(hero));
-    // The foot rides down over the rows it uncovers, like a drawer opening.
-    if (foot) glide(foot, footOff - foot.offsetTop, 520);
   }
 
   function collapse(token){
@@ -1636,6 +1689,7 @@
         var refilter = feed.cat !== 'All';
         feed.expanded = false;
         feed.cat = 'All';
+        feed.limit = COLLAPSED_ROWS;
         chipsEl.classList.add('hidden');
         if (refilter) {
           renderChips();

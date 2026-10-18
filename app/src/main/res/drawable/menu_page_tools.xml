@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The menu's "Page tools" group: three sliders. Single tone, in the menu
+     glyphs' weight; applyMenuAccent tints every glyph in the panel. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="22dp"
+    android:height="22dp"
+    android:viewportWidth="256"
+    android:viewportHeight="256">
+    <path
+        android:strokeColor="@color/settingsIconTint"
+        android:strokeWidth="24"
+        android:strokeLineCap="round"
+        android:pathData="M36,68H220M36,128H220M36,188H220" />
+    <path
+        android:fillColor="@color/settingsIconTint"
+        android:strokeColor="?android:attr/colorBackground"
+        android:strokeWidth="14"
+        android:pathData="M120,68a24,24 0 1,1 -48,0a24,24 0 1,1 48,0ZM188,128a24,24 0 1,1 -48,0a24,24 0 1,1 48,0ZM132,188a24,24 0 1,1 -48,0a24,24 0 1,1 48,0Z" />
+</vector>
