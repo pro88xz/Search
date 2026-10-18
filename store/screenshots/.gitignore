@@ -1,0 +1,4 @@
+captures/*
+!captures/.gitkeep
+out/*
+!out/.gitkeep
