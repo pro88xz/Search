@@ -335,5 +335,25 @@ These were built without a phone to run them on. Check each once:
       another site (normal size), come back (kept). Settings > Accessibility
       lists it; tapping it there returns it to normal. In Night Owl the
       size is not kept.
+- [ ] (1.9.0) Home: the stories are one white card with rounded corners;
+      every story has its full-width picture, headline and publisher row
+      (icon, name, age, Share, ⋮); the featured story leads it with "Top
+      story"; YouTube stories show a play button and "Channel · YouTube".
+      ⋮ > Hide stories from X: they go, Undo brings them back; Not
+      interested: that story goes and stays gone after a restart.
+- [ ] (1.9.0) Feed ad: after the second story under the featured one, the
+      ad appears as one more story on the card (picture, headline, icon,
+      "Ad", call to action), lined up exactly with the card's edges, and it
+      scrolls with the page with no lag or jump, in light and dark, with
+      the bars sliding away and back, after See all and a category filter,
+      and after rotating. With the feed offline (no stories) it sits at the
+      end of the page. Taps on its button open the ad; a tap that stops a
+      fling does not.
+- [ ] (1.9.0) App open ad: open from the launcher a few times (leave with
+      Home, come back): the ad shows as it opens (a test ad in debug).
+      Not after sharing a link and coming back, not when a link from
+      another app opened the browser, not in Night Owl. Settings >
+      Performance & health > Ads: "App open ad: asked, loaded, failed,
+      shown" counts move.
 - [ ] (1.8.0) Open a link from another app, then Back: the tab closes and
       that app comes back.

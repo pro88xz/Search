@@ -70,3 +70,27 @@ class AdSlotLayout @JvmOverloads constructor(
         return super.dispatchTouchEvent(ev)
     }
 }
+
+/**
+ * The feed ad's picture or video: the card's full width, and as tall as the
+ * creative's own shape makes it - 16:9, the stories' shape, when it says
+ * nothing - kept between 4:3 and 1.91:1, so a square or tall creative does
+ * not make a towering card and a banner-wide one stays a picture.
+ */
+class AdMediaFrame @JvmOverloads constructor(
+    context: android.content.Context,
+    attrs: android.util.AttributeSet? = null
+) : android.widget.FrameLayout(context, attrs) {
+
+    var ratio = 16f / 9f
+        set(value) {
+            val v = if (value.isFinite() && value > 0f) value.coerceIn(4f / 3f, 1.91f) else 16f / 9f
+            if (field != v) { field = v; requestLayout() }
+        }
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val w = MeasureSpec.getSize(widthMeasureSpec)
+        val h = (w / ratio).toInt()
+        super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(h, MeasureSpec.EXACTLY))
+    }
+}

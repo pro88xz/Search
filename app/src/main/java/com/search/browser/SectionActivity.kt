@@ -705,11 +705,12 @@ class SectionActivity : AppCompatActivity() {
             }
             endGroup()
         }
-        // Why the home-feed ad did or did not show, in words: a release build
-        // has no log, and a missing card looks the same whatever the cause.
+        // Why the home-feed ad or the app open ad did or did not show, in
+        // words: a release build has no log, and a missing ad looks the same
+        // whatever the cause.
         val adLines = HealthStats.adLines(this)
         if (adLines.isNotEmpty()) {
-            val card = group("Feed ad")
+            val card = group("Ads")
             adLines.forEachIndexed { n, line ->
                 val t = TextView(this)
                 t.text = line

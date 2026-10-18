@@ -13,7 +13,10 @@
     <color name="fieldSurface">#18181C</color>
     <color name="cardLine">#26262A</color>
     <!-- Mirrors the home page card fill and text colour -->
-    <color name="feedCard">#17171A</color>
+    <!-- home.html's dark card surface, so the feed ad card is the stories' own colour. -->
+    <color name="feedCard">#18181C</color>
+    <color name="feedMuted">#C9C7D1</color>
+    <color name="feedHair">#12FFFFFF</color>
     <color name="feedFg">#FAFAFA</color>
     <color name="settingsPageBg">#0E0E10</color>
     <color name="settingsCard">#17171A</color>
