@@ -82,8 +82,8 @@
         <item name="android:focusable">true</item>
     </style>
     <!-- The menu's groups: a strip of actions under a group's row (gone until
-         the row is tapped), and each action in it as an icon in a soft round
-         with its name under it. A strip wider than the menu is swiped. -->
+         the row is tapped), each action a chip - its icon and its name on one
+         line - and a strip wider than the menu swiped sideways. -->
     <style name="MenuStrip">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
@@ -91,40 +91,35 @@
         <item name="android:scrollbars">none</item>
         <item name="android:overScrollMode">never</item>
         <item name="android:clipToPadding">false</item>
-        <item name="android:paddingStart">10dp</item>
-        <item name="android:paddingEnd">10dp</item>
-        <item name="android:paddingBottom">6dp</item>
+        <item name="android:paddingStart">16dp</item>
+        <item name="android:paddingEnd">16dp</item>
+        <item name="android:paddingTop">2dp</item>
+        <item name="android:paddingBottom">10dp</item>
     </style>
     <style name="MenuTile">
-        <item name="android:layout_width">72dp</item>
-        <item name="android:layout_height">wrap_content</item>
-        <item name="android:orientation">vertical</item>
-        <item name="android:gravity">center_horizontal</item>
-        <item name="android:paddingTop">6dp</item>
-        <item name="android:paddingBottom">6dp</item>
-        <item name="android:paddingStart">2dp</item>
-        <item name="android:paddingEnd">2dp</item>
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">40dp</item>
+        <item name="android:layout_marginEnd">8dp</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:paddingStart">12dp</item>
+        <item name="android:paddingEnd">16dp</item>
         <item name="android:background">@drawable/menu_tile_ripple</item>
         <item name="android:clickable">true</item>
         <item name="android:focusable">true</item>
     </style>
     <style name="MenuTileIcon">
-        <item name="android:layout_width">44dp</item>
-        <item name="android:layout_height">44dp</item>
-        <item name="android:padding">11dp</item>
-        <item name="android:background">@drawable/menu_tile_icon_bg</item>
+        <item name="android:layout_width">18dp</item>
+        <item name="android:layout_height">18dp</item>
         <item name="android:scaleType">fitCenter</item>
         <item name="android:importantForAccessibility">no</item>
     </style>
     <style name="MenuTileLabel">
-        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>
-        <item name="android:layout_marginTop">6dp</item>
-        <item name="android:gravity">center_horizontal</item>
-        <item name="android:textSize">12sp</item>
-        <item name="android:maxLines">2</item>
-        <item name="android:ellipsize">end</item>
-        <item name="android:lineSpacingExtra">1dp</item>
+        <item name="android:layout_marginStart">8dp</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:maxLines">1</item>
         <item name="android:textColor">?android:attr/textColorPrimary</item>
     </style>
     <!-- One slot of the bottom bar: an equal fifth of the width, the full

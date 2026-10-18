@@ -830,7 +830,7 @@
                         android:text="Games &amp; support" android:textSize="16sp"
                         android:textColor="?android:attr/textColorPrimary" />
                     <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-                        android:text="Play games · Buy me a coffee" android:textSize="12sp" android:maxLines="1"
+                        android:text="Play games · Support" android:textSize="12sp" android:maxLines="1"
                         android:ellipsize="end" android:textColor="@color/feedMuted" />
                 </LinearLayout>
                 <ImageView android:layout_width="18dp" android:layout_height="18dp"

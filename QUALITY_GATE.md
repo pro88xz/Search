@@ -366,6 +366,12 @@ These were built without a phone to run them on. Check each once:
       and after rotating. With the feed offline (no stories) it sits at the
       end of the page. Taps on its button open the ad; a tap that stops a
       fling does not.
+- [ ] (2.0.5) App open ad on a launch, including the card-style creatives
+      with "Continue to app": behind the ad is the owl splash, never home;
+      home appears only when the ad is closed. The same coming back from
+      the background.
+- [ ] (2.0.5) Menu: each group's actions are chips on one line (icon and
+      name), the strip swipes sideways.
 - [ ] (2.0.4) Outside Europe (a non-EU SIM, consent never shown): fresh
       install, finish the intro, relaunch - the app open ad and the feed
       ad come with no consent message and no extra wait. In the EEA or UK
