@@ -366,6 +366,11 @@ These were built without a phone to run them on. Check each once:
       and after rotating. With the feed offline (no stories) it sits at the
       end of the page. Taps on its button open the ad; a tap that stops a
       fling does not.
+- [ ] (2.0.1) App open ad: launch from the launcher (not the first launch):
+      the splash stays until the ad has loaded, the ad shows over the
+      splash, and closing it shows home - never home first and the ad over
+      it. Leave with Home and come back: the owl splash picture, then the
+      ad, then home. With no connection the browser opens normally.
 - [ ] (1.9.0) App open ad: open from the launcher a few times (leave with
       Home, come back): the ad shows as it opens (a test ad in debug).
       Not after sharing a link and coming back, not when a link from
