@@ -1270,6 +1270,7 @@ class MainActivity : AppCompatActivity() {
             nativeAd = null
             refreshAdSlot()
         }
+        if (Settings.getBool(this, Settings.IS_SUPPORTER, false)) dropExtraAds()
         val sig = siteSettingsSignature()
         if (sig == lastSiteSig) return  // nothing changed -> don't touch anything
         lastSiteSig = sig
@@ -1780,7 +1781,7 @@ class MainActivity : AppCompatActivity() {
                     searchMode -> exitSearchMode()
                     binding.menuScrim.visibility == View.VISIBLE -> closeMenu()
                     binding.tabDeck.visibility == View.VISIBLE -> closeDeck()
-                    web?.canGoBack() == true -> web.goBack()
+                    backInTab(web) -> {}
                     // A tab a PAGE opened - an ad, a sign-in pop-up, any
                     // target="_blank" link. It has no history of its own, so
                     // this used to fall through to finish() and take the whole
@@ -1796,6 +1797,10 @@ class MainActivity : AppCompatActivity() {
                         tabs.activeTab?.let { t -> rememberClosed(t); closeTabFromDeck(t) }
                         if (!moveTaskToBack(true)) finish()
                     }
+                    // An error page with no page of its own behind it (the
+                    // tab was opened straight onto an address that failed):
+                    // Back goes home rather than out of the browser.
+                    web != null && isStandIn(web.url) -> loadInto(web, homePage)
                     // Nothing left to go back to. Leave, but do not die:
                     // finish() destroys the activity and every live WebView
                     // with it, so returning means rebuilding every tab from
@@ -2042,6 +2047,13 @@ class MainActivity : AppCompatActivity() {
                 } catch (e: Exception) { /* unparseable; load it anyway */ }
                 loadInto(activeWeb(), target)
             }
+        }
+
+        /** The error pages' own Go back: the same steps as Back (backInTab), never round in a circle. */
+        @JavascriptInterface
+        fun goBack() {
+            if (!privileged) return
+            runOnUiThread { navBack() }
         }
 
         @JavascriptInterface
@@ -2322,6 +2334,22 @@ class MainActivity : AppCompatActivity() {
             if (!privileged) return
             val from = this
             runOnUiThread { onAdSlotReported(from, top, left, width, height) }
+        }
+
+        /** home.html: the reader is nearing further ad place [k] ([widthCss] wide). */
+        @JavascriptInterface
+        fun extraAdWanted(k: Int, widthCss: Int) {
+            if (!privileged) return
+            val from = this
+            runOnUiThread { onExtraAdWanted(from, k, widthCss) }
+        }
+
+        /** home.html: the open further ad place nearest the view, in CSS px; k -1 for none. */
+        @JavascriptInterface
+        fun extraAdSlotAt(k: Int, top: Int, left: Int, width: Int, height: Int) {
+            if (!privileged) return
+            val from = this
+            runOnUiThread { onExtraSlotReported(from, k, top, left, width, height) }
         }
 
         @JavascriptInterface
@@ -5539,6 +5567,7 @@ class MainActivity : AppCompatActivity() {
         binding.adSlot.removeAllViews()
         nativeAd?.destroy()
         nativeAd = null
+        dropExtraAds()
         binding.nightOwlBadge.visibility = View.VISIBLE
         applyNightOwlChrome(true)
         // The private settings ride on the tab itself, in newWebView, so this
@@ -5997,6 +6026,16 @@ class MainActivity : AppCompatActivity() {
         binding.adSlot.blocked = {
             android.os.SystemClock.uptimeMillis() - lastWebScroll < 300L
         }
+        // The further ads' card takes gestures exactly as the first one does.
+        binding.adSlotExtra.page = { activeWeb() }
+        binding.adSlotExtra.blocked = binding.adSlot.blocked
+        // Placed once it has a height (it has none the moment a card goes in);
+        // a card that measures other than its place is given a place its size.
+        binding.adSlotExtra.addOnLayoutChangeListener { v, _, top, _, bottom, _, oldTop, _, oldBottom ->
+            if (bottom - top != oldBottom - oldTop && v.visibility == View.VISIBLE) {
+                v.post { if (!isFinishing && !isDestroyed) extraCardResized() }
+            }
+        }
         // Supporters paid for the ads to be gone, so the SDK is never started
         // rather than started and never asked - and with no ads there is no
         // consent to ask for. Initialisation makes network calls of its own;
@@ -6054,6 +6093,8 @@ class MainActivity : AppCompatActivity() {
                     // so initialization finishing DURING a private session is
                     // handled by the same test as every other path in.
                     loadFeedAd()
+                    // Further ad places the reader neared while it started.
+                    if (extraLoading < 0) extraNext.run()
                 }
             }
             // The app open ad is asked for as soon as the SDK has been started
@@ -6225,8 +6266,27 @@ class MainActivity : AppCompatActivity() {
      * the page, for instance - renders the same pixels and earns nothing.
      */
     private fun bindFeedAd(ad: com.google.android.gms.ads.nativead.NativeAd) {
+        val view = inflateAdCard(ad, binding.adSlot, register = true)
+        binding.adSlot.removeAllViews()
+        binding.adSlot.addView(view)
+        // A new card fades in afresh once its place has opened to its size.
+        parkAdSlot()
+        refreshAdSlot()
+    }
+
+    /**
+     * The feed ad's card for [ad], laid out for [parent]. [register] false
+     * fills it only to measure it (the further ads' places are opened to the
+     * card's height before the card is shown); the ad is handed to the SDK
+     * only by a card that is shown.
+     */
+    private fun inflateAdCard(
+        ad: com.google.android.gms.ads.nativead.NativeAd,
+        parent: android.view.ViewGroup,
+        register: Boolean
+    ): com.google.android.gms.ads.nativead.NativeAdView {
         val view = layoutInflater.inflate(
-            R.layout.native_ad_feed_card, binding.adSlot, false)
+            R.layout.native_ad_feed_card, parent, false)
             as com.google.android.gms.ads.nativead.NativeAdView
         val headline = view.findViewById<android.widget.TextView>(R.id.adHeadline)
         headline.text = ad.headline
@@ -6237,7 +6297,7 @@ class MainActivity : AppCompatActivity() {
         frame.ratio = ad.mediaContent?.aspectRatio ?: (16f / 9f)
         val media = view.findViewById<com.google.android.gms.ads.nativead.MediaView>(R.id.adMedia)
         media.setImageScaleType(android.widget.ImageView.ScaleType.CENTER_CROP)
-        ad.mediaContent?.let { media.mediaContent = it }
+        if (register) ad.mediaContent?.let { media.mediaContent = it }
         view.mediaView = media
 
         val body = view.findViewById<android.widget.TextView>(R.id.adBody)
@@ -6295,12 +6355,8 @@ class MainActivity : AppCompatActivity() {
             view.iconView = icon
         } else icon.visibility = View.GONE
 
-        view.setNativeAd(ad)
-        binding.adSlot.removeAllViews()
-        binding.adSlot.addView(view)
-        // A new card fades in afresh once its place has opened to its size.
-        parkAdSlot()
-        refreshAdSlot()
+        if (register) view.setNativeAd(ad)
+        return view
     }
 
     /**
@@ -6431,6 +6487,8 @@ class MainActivity : AppCompatActivity() {
         // calling, and this covers the scroll listener and anything added
         // later without either having to remember.
         if (!isLiveWeb(web)) return
+        // The further ads' card rides on every pass that places this one.
+        positionExtraAd(web, scrollY)
         if (binding.adSlot.visibility != View.VISIBLE) return
         // Only ever against the home page on screen, and only at the place
         // that page reported. A pass posted for one page, or a scroll from a
@@ -6549,6 +6607,269 @@ class MainActivity : AppCompatActivity() {
         // reserve back to 0 without the slot's visibility ever changing, and
         // the card then overlaps the last feed card.
         if (changed || show) binding.adSlot.post { syncAdSlotReserve() }
+        refreshExtraAd()
+    }
+
+    // ---------- The further feed ads ----------
+    //
+    // Up to four more native ads in the feed, for readers who scroll that
+    // far: home.html keeps a place after the 11th, 19th, 27th and 35th story
+    // (one in each batch it loads), shut until its ad has come. The ad for a
+    // place is asked for only as the reader nears it; one card
+    // (binding.adSlotExtra), laid over whichever open place is nearest the
+    // view, shows that place's ad - places are eight stories apart, so two
+    // are never on screen together. Their own ad unit, so they are reported
+    // apart from the first ad. Everything about the first ad is untouched;
+    // the same gates hold here: no Night Owl, no supporters, consent where it
+    // is required, Explore only.
+
+    private val extraAdUnit = if (BuildConfig.DEBUG) "ca-app-pub-3940256099942544/2247696110"
+        else "ca-app-pub-9121922395304175/1757838096"
+    private val EXTRA_PLACES = 4
+    private val extraAds = arrayOfNulls<com.google.android.gms.ads.nativead.NativeAd>(4)
+    private val extraAdAt = LongArray(4)
+    /** Places the page has asked an ad for and not had one yet, nearest first. */
+    private val extraWanted = java.util.TreeSet<Int>()
+    private var extraLoading = -1
+    private var extraFailedAt = 0L
+    /** A set-up fault (1, 8): the same request would only fail again this session. */
+    private var extraBroken = false
+    private var extraFrom: android.webkit.WebView? = null
+    private var extraActive = -1
+    private var extraBound = -1
+    private var extraTopCss = -1
+    private var extraLeftCss = 0
+    private var extraWidthCss = 0
+    private var extraHCss = 0
+    private var extraCardShown = false
+    private val extraNext = Runnable { extraWanted.pollFirst()?.let { loadExtraAd(it) } }
+
+    /** Every reason not to ask, but the SDK still starting (the asks wait for it: extraNext). */
+    private fun extraAdsWelcome(): Boolean =
+        !extraBroken && !nightOwl && !nightOwlLaunchPending &&
+            browsingMode == BrowsingMode.EXPLORE &&
+            !Settings.getBool(this, Settings.IS_SUPPORTER, false) && AdConsent.adsAllowed(this)
+
+    private fun extraAdsAllowed(): Boolean = adsReady && extraAdsWelcome()
+
+    private fun onExtraAdWanted(from: SearchAppBridge, k: Int, widthCss: Int) {
+        if (isFinishing || isDestroyed || k !in 0 until EXTRA_PLACES) return
+        val web = activeWeb() ?: return
+        if (web.tag !== from || !extraAdsWelcome()) return
+        if (widthCss > 0) extraWidthCss = widthCss
+        val have = extraAds[k]
+        if (have != null && android.os.SystemClock.elapsedRealtime() - extraAdAt[k] < 60L * 60_000L) {
+            // Already here (home was loaded again): its place opens at once.
+            sendExtraHeight(k)
+            return
+        }
+        extraWanted.add(k)
+        if (adsReady && extraLoading < 0) extraNext.run()
+    }
+
+    private fun loadExtraAd(k: Int) {
+        if (extraLoading >= 0 || isFinishing || isDestroyed || !extraAdsAllowed()) return
+        val now = android.os.SystemClock.elapsedRealtime()
+        // After a failed request, the next waits the same 30 s the first ad's do.
+        val wait = AD_MIN_GAP_MS - (now - extraFailedAt)
+        if (extraFailedAt > 0L && wait > 0L) {
+            extraWanted.add(k)
+            uiHandler.removeCallbacks(extraNext)
+            uiHandler.postDelayed(extraNext, wait)
+            return
+        }
+        extraLoading = k
+        try {
+            com.google.android.gms.ads.AdLoader.Builder(this, extraAdUnit)
+                .forNativeAd { ad ->
+                    extraLoading = -1
+                    if (isFinishing || isDestroyed || !extraAdsAllowed()) { ad.destroy(); return@forNativeAd }
+                    val old = extraAds[k]
+                    extraAds[k] = ad
+                    extraAdAt[k] = android.os.SystemClock.elapsedRealtime()
+                    if (extraBound == k) bindExtraAd(k)
+                    if (old != null && old !== ad) old.destroy()
+                    sendExtraHeight(k)
+                    extraNext.run()
+                }
+                .withAdListener(object : com.google.android.gms.ads.AdListener() {
+                    override fun onAdFailedToLoad(e: com.google.android.gms.ads.LoadAdError) {
+                        extraLoading = -1
+                        extraFailedAt = android.os.SystemClock.elapsedRealtime()
+                        if (e.code == 1 || e.code == 8) { extraBroken = true; extraWanted.clear(); return }
+                        // The place stays shut; the next one the reader nears is
+                        // tried after the pause, never in a tight loop.
+                        if (extraWanted.isNotEmpty()) {
+                            uiHandler.removeCallbacks(extraNext)
+                            uiHandler.postDelayed(extraNext, AD_MIN_GAP_MS)
+                        }
+                        if (BuildConfig.DEBUG) android.util.Log.d("Ads", "further ad failed \u00b7 code " + e.code + " \u00b7 " + e.message)
+                    }
+                })
+                .withNativeAdOptions(
+                    com.google.android.gms.ads.nativead.NativeAdOptions.Builder()
+                        .setVideoOptions(
+                            com.google.android.gms.ads.VideoOptions.Builder()
+                                .setStartMuted(true).build())
+                        .build())
+                .build()
+                .loadAd(com.google.android.gms.ads.AdRequest.Builder().build())
+        } catch (t: Throwable) {
+            // Nothing about an ad may take the browser down.
+            extraLoading = -1
+        }
+    }
+
+    /** Opens place [k] to its card's height: measured on a card filled for the purpose, never shown. */
+    @Suppress("DEPRECATION") // getScale(): see positionAdSlot.
+    private fun sendExtraHeight(k: Int) {
+        val ad = extraAds[k] ?: return
+        val web = activeWeb() ?: return
+        if (!isLiveWeb(web) || web.url != homePage) return
+        val scale = web.scale.takeIf { it > 0f } ?: resources.displayMetrics.density
+        val wCss = if (extraWidthCss > 0) extraWidthCss else adSlotWidthCss
+        if (wCss <= 0) return
+        val css = try {
+            val card = inflateAdCard(ad, binding.adSlotExtra, register = false)
+            card.measure(
+                View.MeasureSpec.makeMeasureSpec(Math.round(wCss * scale), View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+            Math.ceil((card.measuredHeight / scale).toDouble()).toInt()
+        } catch (e: Exception) { 0 }
+        if (css <= 0) return
+        web.evaluateJavascript("window.__setExtraAdSlot && window.__setExtraAdSlot($k,$css);", null)
+    }
+
+    private fun onExtraSlotReported(from: SearchAppBridge, k: Int, top: Int, left: Int, width: Int, height: Int) {
+        if (isFinishing || isDestroyed) return
+        val web = activeWeb() ?: return
+        if (web.tag !== from) return
+        extraFrom = web
+        extraActive = if (k in 0 until EXTRA_PLACES) k else -1
+        extraTopCss = top
+        extraLeftCss = left
+        if (width > 0) extraWidthCss = width
+        extraHCss = height
+        if (extraActive >= 0 && extraAds[extraActive] != null && extraBound != extraActive) bindExtraAd(extraActive)
+        refreshExtraAd()
+        fitExtraWidth(web)
+        if (isLiveWeb(web)) positionExtraAd(web, web.scrollY)
+    }
+
+    private fun bindExtraAd(k: Int) {
+        val ad = extraAds[k] ?: return
+        val view = inflateAdCard(ad, binding.adSlotExtra, register = true)
+        binding.adSlotExtra.removeAllViews()
+        binding.adSlotExtra.addView(view)
+        extraBound = k
+        parkExtraAd()
+    }
+
+    @Suppress("DEPRECATION") // getScale(): see positionAdSlot.
+    private fun fitExtraWidth(web: android.webkit.WebView) {
+        if (extraWidthCss <= 0 || !isLiveWeb(web)) return
+        val scale = web.scale.takeIf { it > 0f } ?: resources.displayMetrics.density
+        val w = Math.round(extraWidthCss * scale)
+        val lp = binding.adSlotExtra.layoutParams ?: return
+        if (lp.width != w) {
+            lp.width = w
+            binding.adSlotExtra.layoutParams = lp
+        }
+    }
+
+    private fun parkExtraAd() {
+        binding.adSlotExtra.translationY = adSlotParkedY()
+        binding.adSlotExtra.animate().cancel()
+        binding.adSlotExtra.alpha = 0f
+        extraCardShown = false
+    }
+
+    /** The page the further ads' card was last asked about. */
+    private var extraPage: Pair<android.webkit.WebView?, String?>? = null
+
+    /** Home on screen in Explore, no sheet or deck over it, and a card for the place nearest the view. */
+    private fun refreshExtraAd() {
+        val url = tabs.activeTab?.url
+        val web = activeWeb()
+        val shown = web?.url
+        val onHome = (url == null || url == homePage) && (shown == null || shown == homePage)
+        // Another home tab, or home loaded again: its places are its own, and
+        // it is asked where its open one is (as __adSlotWhere for the first ad).
+        val page = web to shown
+        if (onHome && web != null && page != extraPage) {
+            extraPage = page
+            if (extraFrom !== web) { extraActive = -1; extraTopCss = -1 }
+            if (isLiveWeb(web)) web.evaluateJavascript("window.__extraAdWhere && window.__extraAdWhere();", null)
+        } else if (!onHome) extraPage = null
+        val show = onHome && !searchMode && !deckVisible && !nightOwl &&
+            browsingMode == BrowsingMode.EXPLORE && extraActive >= 0 &&
+            extraBound == extraActive && extraAds[extraActive] != null
+        val visible = binding.adSlotExtra.visibility == View.VISIBLE
+        if (show == visible) return
+        if (show) parkExtraAd()
+        binding.adSlotExtra.visibility = if (show) View.VISIBLE else View.GONE
+        if (show && web != null) binding.adSlotExtra.post { if (isLiveWeb(web)) positionExtraAd(web, web.scrollY) }
+    }
+
+    /** As positionAdSlot, for the further ads' card over the place the page last named. */
+    @Suppress("DEPRECATION") // getScale(): see positionAdSlot.
+    private fun positionExtraAd(web: android.webkit.WebView, scrollY: Int) {
+        val card = binding.adSlotExtra
+        if (card.visibility != View.VISIBLE) return
+        if (web !== activeWeb() || web.url != homePage || extraFrom !== web || extraTopCss < 0 ||
+            extraActive < 0 || extraBound != extraActive) {
+            parkExtraAd()
+            return
+        }
+        if (web.contentHeight <= 0) { parkExtraAd(); return }
+        val scale = web.scale.takeIf { it > 0f } ?: return
+        val frame = card.parent as? View ?: return
+        web.getLocationInWindow(adLocWeb)
+        frame.getLocationInWindow(adLocSlot)
+        card.translationX = (adLocWeb[0] - adLocSlot[0]) + extraLeftCss * scale
+        card.translationY = (adLocWeb[1] - adLocSlot[1]) + extraTopCss * scale - scrollY
+        val h = card.height
+        val ready = h > 0 && extraHCss * scale >= h - 3f * resources.displayMetrics.density
+        if (ready && !extraCardShown) {
+            extraCardShown = true
+            card.animate().cancel()
+            if (Motion.animationsOn()) {
+                card.animate().alpha(1f).setDuration(220L)
+                    .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
+            } else card.alpha = 1f
+        } else if (!ready && extraCardShown) {
+            extraCardShown = false
+            card.animate().cancel()
+            card.alpha = 0f
+        }
+    }
+
+    @Suppress("DEPRECATION") // getScale(): see positionAdSlot.
+    private fun extraCardResized() {
+        val web = activeWeb() ?: return
+        if (!isLiveWeb(web)) return
+        val k = extraBound
+        val h = binding.adSlotExtra.height
+        val scale = web.scale.takeIf { it > 0f } ?: return
+        if (k >= 0 && k == extraActive && h > 0 && web.url == homePage) {
+            val css = Math.ceil((h / scale).toDouble()).toInt()
+            if (kotlin.math.abs(css - extraHCss) > 2) {
+                web.evaluateJavascript("window.__setExtraAdSlot && window.__setExtraAdSlot($k,$css);", null)
+            }
+        }
+        positionExtraAd(web, web.scrollY)
+    }
+
+    /** Night Owl, a supporter's purchase, the end: the further ads go. */
+    private fun dropExtraAds() {
+        uiHandler.removeCallbacks(extraNext)
+        extraWanted.clear()
+        binding.adSlotExtra.removeAllViews()
+        binding.adSlotExtra.visibility = View.GONE
+        for (i in extraAds.indices) { extraAds[i]?.destroy(); extraAds[i] = null }
+        extraBound = -1
+        extraActive = -1
+        extraCardShown = false
     }
 
     // ---------- Browsing modes (BrowsingMode) ----------
@@ -6849,6 +7170,7 @@ class MainActivity : AppCompatActivity() {
         AppOpenAds.onResult = null
         nativeAd?.destroy()
         nativeAd = null
+        for (i in extraAds.indices) { extraAds[i]?.destroy(); extraAds[i] = null }
         // MediaService.onControl is a companion field holding a lambda that
         // captures this activity. Left set, a destroyed MainActivity and its
         // whole view tree - WebViews included - stay reachable for the life of
@@ -8884,10 +9206,74 @@ class MainActivity : AppCompatActivity() {
         if (searchMode) { exitSearchMode(); return }
         val web = activeWeb()
         when {
-            web?.canGoBack() == true -> web.goBack()
+            backInTab(web) -> {}
             tabs.activeTab?.openerId != null ->
                 tabs.activeTab?.let { foldBackPopup(it, "closed with Back") }
+            web != null && isStandIn(web.url) -> loadInto(web, homePage)
         }
+    }
+
+    /**
+     * The browser's own pages standing in for one that did not load: offline,
+     * can't reach the site, not secure, and the page ended for not responding.
+     */
+    private fun isStandIn(url: String?): Boolean =
+        url != null && (url.startsWith("file:///android_asset/offline.html") ||
+            url.startsWith("file:///android_asset/error.html") ||
+            url.startsWith("file:///android_asset/insecure.html"))
+
+    /**
+     * Back within the tab on screen; false when it has nowhere to go back to.
+     *
+     * From a stand-in page ([isStandIn]) Back skips the address that failed
+     * as well. A failed load leaves two entries: the address, and the
+     * stand-in put up in its place. Back to the address loaded it again, it
+     * failed again, the stand-in came back - Back went round in a circle and
+     * the browser would not leave the page. Now it goes to the last page that
+     * did load, and with none, home.
+     */
+    private fun backInTab(web: WebView?): Boolean {
+        if (web == null) return false
+        val steps = backSteps(web)
+        if (steps <= 0) return false
+        if (steps == 1) web.goBack() else web.goBackOrForward(-steps)
+        return true
+    }
+
+    private fun backSteps(web: WebView): Int {
+        val list = try { web.copyBackForwardList() } catch (e: Exception) {
+            return if (web.canGoBack()) 1 else 0
+        }
+        val cur = list.currentIndex
+        if (cur <= 0) return 0
+        val here = list.getItemAtIndex(cur)?.url
+        if (!isStandIn(here)) return 1
+        // What failed: the address the stand-in names, and the tab's record.
+        val failed = listOfNotNull(tabOf(web)?.failedUrl, standInTarget(here)).map { addressKey(it) }.toSet()
+        var i = cur - 1
+        while (i >= 0) {
+            val item = list.getItemAtIndex(i)
+            val u = item?.url
+            val gone = u == null || isStandIn(u) || u == "about:blank" ||
+                u.startsWith("data:text/html,chromewebdata") ||
+                addressKey(u) in failed || (item.originalUrl?.let { addressKey(it) in failed } == true)
+            if (!gone) break
+            i--
+        }
+        return if (i < 0) 0 else cur - i
+    }
+
+    /** The u= address a stand-in page carries, if any. */
+    private fun standInTarget(url: String?): String? = try {
+        android.net.Uri.parse(url ?: return null).getQueryParameter("u")?.takeIf { it.isNotBlank() }
+    } catch (e: Exception) { null }
+
+    /** An address without its scheme, www., case of host or trailing slash, to compare loads by. */
+    private fun addressKey(url: String): String {
+        val noScheme = url.substringAfter("://", url)
+        val host = noScheme.substringBefore('/').substringBefore('?').lowercase(java.util.Locale.ROOT).removePrefix("www.")
+        val rest = noScheme.substring(noScheme.substringBefore('/').substringBefore('?').length).substringBefore('#')
+        return host + rest.trimEnd('/')
     }
 
     /** Home, or back to the top of it when already there. */

@@ -366,6 +366,15 @@ These were built without a phone to run them on. Check each once:
       and after rotating. With the feed offline (no stories) it sits at the
       end of the page. Taps on its button open the ad; a tap that stops a
       fling does not.
+- [ ] (2.0.6) Feed: the first ad after the second story exactly as before.
+      Scroll on: one more ad (test ads in debug) after the 11th, 19th,
+      27th and 35th story, each appearing in its place without the page
+      jumping, scrolling with the page, taps on its button working and a
+      tap that stops a fling not counting. None in Night Owl, for
+      supporters, in Focus/Zen or under a category chip.
+- [ ] (2.0.6) Offline, open a site, then Back: the page before (or home),
+      not the offline page again. Same for an address that does not exist
+      and for "not secure" > Go back.
 - [ ] (2.0.5) App open ad on a launch, including the card-style creatives
       with "Continue to app": behind the ad is the owl splash, never home;
       home appears only when the ad is closed. The same coming back from

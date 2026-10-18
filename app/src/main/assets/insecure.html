@@ -37,7 +37,7 @@
        send to it - passwords, messages, card numbers - could be read or changed
        on the way.</p>
     <div class="host" id="host"></div>
-    <button class="go" onclick="history.back();">Go back</button>
+    <button class="go" onclick="if(window.SearchApp&&window.SearchApp.goBack)window.SearchApp.goBack();else history.back();">Go back</button>
     <button class="anyway"
       onclick="if(window.SearchApp&&window.SearchApp.continueInsecure)window.SearchApp.continueInsecure();">
       Continue anyway
