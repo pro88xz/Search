@@ -17,7 +17,7 @@ const path = require('path');
 const dir = __dirname;
 const FRAMES = [
   { head: 'Private browser with [ad blocker]', sub: 'Fewer ads and trackers on the sites you visit.' },
-  { head: 'Top stories and [trending videos]', sub: 'News and YouTube videos on your home page.' },
+  { head: '[Top stories] on your home page', sub: 'Tech, world news and more from named publishers.' },
   { head: 'Smart [web search]', sub: 'Suggestions as you type, voice search and QR scanner.' },
   { head: '[Night Owl] private browsing', sub: 'No history, cookies or form data saved.' },
   { head: 'Three ways to [browse]', sub: 'Explore, Focus or Zen. Switch any time.' },
@@ -29,7 +29,8 @@ const FRAMES = [
 function page(f, capture) {
   const head = f.head.replace(/\[(.+?)\]/, '<span class="pill">$1</span>');
   const owl = 'data:image/webp;base64,' + fs.readFileSync(path.join(dir, 'owl.webp')).toString('base64');
-  const shot = 'data:image/png;base64,' + fs.readFileSync(capture).toString('base64');
+  const mime = /\.jpe?g$/i.test(capture) ? 'image/jpeg' : 'image/png';
+  const shot = 'data:' + mime + ';base64,' + fs.readFileSync(capture).toString('base64');
   return `<!doctype html><meta charset="utf-8"><style>
   html,body{margin:0;width:540px;height:960px;overflow:hidden}
   body{position:relative;font-family:'Inter Display','Inter',sans-serif;text-align:center;color:#fff;
