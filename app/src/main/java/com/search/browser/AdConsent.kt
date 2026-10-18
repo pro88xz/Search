@@ -30,14 +30,23 @@ object AdConsent {
     /**
      * Refreshes the consent status, shows the AdMob message if this user has
      * to answer one, and then reports whether ads may be requested. [onDone]
-     * is called once, on the main thread.
+     * is called once, on the main thread. [onFormNeeded] is called just
+     * before a form is put up - only when the user really has to answer one -
+     * so a screen held over the app (the splash, waiting for the app open
+     * ad) can make way for it.
      */
-    fun gather(activity: Activity, onDone: (Boolean) -> Unit) {
+    fun gather(activity: Activity, onFormNeeded: (() -> Unit)? = null, onDone: (Boolean) -> Unit) {
         val info = UserMessagingPlatform.getConsentInformation(activity)
         val params = ConsentRequestParameters.Builder().build()
         info.requestConsentInfoUpdate(activity, params, {
             if (activity.isFinishing || activity.isDestroyed) return@requestConsentInfoUpdate
-            formShowing = true
+            // A form comes up only when an answer is required; for everyone
+            // else the call below returns at once, and nothing should treat
+            // the app as covered by a form in the meantime.
+            if (info.consentStatus == ConsentInformation.ConsentStatus.REQUIRED) {
+                formShowing = true
+                onFormNeeded?.invoke()
+            }
             UserMessagingPlatform.loadAndShowConsentFormIfRequired(activity) { error ->
                 // Called whether a form was shown or not, and on failure.
                 formShowing = false

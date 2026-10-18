@@ -39,4 +39,6 @@
     <color name="widgetPill">#232327</color>
     <color name="widgetLine">#24FFFFFF</color>
     <color name="widgetHint">#C4C4C9</color>
+    <color name="widgetPress">#1FFFFFFF</color>
+    <color name="widgetShadow">#40000000</color>
 </resources>

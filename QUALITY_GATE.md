@@ -366,6 +366,21 @@ These were built without a phone to run them on. Check each once:
       and after rotating. With the feed offline (no stories) it sits at the
       end of the page. Taps on its button open the ad; a tap that stops a
       fling does not.
+- [ ] (2.0.3) App open ad on the FIRST launch after installing the
+      update (not a fresh install) and after force-stopping the app: the
+      splash stays until the ad is on screen, then home. Repeat with the
+      phone's location in the EEA (consent already answered) and outside.
+- [ ] (2.0.3) Widget: the pill is a fixed height in the middle of its
+      cell with a large owl; resize it, on a dense home-screen grid it
+      switches to the compact size without clipping. Tapping it grows the
+      browser out of the pill (Android 12+) and search is open at once.
+- [ ] (2.0.3) Download an .apk and open it from Downloads: the owl dialog
+      asks to allow installs, Open settings goes to Install unknown apps,
+      turning it on and coming back opens Android's installer; with it
+      already on, the installer opens straight away. No crash either way.
+- [ ] (2.0.3) Visit YouTube and a site from the feed, go home: their tiles
+      show a sharp icon, never a blurry one or a letter (a letter only for a
+      site with no icon at all).
 - [ ] (2.0.2) Fresh install: splash, then straight into the owl's
       introduction - home is not seen first; after it, home, then the
       consent message where one applies. Upgrade: "Search has 3 modes now"

@@ -939,7 +939,13 @@
       try {
         // An app's tile wears the app's icon, never the store's favicon.
         if (t.app) { if (A && A.getAppIcon) t.local = A.getAppIcon(t.app) || ''; }
-        else if (A && A.getCachedFavicon) t.local = A.getCachedFavicon(domainOf(t.url)) || '';
+        else if (A && A.getCachedFavicon) {
+          // The sharp icon if the app has one; a built-in tile fetches its
+          // own otherwise, and a site from history falls back to its small
+          // favicon until its large one arrives (the row is redrawn then).
+          t.local = A.getCachedFavicon(domainOf(t.url)) || '';
+          if (!t.local && !t.canFetch && A.getSmallFavicon) t.local = A.getSmallFavicon(domainOf(t.url)) || '';
+        }
       } catch(e){}
     });
 
