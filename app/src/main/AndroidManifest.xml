@@ -117,6 +117,11 @@
             android:name=".SectionActivity"
             android:exported="false"
             android:theme="@style/Theme.Search" />
+        <!-- The owl's introduction to the browsing modes, once on a fresh install. -->
+        <activity
+            android:name=".ModeIntroActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Search" />
         <activity
             android:name=".LegalActivity"
             android:exported="false"

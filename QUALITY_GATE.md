@@ -334,6 +334,24 @@ These were built without a phone to run them on. Check each once:
       another site (normal size), come back (kept). Settings > Accessibility
       lists it; tapping it there returns it to normal. In Night Owl the
       size is not kept.
+- [ ] (2.0.0) Explore looks and behaves exactly like 1.9.x home (stories,
+      feed ad, shortcuts, Jump back in, blocked line). Upgrading a phone on
+      1.9.x: it opens on Explore and "Search has 3 modes now" appears once,
+      over home, not over the consent message or while typing; "Got it"
+      closes it, "Choose mode" opens Settings > Browsing experience.
+- [ ] (2.0.0) Fresh install: after the splash (and the consent message
+      where one applies) the owl's introduction opens - the owl rises and
+      waves hello, the three cards can be tapped at once, the button reads
+      "Use Focus" etc.; Skip and Back keep Explore; it never shows again.
+      Not shown when the first open is a link from another app.
+- [ ] (2.0.0) Settings > Appearance & browsing > Browsing experience: the
+      row shows the mode in use; a tap on a card applies it with "Browsing
+      experience changed to Focus." and home changes on return, with tabs,
+      bookmarks, shortcuts and history untouched. Focus: search, one row of
+      shortcuts, Jump back in, no stories and no feed ad. Zen: the search
+      box alone (Shortcuts in Zen on: four icons under it). Survives a
+      force-stop and relaunch, rotation and dark mode; TalkBack reads each
+      card as a radio button, checked or not.
 - [ ] (1.9.0) Home: the stories are one white card with rounded corners;
       every story has its full-width picture, headline and publisher row
       (icon, name, age, Share, ⋮); the featured story leads it with "Top

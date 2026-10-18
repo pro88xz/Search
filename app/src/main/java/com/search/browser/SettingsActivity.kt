@@ -66,6 +66,14 @@ class SettingsActivity : AppCompatActivity() {
         // Gone once Search is the default; back if another browser took it.
         findViewById<android.view.View>(R.id.defaultCard).visibility =
             if (DefaultBrowser.isDefault(this)) android.view.View.GONE else android.view.View.VISIBLE
+        // The mode in use, under the row's name.
+        val row = findViewById<android.widget.TextView>(R.id.rowMode)
+        val sub = BrowsingMode.title(BrowsingMode.get(this))
+        val text = android.text.SpannableStringBuilder("Browsing experience\n").append(sub)
+        text.setSpan(android.text.style.RelativeSizeSpan(0.82f), text.length - sub.length, text.length, 0)
+        text.setSpan(android.text.style.ForegroundColorSpan(0xFF8A8A8F.toInt()), text.length - sub.length, text.length, 0)
+        row.text = text
+        row.contentDescription = "Browsing experience, " + sub
     }
 
     private val defaultLauncher = registerForActivityResult(
@@ -275,6 +283,8 @@ class SettingsActivity : AppCompatActivity() {
             .setOnClickListener { openSection(SectionActivity.SEC_ACCESSIBILITY) }
         findViewById<android.widget.TextView>(R.id.rowCustomize)
             .setOnClickListener { openSection(SectionActivity.SEC_CUSTOMIZE) }
+        findViewById<android.widget.TextView>(R.id.rowMode)
+            .setOnClickListener { openSection(SectionActivity.SEC_MODE) }
         findViewById<android.widget.TextView>(R.id.rowPrivacy)
             .setOnClickListener {
                 // The hosted policy is the real document; the bundled page is

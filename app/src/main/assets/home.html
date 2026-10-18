@@ -479,6 +479,33 @@
   .shield svg { width:16px; height:16px; color:var(--accent-text); flex:none; }
   .shield b { color:var(--fg-2); font-weight:700; }
 
+  /* ---------- Browsing modes ----------
+     One page, composed three ways (html.mode-explore / -focus / -zen, from
+     the app's config, changed live by __setMode). Explore is the page as
+     it is. Focus keeps the search box, one row of shortcuts and Jump back
+     in, and sits them a little above the middle of the screen so there is
+     no hole where the stories were. Zen makes the search box the page:
+     larger, centred, the wordmark above it, nothing else unless the user
+     asked for a few shortcuts (html.zen-tiles). Nothing hidden here is
+     fetched either: the script skips the feed, the stats and the ad's
+     place outside Explore. */
+  .mode-focus .feed, .mode-zen .feed, .mode-focus .shield, .mode-zen .shield,
+  .mode-zen .resume { display:none !important; }
+  .mode-focus .wrap, .mode-zen .wrap {
+    min-height:100vh; justify-content:center; padding-top:24px; padding-bottom:22vh;
+  }
+  .mode-focus .shortcuts { margin-top:28px; }
+  .mode-zen .wordmark { font-size:44px; margin-bottom:26px; }
+  .mode-zen .field { height:64px; border-radius:32px; max-width:560px; padding-left:22px; }
+  .mode-zen .field::before { border-radius:36px; }
+  .mode-zen .field input, .mode-zen .field .fhint { font-size:18px; }
+  .mode-zen .shortcuts { display:none; }
+  .mode-zen.zen-tiles .shortcuts { display:grid; grid-template-columns:repeat(4,1fr); max-width:300px; margin-top:30px; }
+  .mode-zen .tile .lbl { display:none; }
+  /* A change of mode cross-fades the page rather than jumping. */
+  .wrap.modeswap { animation:modeIn .32s var(--ease-out); }
+  @keyframes modeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
       animation-duration:1ms !important; animation-delay:0s !important; animation-iteration-count:1 !important;
@@ -576,6 +603,9 @@
 
   var showTiles = true;
   var nightOwl = false;
+  // The browsing mode: explore (everything), focus (no news), zen (search alone).
+  var mode = 'explore';
+  var zenTiles = false;
   try {
     var A = bridge();
     if (A && A.getConfig) {
@@ -583,8 +613,16 @@
       if (cfg.accent) applyAccent(cfg.accent);
       showTiles = (cfg.tiles !== false);
       nightOwl = (cfg.nightOwl === true);
+      if (cfg.mode === 'focus' || cfg.mode === 'zen') mode = cfg.mode;
+      zenTiles = (cfg.zenTiles === true);
     }
   } catch (e) {}
+  function modeClasses(){
+    root.classList.remove('mode-explore', 'mode-focus', 'mode-zen');
+    root.classList.add('mode-' + mode);
+    root.classList.toggle('zen-tiles', zenTiles);
+  }
+  modeClasses();
 
   var tilesHost = document.getElementById('tiles');
   var feedHost = document.getElementById('feed');
@@ -721,6 +759,8 @@
     var label = t.label, url = t.url;
     var a = document.createElement('a'); a.className = 'tile'; a.href = 'javascript:void(0)';
     a.setAttribute('data-press', '');
+    // Zen does not draw the label, so TalkBack is given it here instead.
+    if (mode === 'zen') a.setAttribute('aria-label', label);
     a.style.animationDelay = (90 + index * 28) + 'ms';
 
     // Long press removes. The flag is what stops the press that opened the
@@ -831,7 +871,8 @@
 
   var tilesSig = null, tilesAnimated = false;
   function renderTiles(){
-    if (!showTiles){
+    // Zen draws (and fetches icons for) no shortcuts unless asked for some.
+    if (!showTiles || (mode === 'zen' && !zenTiles)){
       tilesHost.innerHTML = '';
       tilesHost.classList.add('hidden');
       tilesSig = null;
@@ -889,8 +930,10 @@
         d.pinned ? pinned : combined);
     });
 
-    // Eight sites and the plus: nine in a five-wide grid, the pinned ones last.
-    var list = combined.slice(0, Math.max(0, 8 - pinned.length)).concat(pinned).slice(0, 8);
+    // Eight sites and the plus: nine in a five-wide grid, the pinned ones
+    // last. Focus keeps one row (four and the plus), Zen at most four.
+    var cap = mode === 'explore' ? 8 : 4;
+    var list = combined.slice(0, Math.max(0, cap - pinned.length)).concat(pinned).slice(0, cap);
     list.forEach(function(t){
       t.local = '';
       try {
@@ -903,7 +946,7 @@
     // This runs on every focus and every return to the page. Rebuilding an
     // unchanged row re-requested every icon and flashed each tile's letter for
     // a frame, so an identical row is left exactly as it is.
-    var sig = JSON.stringify(list.map(function(t){ return [t.label, t.url, t.canFetch, t.scale || 1, t.local]; }));
+    var sig = mode + JSON.stringify(list.map(function(t){ return [t.label, t.url, t.canFetch, t.scale || 1, t.local]; }));
     if (sig === tilesSig) return;
     tilesSig = sig;
 
@@ -911,7 +954,7 @@
     var animate = !tilesAnimated && !reduceMotion;
     tilesHost.classList.toggle('enter', animate);
     list.forEach(function(t, i){ buildTile(t, i); });
-    buildAddTile(list.length);
+    if (mode !== 'zen') buildAddTile(list.length);
     if (animate) {
       tilesAnimated = true;
       setTimeout(function(){ tilesHost.classList.remove('enter'); }, 1100);
@@ -1321,7 +1364,7 @@
     var A = bridge();
     if (!A || !A.adSlotAt) return;
     var top = -1, left = 0, width = 0, h = 0;
-    if (!nightOwl && adSlotEl && adSlotEl.parentNode && adSlotEl.offsetParent !== null) {
+    if (!nightOwl && mode === 'explore' && adSlotEl && adSlotEl.parentNode && adSlotEl.offsetParent !== null) {
       top = docTop(adSlotEl); left = docLeft(adSlotEl);
       width = adSlotEl.offsetWidth; h = adSlotEl.offsetHeight;
     }
@@ -1635,7 +1678,7 @@
   }
 
   window.__onFeed = function(reqId, items){
-    if (reqId !== feedReqId) return;
+    if (reqId !== feedReqId || mode !== 'explore') return;
     feedLoaded = true;
     renderFeed(items);
   };
@@ -1663,7 +1706,7 @@
     });
   }
   window.__onFeedUpdate = function(items){
-    if (nightOwl || !items || !items.length) return;
+    if (nightOwl || mode !== 'explore' || !items || !items.length) return;
     feedLoaded = true;
     pendingFeed = items;
     takePendingFeed();
@@ -1675,7 +1718,7 @@
   // Called by the app when connectivity is restored, to swap cached/offline
   // content for fresh stories. Forces a fetch even if a feed already loaded.
   window.__reloadFeedOnline = function(){
-    if (nightOwl) return;
+    if (nightOwl || mode !== 'explore') return;
     badImages = {};
     feedLoaded = false;
     loadFeed();
@@ -1690,9 +1733,9 @@
     try { A.getFeed(feedReqId); } catch(e){}
   }
 
-  if (!nightOwl) loadFeed();
+  if (!nightOwl && mode === 'explore') loadFeed();
   document.addEventListener('visibilitychange', function(){
-    if (document.visibilityState !== 'visible' || nightOwl) return;
+    if (document.visibilityState !== 'visible' || nightOwl || mode !== 'explore') return;
     if (!feedLoaded) loadFeed();
     else { refreshTimes(); takePendingFeed(); }
   });
@@ -1739,6 +1782,7 @@
   function renderResume(animate){
     var A = bridge();
     if (!resumeEl || !A || !A.getResume || nightOwl) return;
+    if (mode === 'zen') { resumeEl.classList.add('hidden'); resumeKey = ''; return; }
     var r = null;
     try { r = JSON.parse(A.getResume() || '{}'); } catch (e) { r = null; }
     if (!r || !r.url || !/^https?:\/\//i.test(r.url)) {
@@ -1772,6 +1816,34 @@
     }
   }
   window.__refreshResume = function(){ renderResume(true); renderShield(); };
+
+  // ---------- A new browsing mode, live ----------
+  // The app calls this when the mode changes in Settings: the page
+  // recomposes where it is, with no reload. Leaving Explore drops the
+  // stories (their pictures stop loading and decoding, nothing more is
+  // fetched); coming back to it loads them.
+  window.__setMode = function(m, zt){
+    var next = (m === 'focus' || m === 'zen') ? m : 'explore';
+    var tilesNext = zt === true;
+    if (next === mode && tilesNext === zenTiles) return;
+    mode = next; zenTiles = tilesNext;
+    modeClasses();
+    if (!reduceMotion) { wrapEl.classList.remove('modeswap'); void wrapEl.offsetWidth; wrapEl.classList.add('modeswap'); }
+    tilesSig = null;
+    renderTiles();
+    resumeKey = '';
+    renderResume(false);
+    renderShield();
+    if (mode === 'explore') {
+      if (!nightOwl) { feedLoaded = false; loadFeed(); }
+    } else {
+      pendingFeed = null;
+      feedReqId++;            // an answer still on its way is not wanted
+      renderFeed([]);
+    }
+    adRep = '';
+    reportAdSlotSoon();
+  };
   renderResume(true);
 
   // ---------- Blocked this week ----------
@@ -1779,6 +1851,7 @@
   function renderShield(){
     var A = bridge();
     if (!shieldEl || !A || !A.getPrivacyStats || nightOwl) return;
+    if (mode !== 'explore') { shieldEl.classList.add('hidden'); return; }
     var st = null;
     try { st = JSON.parse(A.getPrivacyStats() || '{}'); } catch (e) { st = null; }
     if (!st || !st.on || !(st.week > 0)) { shieldEl.classList.add('hidden'); return; }

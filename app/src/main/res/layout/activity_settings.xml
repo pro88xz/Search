@@ -89,9 +89,17 @@
                     android:text="Customize your Search" android:drawableStart="@drawable/set_customize" />
             </LinearLayout>
 
-            <!-- Appearance -->
-            <TextView style="@style/SettingsCardLabel" android:text="Appearance" />
+            <!-- Appearance & browsing: the browsing experience (Explore, Focus,
+                 Zen - SectionActivity SEC_MODE), then the theme. -->
+            <TextView style="@style/SettingsCardLabel" android:text="Appearance &amp; browsing" />
             <LinearLayout style="@style/SettingsCard">
+                <TextView android:id="@+id/rowMode" style="@style/SettingsRow"
+                    android:text="Browsing experience" android:drawableStart="@drawable/set_mode" />
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginStart="18dp"
+                    android:background="@color/cardLine" />
                 <RadioGroup
                     android:id="@+id/themeGroup"
                     android:layout_width="match_parent"

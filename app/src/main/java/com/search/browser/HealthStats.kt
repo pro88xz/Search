@@ -60,6 +60,12 @@ object HealthStats {
     const val AD_FILLED = "ad_filled"
     const val AD_FAILED = "ad_failed"
     const val AD_SEEN = "ad_seen"
+    // Browsing modes (BrowsingMode): the introduction seen, a mode picked in
+    // it, a change in Settings, the upgrade message seen. Counts only.
+    const val MODE_INTRO_VIEWED = "mode_intro_viewed"
+    const val MODE_SELECTED = "mode_selected"
+    const val MODE_CHANGED = "mode_changed"
+    const val MODE_ANNOUNCED = "mode_announced"
     // The app open ad (AppOpenAds): asked for, loaded, failed, shown.
     const val AO_REQUESTS = "ao_requests"
     const val AO_FILLED = "ao_filled"
