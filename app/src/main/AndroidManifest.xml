@@ -17,6 +17,9 @@
          declare this: tapping a downloaded APK did nothing at all. The user
          still has to allow it, per app, in Settings (MainActivity asks). -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- The owl's click (Haptics.owlPress) goes through the vibrator itself;
+         a normal permission, granted at install. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
     <!--
       Needed for the web to reach them at all. A site asking for the camera,
       the microphone or a location gets nothing unless this app itself holds

@@ -76,6 +76,7 @@ object AppOpenAds {
     private var failures = 0
     private var lastError = -1
     private var showing = false
+    private var showingAt = 0L
 
     private var started = 0
     private var opens = 0
@@ -94,7 +95,7 @@ object AppOpenAds {
         application.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
             override fun onActivityStarted(activity: Activity) {
                 started++
-                if (started == 1) opened()
+                if (started == 1) opened(activity)
             }
             override fun onActivityStopped(activity: Activity) {
                 started = (started - 1).coerceAtLeast(0)
@@ -114,8 +115,21 @@ object AppOpenAds {
      * The browser came to the front. A skip asked for just before (the
      * intent that opened it, handled in onCreate or onNewIntent) stands.
      */
-    private fun opened() {
+    private fun opened(first: Activity) {
         val now = SystemClock.elapsedRealtime()
+        if (showing) {
+            if (first.javaClass.name.startsWith("com.google.android.gms.ads.")) {
+                // Back to an ad still on screen (left with Home while it was
+                // up): not an open - closing it must not bring another.
+                skipOpen = true
+            } else if (now - showingAt > 30_000L) {
+                // The browser itself came first, so the ad's screen is gone.
+                // Its closing callback never came (torn down with the app in
+                // the background), and "showing" stayed set: no app open ad
+                // was asked for or shown again until the app was restarted.
+                showing = false
+            }
+        }
         val back = leftAt > 0L && now - leftAt < ROUND_TRIP_MS
         if (back || clickedAway) skipOpen = true
         leftAt = 0L
@@ -170,6 +184,7 @@ object AppOpenAds {
         val a = ad
         if (a == null || !readyNow() || skipOpen || !gate()) { onDone(false); return }
         showing = true
+        showingAt = SystemClock.elapsedRealtime()
         var finished = false
         fun done(shown: Boolean) { if (!finished) { finished = true; onDone(shown) } }
         a.fullScreenContentCallback = object : FullScreenContentCallback() {

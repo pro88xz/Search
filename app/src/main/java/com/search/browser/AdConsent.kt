@@ -42,6 +42,18 @@ object AdConsent {
      * ad) can make way for it.
      */
     fun gather(activity: Activity, onFormNeeded: (() -> Unit)? = null, onDone: (Boolean) -> Unit) {
+        // Anything thrown here would leave the caller waiting on an answer
+        // that never comes (MainActivity.consentInFlight): answered instead
+        // from what is already known.
+        try {
+            gatherNow(activity, onFormNeeded, onDone)
+        } catch (t: Throwable) {
+            formShowing = false
+            onDone(try { adsAllowed(activity) } catch (e: Throwable) { false })
+        }
+    }
+
+    private fun gatherNow(activity: Activity, onFormNeeded: (() -> Unit)?, onDone: (Boolean) -> Unit) {
         val info = UserMessagingPlatform.getConsentInformation(activity)
         val params = ConsentRequestParameters.Builder().build()
         info.requestConsentInfoUpdate(activity, params, {

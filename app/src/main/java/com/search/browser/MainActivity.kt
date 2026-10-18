@@ -700,7 +700,10 @@ class MainActivity : AppCompatActivity() {
         try {
             suggestIo.execute {
                 if (id != suggestSeq) return@execute
-                val items = first + buildSuggestions(q).filter { it.optString("url") !in firstUrls }
+                // On this executor's thread an uncaught throw ends the app;
+                // a suggestion list that cannot be built is just the first part.
+                val more = try { buildSuggestions(q) } catch (t: Throwable) { emptyList() }
+                val items = first + more.filter { it.optString("url") !in firstUrls }
                 runOnUiThread {
                     if (id == suggestSeq && searchMode) suggestAdapter?.submit(items, q)
                 }
@@ -6085,17 +6088,19 @@ class MainActivity : AppCompatActivity() {
         if (adsStarted) return
         adsStarted = true
         Thread {
-            com.google.android.gms.ads.MobileAds.initialize(this) {
-                runOnUiThread {
-                    if (isFinishing || isDestroyed) return@runOnUiThread
-                    adsReady = true
-                    // Not gated on Night Owl here: loadFeedAd makes that call,
-                    // so initialization finishing DURING a private session is
-                    // handled by the same test as every other path in.
-                    loadFeedAd()
-                    // Further ad places the reader neared while it started.
-                    if (extraLoading < 0) extraNext.run()
+            // A start that throws - Android System WebView being updated or
+            // missing is the known case - took the whole app down from this
+            // thread, and, marked started, was never tried again. Now it is
+            // let go, and tried again on the next resume or reconnect
+            // (resumeFeedAd / retryAdsAfterReconnect see adsStarted false).
+            try {
+                com.google.android.gms.ads.MobileAds.initialize(this) {
+                    runOnUiThread { onAdsSdkReady() }
                 }
+            } catch (t: Throwable) {
+                if (BuildConfig.DEBUG) android.util.Log.d("Ads", "initialize threw: $t")
+                runOnUiThread { adsStarted = false }
+                return@Thread
             }
             // The app open ad is asked for as soon as the SDK has been started
             // - not when it reports it has finished starting, which can take
@@ -6107,8 +6112,24 @@ class MainActivity : AppCompatActivity() {
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 adsSdkCalled = true
                 AppOpenAds.sdkReady()
+                // Should the SDK never report that it has finished starting,
+                // the feed ad does not wait for it for ever: with no mediation
+                // an ad may be asked for without that report.
+                uiHandler.postDelayed({ onAdsSdkReady() }, 10_000L)
             }
         }.start()
+    }
+
+    /** The SDK has finished starting (or has been given long enough): the feed ads may be asked for. */
+    private fun onAdsSdkReady() {
+        if (isFinishing || isDestroyed || adsReady) return
+        adsReady = true
+        // Not gated on Night Owl here: loadFeedAd makes that call,
+        // so initialization finishing DURING a private session is
+        // handled by the same test as every other path in.
+        loadFeedAd()
+        // Further ad places the reader neared while it started.
+        if (extraLoading < 0) extraNext.run()
     }
 
     /**
@@ -6148,6 +6169,9 @@ class MainActivity : AppCompatActivity() {
         adLoading = true
         lastAdAttemptAt = android.os.SystemClock.elapsedRealtime()
         HealthStats.count(this, HealthStats.AD_REQUESTS)
+        // A request that throws before it is out would leave adLoading set for
+        // good - no feed ad again this session, and nothing to say why.
+        try {
         com.google.android.gms.ads.AdLoader.Builder(this, feedAdUnit)
             .forNativeAd { ad ->
                 adLoading = false
@@ -6210,6 +6234,14 @@ class MainActivity : AppCompatActivity() {
                     .build())
             .build()
             .loadAd(com.google.android.gms.ads.AdRequest.Builder().build())
+        } catch (t: Throwable) {
+            adLoading = false
+            if (BuildConfig.DEBUG) android.util.Log.d("Ads", "feed ad request threw: $t")
+            if (!replace && adFailures < AD_RETRY_MS.size && !isFinishing && !isDestroyed) {
+                uiHandler.postDelayed(adRetry, AD_RETRY_MS[adFailures])
+                adFailures++
+            }
+        }
     }
 
     /** Back online: the ad flow picks up wherever it was left. */

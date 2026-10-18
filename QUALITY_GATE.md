@@ -366,6 +366,11 @@ These were built without a phone to run them on. Check each once:
       and after rotating. With the feed offline (no stories) it sits at the
       end of the page. Taps on its button open the ad; a tap that stops a
       fling does not.
+- [ ] (2.0.8) Tap the owl: a clear click in the hand, with the phone's own
+      touch vibration on and off; none with Settings > Customize >
+      Vibration on tap off.
+- [ ] (2.0.8) App open ad: while it is up press Home, come back, close it:
+      home, not a second ad. Several opens later ads still come.
 - [ ] (2.0.6) Feed: the first ad after the second story exactly as before.
       Scroll on: one more ad (test ads in debug) after the 11th, 19th,
       27th and 35th story, each appearing in its place without the page
