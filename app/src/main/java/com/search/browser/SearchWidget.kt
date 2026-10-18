@@ -64,7 +64,7 @@ class SearchWidget : AppWidgetProvider() {
 
     companion object {
         /** The cell height (dp) the full-size pill needs; below it the compact one is used. */
-        private const val FULL_MIN_HEIGHT_DP = 64f
+        private const val FULL_MIN_HEIGHT_DP = 70f
 
         /** Settings > Add the search widget: Android's own "add to home screen" (Android 8+). */
         fun requestPin(c: Context): Boolean {

@@ -15,11 +15,11 @@
     <LinearLayout
         android:id="@android:id/background"
         android:layout_width="match_parent"
-        android:layout_height="58dp"
+        android:layout_height="64dp"
         android:layout_gravity="center_vertical"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:paddingStart="12dp"
+        android:paddingStart="15dp"
         android:paddingEnd="4dp"
         android:background="@drawable/widget_pill_bg">
 
