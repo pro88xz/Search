@@ -18,7 +18,8 @@ package with path data copied unchanged. So are the menu's `menu_share.xml`
 (`squares-four`) and `set_mode.xml` (`layout`), and the tab deck's `deck_more.xml` (`dots-three-vertical`),
 all Bold. Page tools' `menu_video_download.xml` (`video`) and `menu_offline.xml`
 (`cloud-arrow-down`), and the Library's `menu_offline_pages.xml`
-(`tray-arrow-down`), are Bold too.
+(`tray-arrow-down`), are Bold too, as are Listen's `menu_listen.xml`
+(`speaker-high`), `listen_play.xml` (`play`) and `listen_pause.xml` (`pause`).
 
 MIT License
 

@@ -116,13 +116,39 @@ class SectionActivity : AppCompatActivity() {
         )
         addToggle(
             "Block third-party cookies",
-            "Prevent cross-site tracking cookies.",
+            "Prevent cross-site tracking cookies. Some checkouts, payment pages and " +
+                "sign-ins need them: turn this off if one gets stuck.",
             Settings.SEC_BLOCK_3P_COOKIES, false
         )
         addToggle(
             "Confirm every download",
             "Ask before any file downloads, so nothing saves without your OK.",
             Settings.SEC_CONFIRM_DOWNLOADS, true
+        )
+        addToggle(
+            "Warn about risky downloads",
+            "A warning before app and program files (.apk, .exe and the like) and " +
+                "files sent over an insecure connection, even with confirmation off.",
+            Settings.SEC_RISKY_DOWNLOADS, true
+        )
+        addToggle(
+            "Warn about look-alike sites",
+            "Tells you when a site's name uses letters from another alphabet that can " +
+                "pass for a familiar name - a common phishing trick.",
+            Settings.SEC_LOOKALIKE, true
+        )
+        group("Night Owl")
+        addToggle(
+            "Lock Night Owl tabs when you leave",
+            "Coming back to Search with Night Owl on asks for your fingerprint, face, " +
+                "PIN or pattern first. Needs a screen lock on this phone.",
+            Settings.NIGHT_OWL_LOCK, false
+        )
+        addToggle(
+            "Hide Night Owl from screenshots and recent apps",
+            "While Night Owl is on, screenshots are blocked and the app shows blank in " +
+                "the list of recent apps.",
+            Settings.NIGHT_OWL_SECURE, false
         )
         group("Privacy")
         addToggle(
@@ -391,6 +417,16 @@ class SectionActivity : AppCompatActivity() {
             Settings.HIDE_BARS_ON_SCROLL, true
         )
         addToggle(
+            "Pull to refresh",
+            "Pull a page down from its top to reload it.",
+            Settings.PULL_REFRESH, true
+        )
+        addToggle(
+            "Swipe the bottom bar to switch tabs",
+            "Slide the bar left or right to go to the next tab.",
+            Settings.SWIPE_TABS, true
+        )
+        addToggle(
             "Page colours in the bars",
             "The bars and the search box take on each site's own colour, as Chrome's do.",
             Settings.TINT_BARS, false
@@ -470,7 +506,8 @@ class SectionActivity : AppCompatActivity() {
 
     private val permKinds = listOf(
         SitePermissions.CAMERA_MIC to "Camera & microphone",
-        SitePermissions.LOCATION to "Location"
+        SitePermissions.LOCATION to "Location",
+        SitePermissions.POPUPS to "Pop-ups"
     )
 
     private fun answerLabel(a: Int?): String = when (a) {

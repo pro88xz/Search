@@ -304,6 +304,41 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * The file picker for a page's file input. WebView's own intent took the
+     * first accepted type only and ignored "multiple": a shop's upload of
+     * several product photos let one be picked, and an input that accepts
+     * ".csv,.xlsx" (a bulk product upload) was handed ".csv" as a type, which
+     * matches no file, so everything was greyed out. Now: several files when
+     * the input takes several; real media types (any image, video/mp4) as
+     * themselves, several at once if there are several; and anything given
+     * as a file extension opens the picker on every file, the site checking
+     * what it gets as it always does.
+     */
+    private fun fileChooserIntent(params: WebChromeClient.FileChooserParams?): android.content.Intent {
+        val accept = params?.acceptTypes.orEmpty()
+            .flatMap { it.split(',') }.map { it.trim().lowercase() }.filter { it.isNotEmpty() }
+        val types = LinkedHashSet<String>()
+        var any = accept.isEmpty()
+        for (a in accept) {
+            if (a.contains('/') && !a.startsWith('.')) types.add(a) else any = true
+        }
+        val i = android.content.Intent(android.content.Intent.ACTION_GET_CONTENT)
+        i.addCategory(android.content.Intent.CATEGORY_OPENABLE)
+        when {
+            any || types.isEmpty() -> i.type = "*/*"
+            types.size == 1 -> i.type = types.first()
+            else -> {
+                i.type = "*/*"
+                i.putExtra(android.content.Intent.EXTRA_MIME_TYPES, types.toTypedArray())
+            }
+        }
+        if (params?.mode == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE) {
+            i.putExtra(android.content.Intent.EXTRA_ALLOW_MULTIPLE, true)
+        }
+        return i
+    }
+
     private fun hasNetwork(): Boolean {
         val cm = getSystemService(android.content.Context.CONNECTIVITY_SERVICE)
             as android.net.ConnectivityManager
@@ -1254,6 +1289,19 @@ class MainActivity : AppCompatActivity() {
         if (launchCover != null && coverAdShowing) hideLaunchCover()
         // The Download video button may have been switched off in Settings.
         updateVideoFab()
+        // Night Owl's screenshot and recents protection may have changed in
+        // Settings; and Night Owl locked on the way out asks to be unlocked.
+        applyNightOwlSecure()
+        if (nightOwlLocked) {
+            if (!nightOwl || !nightOwlLockOn()) { nightOwlLocked = false; hideNightOwlLock() }
+            else {
+                showNightOwlLock()
+                // Asked by itself once per lock: a prompt cancelled (which can
+                // pause and resume this screen) is not asked again on its own
+                // - Unlock on the lock asks again.
+                if (!unlocking && !lockPrompted) { lockPrompted = true; promptUnlock() }
+            }
+        }
         // Back from the background: an app open ad that is ready opens the
         // way in (a launch is handled by the splash: onSplashMinimumDone).
         if (AppOpenAds.takeOpen() == AppOpenAds.WARM_OPEN) warmOpenAd()
@@ -1817,6 +1865,9 @@ class MainActivity : AppCompatActivity() {
             override fun handleOnBackPressed() {
                 val web = activeWeb()
                 when {
+                    // Night Owl locked: nothing under the lock is reachable;
+                    // Back leaves, as it would from a lock screen.
+                    nightOwlLocked -> { moveTaskToBack(true) }
                     // The splash picture is up while the app open ad loads:
                     // it is the way in, as the splash is, and Back does not
                     // act on the page hidden under it.
@@ -2783,7 +2834,10 @@ class MainActivity : AppCompatActivity() {
                 // (LinkCleaner): only a tap, never a redirect, so a site's own
                 // hops are left alone; ad click ids are kept.
                 if ((scheme == "https" || scheme == "http") && request.isForMainFrame &&
-                    request.hasGesture() && !request.isRedirect && cleanLinksOn()) {
+                    request.hasGesture() && !request.isRedirect && cleanLinksOn() &&
+                    // Never in a pop-up: that is a sign-in or a payment
+                    // talking to the page that opened it, left exactly as sent.
+                    tabOf(view)?.openerId == null) {
                     val clean = LinkCleaner.clean(uri.toString())
                     if (clean != null) {
                         loadAfterCallback(view, clean)
@@ -2981,6 +3035,8 @@ class MainActivity : AppCompatActivity() {
                     url != null && url.startsWith("file:///android_asset/")
                 // A new document: what the last one showed no longer counts.
                 (view?.tag as? SearchAppBridge)?.let { it.shownMode = null; it.shownDark = null }
+                // The page being read aloud has gone: so does the reading.
+                if (view != null && view === listenWeb && listening) stopListening()
                 (view as? BrowserWebView)?.notePageSite(url)
                 // The site's own zoom (Menu > Zoom), or the size from Settings.
                 view?.settings?.let { s -> zoomFor(url).let { z -> if (s.textZoom != z) s.textZoom = z } }
@@ -2992,6 +3048,7 @@ class MainActivity : AppCompatActivity() {
                     showBars()
                     // The last page's videos are not this one's.
                     setFoundVideos(emptyList(), null)
+                    checkLookalike(url)
                     // Plain bars for home and pages that are not to be tinted;
                     // a site's colours arrive once it has painted.
                     // Leaving Focus or Zen's home takes its wash off the bars too.
@@ -3296,11 +3353,24 @@ class MainActivity : AppCompatActivity() {
                 if (resultMsg == null) return false
                 // Where "block pop-ups" is actually enforced. A pop-up that
                 // follows a tap carries a gesture and is let through - every
-                // sign-in pop-up is one. A site opening windows by itself does
-                // not, and is refused, so ad pop-ups stay blocked.
-                if (!isUserGesture && Settings.getBool(
+                // sign-in pop-up is one. So is one opened within a few
+                // seconds of a tap on the page: payment and sign-in kits
+                // (PayPal, card checks, wallets) often open theirs once a
+                // request has answered, a moment after the click, when the
+                // gesture flag has already gone - Chrome allows those too.
+                // A site the user has allowed pop-ups on is let through. A
+                // site opening windows by itself is refused, so ad pop-ups
+                // stay blocked, and the user is told, with a way to allow it.
+                val tapWeb = view as? BrowserWebView
+                val tapped = isUserGesture || tapWeb?.touching == true ||
+                    (tapWeb != null && android.os.SystemClock.uptimeMillis() - tapWeb.lastTouchUp < POPUP_TAP_GRACE_MS)
+                val popupOrigin = originOf(view?.url)
+                val siteAllows = popupOrigin != null && SitePermissions.get(
+                    this@MainActivity, popupOrigin, SitePermissions.POPUPS) == SitePermissions.ALLOW
+                if (!tapped && !siteAllows && Settings.getBool(
                         this@MainActivity, Settings.SEC_BLOCK_POPUPS, true)) {
                     DebugLog.add { "pop-up refused: no user gesture, from tab#" + tabOf(view)?.id }
+                    offerPopupAllow(view, popupOrigin)
                     return false
                 }
                 // Validate the transport BEFORE creating any tab, so a malformed
@@ -3385,11 +3455,7 @@ class MainActivity : AppCompatActivity() {
                 // Cancel any previous pending chooser.
                 filePathCallback?.onReceiveValue(null)
                 filePathCallback = callback
-                val intent = params?.createIntent()
-                    ?: android.content.Intent(android.content.Intent.ACTION_GET_CONTENT).apply {
-                        addCategory(android.content.Intent.CATEGORY_OPENABLE)
-                        type = "*/*"
-                    }
+                val intent = fileChooserIntent(params)
                 return try {
                     fileChooserLauncher.launch(intent)
                     true
@@ -3489,6 +3555,8 @@ class MainActivity : AppCompatActivity() {
         }
         hideBarsPref = Settings.getBool(this, Settings.HIDE_BARS_ON_SCROLL, true)
         tintBarsPref = Settings.getBool(this, Settings.TINT_BARS, false)
+        pullRefreshPref = Settings.getBool(this, Settings.PULL_REFRESH, true)
+        swipeTabsPref = Settings.getBool(this, Settings.SWIPE_TABS, true)
         touchExploration = (getSystemService(ACCESSIBILITY_SERVICE) as?
             android.view.accessibility.AccessibilityManager)?.isTouchExplorationEnabled == true
         if (!hideBarsPref || touchExploration) showBars(animate = false)
@@ -4823,6 +4891,47 @@ class MainActivity : AppCompatActivity() {
     private fun tabOf(web: WebView?): Tab? =
         if (web == null) null else tabs.tabs.firstOrNull { it.webView === web }
 
+    /** How long after a tap a pop-up still counts as the user's (Chrome's window is about this). */
+    private val POPUP_TAP_GRACE_MS = 5_000L
+
+    /** scheme://host[:port] of [url], the key site settings are kept under; null for anything not a web page. */
+    private fun originOf(url: String?): String? {
+        val u = try { android.net.Uri.parse(url ?: return null) } catch (e: Exception) { return null }
+        val scheme = u.scheme?.lowercase()
+        if (scheme != "https" && scheme != "http") return null
+        val host = u.host?.lowercase() ?: return null
+        return scheme + "://" + host + (if (u.port > 0) ":" + u.port else "")
+    }
+
+    private var popupNoticeAt = 0L
+
+    /**
+     * A pop-up the blocker refused: said once in a while (a page that keeps
+     * trying is told once, not every time), with the way to let this site
+     * open them - as Chrome's "Pop-ups blocked" does. The window asked for
+     * cannot be brought back, so the site is asked to try again.
+     */
+    private fun offerPopupAllow(view: WebView?, origin: String?) {
+        if (origin == null || view == null) return
+        uiHandler.post {
+            if (isFinishing || isDestroyed || view !== activeWeb()) return@post
+            val now = android.os.SystemClock.uptimeMillis()
+            if (now - popupNoticeAt < 15_000L) return@post
+            popupNoticeAt = now
+            val host = try { android.net.Uri.parse(origin).host?.removePrefix("www.") } catch (e: Exception) { null } ?: return@post
+            try {
+                com.google.android.material.snackbar.Snackbar
+                    .make(binding.webArea, "Pop-up blocked", com.google.android.material.snackbar.Snackbar.LENGTH_LONG)
+                    .setAction("Allow on this site") {
+                        SitePermissions.set(this, origin, SitePermissions.POPUPS, SitePermissions.ALLOW)
+                        toast("Pop-ups allowed on " + host + ". Try again.")
+                    }
+                    .setActionTextColor(currentAccent())
+                    .show()
+            } catch (e: Exception) { /* no window to show it in */ }
+        }
+    }
+
     /**
      * Closes a tab a page opened, if nothing ever loaded in it. Run after the
      * callback that decided its first navigation was not ours to load.
@@ -4963,9 +5072,12 @@ class MainActivity : AppCompatActivity() {
         if (t.openerId == null || url == null) return
         val site = UrlHelper.siteOf(url)
         if (site != null && t.openerSite != null && site != t.openerSite) t.leftOpenerSite = true
-        if (!t.signIn && UrlHelper.looksLikeSignIn(url)) {
+        if (!t.signIn && (UrlHelper.looksLikeSignIn(url) || UrlHelper.looksLikePayment(url))) {
+            // A payment (PayPal, a wallet, a card check) is the same hand-off
+            // as a sign-in: away to the provider and back to the shop, and
+            // it gets the same watch for a blank page on the way back.
             t.signIn = true
-            DebugLog.add { "pop-up tab#" + t.id + " is a sign-in (" + DebugLog.url(url) + ")" }
+            DebugLog.add { "pop-up tab#" + t.id + " is a sign-in or payment (" + DebugLog.url(url) + ")" }
         }
     }
 
@@ -5260,7 +5372,8 @@ class MainActivity : AppCompatActivity() {
         if (!low && !background) return
         if (low) HealthStats.count(this, HealthStats.MEMORY_LOW)
         DebugLog.add { "memory trim level " + level + ": freezing background tabs" }
-        tabs.trimLive(1)
+        memoryShort = true
+        try { tabs.trimLive(1) } finally { memoryShort = false }
         // What only saves a moment: icons are on disk too, and a closed tab
         // can still come back by its address without its history.
         SiteIcons.trimMemory()
@@ -5644,7 +5757,16 @@ class MainActivity : AppCompatActivity() {
      * several tabs live at once, but checking email in another tab halfway
      * through a sign-up is exactly that.
      */
+    /** True only while a real memory shortage is being answered (onTrimMemory). */
+    private var memoryShort = false
+
     private fun canFreezeTab(tab: Tab): Boolean {
+        // A cart or checkout in progress keeps its page - the basket, an
+        // address typed half-way, a payment step - under the live-tab cap and
+        // the gentle trims, so opening a few more tabs mid-purchase never
+        // reloads it. Only when memory is really short does it go like any
+        // other tab.
+        if (!memoryShort && UrlHelper.looksLikeCheckout(tab.url)) return false
         // The opener side, while any pop-up it opened is still open.
         if (tabs.tabs.any { it.openerId == tab.id }) return false
         // The pop-up side, while its opener is still live. Only the newest
@@ -5709,6 +5831,7 @@ class MainActivity : AppCompatActivity() {
     private fun enterNightOwl(openUrl: String = homePage) {
         nightOwl = true
         nightOwlHosts.clear()
+        applyNightOwlSecure()
         // The card goes now, and the ad it was bound to goes with it, so
         // nothing from before the private session stays behind it.
         //
@@ -5747,6 +5870,9 @@ class MainActivity : AppCompatActivity() {
      */
     private fun exitNightOwl() {
         nightOwl = false
+        nightOwlLocked = false
+        hideNightOwlLock()
+        applyNightOwlSecure()
         val hosts = nightOwlHosts.toSet()
         nightOwlHosts.clear()
 
@@ -7249,6 +7375,15 @@ class MainActivity : AppCompatActivity() {
     override fun onStop() {
         super.onStop()
         if (releaseSplashOnStop) { releaseSplashOnStop = false; releaseSplash() }
+        // Left the app with Night Owl on: locked until the screen lock says
+        // it is the owner. Not for a screen of this app (Settings), not for
+        // a file being picked for a page, not while unlocking itself.
+        if (nightOwl && !unlocking && !isChangingConfigurations && filePathCallback == null &&
+            AppOpenAds.inBackground() && nightOwlLockOn()) {
+            nightOwlLocked = true
+            lockPrompted = false
+            showNightOwlLock()
+        }
     }
 
     /**
@@ -7362,6 +7497,8 @@ class MainActivity : AppCompatActivity() {
         // the process. Only clear it if it is still ours: a recreated activity
         // has already replaced it by now.
         if (MediaService.onControl === mediaControl) MediaService.onControl = null
+        try { tts?.stop(); tts?.shutdown() } catch (e: Exception) {}
+        tts = null
         // Nothing posted for these tabs may run once they are gone.
         uiHandler.removeCallbacksAndMessages(null)
         // Each tab's WebView belongs to this activity and goes with it. They
@@ -8267,6 +8404,434 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    // ---------- Risky downloads ----------
+
+    /** Files that run as programs or install as apps: what a bad download usually is. */
+    private val RISKY_EXT = setOf(
+        "apk", "apks", "xapk", "apkm", "exe", "msi", "bat", "cmd", "com", "scr", "pif",
+        "vbs", "vbe", "js", "jse", "wsf", "jar", "sh", "ps1", "dll", "appx", "msix",
+        "reg", "lnk", "hta", "cpl"
+    )
+
+    /**
+     * What is worth a word before [url] is saved as [name]: an app or a
+     * program, and a file sent without https, which anyone on the way could
+     * have changed. Settings > Security > Warn about risky downloads.
+     */
+    private fun downloadRisks(url: String, name: String): List<String> {
+        if (!Settings.getBool(this, Settings.SEC_RISKY_DOWNLOADS, true)) return emptyList()
+        val out = ArrayList<String>()
+        val ext = name.substringAfterLast('.', "").lowercase()
+        if (ext in RISKY_EXT) {
+            out.add(if (ext.startsWith("apk") || ext == "xapk")
+                "Apps from the web can harm your phone. Install only from sites you trust."
+            else "Programs and scripts can harm your devices. Open this only if you trust the site.")
+        }
+        if (url.startsWith("http://", true)) {
+            out.add("This file comes over an insecure connection and could be changed on the way.")
+        }
+        return out
+    }
+
+    // ---------- Look-alike sites ----------
+    //
+    // A site whose name is spelled in another alphabet (an "xn--" name) can
+    // pass for a familiar one - Cyrillic а for Latin a - which is how many
+    // phishing pages pass themselves off as a bank or a shop. The address bar
+    // shows such names as they really are (xn--...), and the first visit to
+    // one says so, with the way back. Once per site per session.
+    // Settings > Security > Warn about look-alike sites.
+
+    private val lookalikeWarned = HashSet<String>()
+
+    private fun checkLookalike(url: String?) {
+        if (url == null || !(url.startsWith("https://") || url.startsWith("http://"))) return
+        if (!Settings.getBool(this, Settings.SEC_LOOKALIKE, true)) return
+        val host = try { android.net.Uri.parse(url).host?.lowercase() } catch (e: Exception) { null } ?: return
+        if (host.split('.').none { it.startsWith("xn--") }) return
+        if (!lookalikeWarned.add(host)) return
+        val shown = try { java.net.IDN.toUnicode(host) } catch (e: Exception) { host }
+        uiHandler.postDelayed({
+            if (isFinishing || isDestroyed) return@postDelayed
+            val now = try { android.net.Uri.parse(activeWeb()?.url ?: "").host?.lowercase() } catch (e: Exception) { null }
+            if (now != host) return@postDelayed
+            try {
+                com.google.android.material.snackbar.Snackbar
+                    .make(binding.webArea, "Check the address: " + shown + " is written with letters " +
+                        "from another alphabet (" + host + "). Sites that copy a familiar name do this.",
+                        9000)
+                    .setAction("Go back") { navBack() }
+                    .setActionTextColor(currentAccent())
+                    .show()
+            } catch (e: Exception) { /* no window to show it in */ }
+        }, 700L)
+    }
+
+    // ---------- Night Owl: lock and hide ----------
+    //
+    // Lock Night Owl tabs when you leave (Settings > Security > Night Owl), as
+    // Chrome locks Incognito: leaving the app with Night Owl on puts a lock
+    // over it, and coming back asks for the phone's own unlock - fingerprint,
+    // face, PIN, pattern - before anything under it shows. "Close Night Owl
+    // tabs" on the lock ends the private session instead. Only when the phone
+    // has a screen lock to ask for. On Android 13 and up the recent-apps
+    // picture is blank while it is on. Hide Night Owl from screenshots and
+    // recent apps sets FLAG_SECURE while Night Owl is on.
+
+    private var nightOwlLocked = false
+    private var unlocking = false
+    private var lockPrompted = false
+    private var lockView: View? = null
+
+    private val unlockLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    ) { r ->
+        unlocking = false
+        if (r.resultCode == android.app.Activity.RESULT_OK) unlockNightOwl()
+    }
+
+    private fun deviceSecure(): Boolean = try {
+        (getSystemService(KEYGUARD_SERVICE) as android.app.KeyguardManager).isDeviceSecure
+    } catch (e: Exception) { false }
+
+    private fun nightOwlLockOn(): Boolean =
+        Settings.getBool(this, Settings.NIGHT_OWL_LOCK, false) && deviceSecure()
+
+    private fun applyNightOwlSecure() {
+        if (!::binding.isInitialized) return
+        val hide = nightOwl && Settings.getBool(this, Settings.NIGHT_OWL_SECURE, false)
+        try {
+            if (hide) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+            else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+            if (Build.VERSION.SDK_INT >= 33) setRecentsScreenshotEnabled(!(nightOwl && nightOwlLockOn()))
+        } catch (e: Exception) { /* window gone */ }
+    }
+
+    private fun showNightOwlLock() {
+        if (lockView != null || !::binding.isInitialized) return
+        val d = resources.displayMetrics.density
+        val dark = isDarkTheme()
+        val fg = if (dark) 0xFFF4F3F7.toInt() else 0xFF1D1828.toInt()
+        val muted = if (dark) 0xFFB9B3CC.toInt() else 0xFF6E6880.toInt()
+        val accent = currentAccent()
+        val col = android.widget.LinearLayout(this)
+        col.orientation = android.widget.LinearLayout.VERTICAL
+        col.gravity = android.view.Gravity.CENTER
+        col.setBackgroundColor(if (dark) 0xFF120D24.toInt() else 0xFFECE7F5.toInt())
+        col.isClickable = true
+        col.isFocusable = true
+        col.elevation = 80f * d
+        col.setPadding((32 * d).toInt(), 0, (32 * d).toInt(), 0)
+        val owl = android.widget.ImageView(this)
+        val art = owlArt
+        if (art != null) owl.setImageBitmap(art) else owl.setImageResource(R.drawable.ic_owl)
+        owl.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        col.addView(owl, android.widget.LinearLayout.LayoutParams((96 * d).toInt(), (96 * d).toInt()))
+        fun text(t: String, size: Float, color: Int, bold: Boolean, top: Int): android.widget.TextView {
+            val v = android.widget.TextView(this)
+            v.text = t
+            v.textSize = size
+            v.setTextColor(color)
+            v.gravity = android.view.Gravity.CENTER
+            if (bold) v.setTypeface(v.typeface, android.graphics.Typeface.BOLD)
+            val lp = android.widget.LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
+            lp.topMargin = (top * d).toInt()
+            v.layoutParams = lp
+            return v
+        }
+        col.addView(text("Night Owl is locked", 22f, fg, true, 20))
+        col.addView(text("Unlock to see your Night Owl tabs.", 15f, muted, false, 8))
+        val unlock = text("Unlock", 16f, if (android.graphics.Color.luminance(accent) > 0.6f)
+            android.graphics.Color.BLACK else android.graphics.Color.WHITE, true, 28)
+        unlock.background = android.graphics.drawable.GradientDrawable().apply {
+            cornerRadius = 26f * d
+            setColor(accent)
+        }
+        unlock.setPadding((32 * d).toInt(), (14 * d).toInt(), (32 * d).toInt(), (14 * d).toInt())
+        unlock.setOnClickListener { promptUnlock() }
+        col.addView(unlock)
+        val close = text("Close Night Owl tabs", 15f, muted, true, 10)
+        close.setPadding((16 * d).toInt(), (12 * d).toInt(), (16 * d).toInt(), (12 * d).toInt())
+        close.setOnClickListener { closeNightOwlFromLock() }
+        col.addView(close)
+        val root = window.decorView as? android.view.ViewGroup ?: return
+        root.addView(col, android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT)
+        lockView = col
+    }
+
+    private fun hideNightOwlLock() {
+        val v = lockView ?: return
+        lockView = null
+        (v.parent as? android.view.ViewGroup)?.removeView(v)
+    }
+
+    /** The phone's own unlock: BiometricPrompt (fingerprint, face or the PIN) from Android 11, its PIN screen before. */
+    private fun promptUnlock() {
+        if (unlocking || !nightOwlLocked || isFinishing || isDestroyed) return
+        if (!deviceSecure()) { unlockNightOwl(); return }
+        if (Build.VERSION.SDK_INT >= 30) {
+            unlocking = true
+            try {
+                val auth = android.hardware.biometrics.BiometricManager.Authenticators.BIOMETRIC_WEAK or
+                    android.hardware.biometrics.BiometricManager.Authenticators.DEVICE_CREDENTIAL
+                val prompt = android.hardware.biometrics.BiometricPrompt.Builder(this)
+                    .setTitle("Unlock Night Owl")
+                    .setSubtitle("Your Night Owl tabs are locked")
+                    .setAllowedAuthenticators(auth)
+                    .build()
+                prompt.authenticate(android.os.CancellationSignal(), mainExecutor,
+                    object : android.hardware.biometrics.BiometricPrompt.AuthenticationCallback() {
+                        override fun onAuthenticationSucceeded(
+                            result: android.hardware.biometrics.BiometricPrompt.AuthenticationResult?
+                        ) {
+                            unlocking = false
+                            unlockNightOwl()
+                        }
+                        // Cancelled or failed for good: still locked, and
+                        // Unlock asks again.
+                        override fun onAuthenticationError(errorCode: Int, errString: CharSequence?) {
+                            unlocking = false
+                        }
+                    })
+            } catch (e: Exception) {
+                unlocking = false
+                confirmCredential()
+            }
+        } else confirmCredential()
+    }
+
+    @Suppress("DEPRECATION")
+    private fun confirmCredential() {
+        val km = getSystemService(KEYGUARD_SERVICE) as? android.app.KeyguardManager
+        val i = try {
+            km?.createConfirmDeviceCredentialIntent("Unlock Night Owl", "Your Night Owl tabs are locked")
+        } catch (e: Exception) { null }
+        if (i == null) { unlockNightOwl(); return }
+        unlocking = true
+        try { unlockLauncher.launch(i) } catch (e: Exception) { unlocking = false }
+    }
+
+    private fun unlockNightOwl() {
+        nightOwlLocked = false
+        val v = lockView ?: return
+        lockView = null
+        if (Motion.animationsOn()) {
+            v.animate().alpha(0f).setDuration(200L)
+                .withEndAction { (v.parent as? android.view.ViewGroup)?.removeView(v) }.start()
+        } else (v.parent as? android.view.ViewGroup)?.removeView(v)
+    }
+
+    /** "Close Night Owl tabs" on the lock: the private session ends, nothing in it shown. */
+    private fun closeNightOwlFromLock() {
+        nightOwlLocked = false
+        hideNightOwlLock()
+        val private = tabs.tabs.filter { it.isPrivate }
+        if (nightOwl) exitNightOwl()
+        private.sortedBy { it === tabs.activeTab }.forEach { t ->
+            if (tabs.tabs.contains(t)) closeTabFromDeck(t)
+        }
+    }
+
+    // ---------- Listen to this page ----------
+    //
+    // Menu > Page tools > Listen reads the page aloud through the phone's own
+    // text-to-speech voice, as Chrome's "Listen to this page" does: the
+    // article if there is one (Reader view's choice), otherwise the page's
+    // readable text, paragraph by paragraph, in the page's language where the
+    // phone has a voice for it. A pill above the bar pauses, resumes and
+    // stops it; it goes on while you use other tabs, and stops when the page
+    // it is reading goes away.
+
+    private var tts: android.speech.tts.TextToSpeech? = null
+    private var ttsReady = false
+    private var ttsFailed = false
+    private var pendingListen: (() -> Unit)? = null
+    private var listenChunks: List<String> = emptyList()
+    private var listenIndex = 0
+    private var listening = false
+    private var listenPaused = false
+    private var listenWeb: WebView? = null
+    private var listenLang: String? = null
+    private var listenBarWired = false
+
+    private val LISTEN_JS = """
+(function(){
+try{
+var best=null,score=0,cs=document.querySelectorAll('article,main,[role=main],[itemprop=articleBody],section,div');
+for(var i=0;i<cs.length&&i<4000;i++){var e=cs[i],ps=e.querySelectorAll('p');if(ps.length<3)continue;
+var len=0;for(var j=0;j<ps.length;j++){var t=ps[j].textContent.length;if(t>40)len+=t;}
+var ln=0,as=e.querySelectorAll('a');for(var k=0;k<as.length;k++)ln+=as[k].textContent.length;
+var s=len-ln*1.5;if(e.tagName==='ARTICLE'||e.getAttribute('itemprop')==='articleBody')s*=1.25;
+if(s>score*1.1||(s>score&&best&&best.contains(e))){score=s;best=e;}}
+var h=document.querySelector('h1');var title=((h&&h.textContent)||document.title||'').trim();
+var parts=[],total=0,junk='nav,aside,footer,header,form,button,[class*=share],[class*=social],[class*=related],[class*=newsletter],[class*=comment],[class*=promo],[class*=advert],[aria-hidden=true]';
+function push(t){t=(t||'').replace(/\s+/g,' ').trim();if(t.length<2||total>80000)return;parts.push(t);total+=t.length;}
+if(best&&score>=600){
+var els=best.querySelectorAll('h2,h3,h4,p,li,blockquote,figcaption');
+for(var n=0;n<els.length&&parts.length<400;n++){var el=els[n];
+if(el.closest(junk))continue;if(el.tagName==='LI'&&el.querySelector('p'))continue;
+if(el.offsetParent===null&&el.getClientRects().length===0)continue;push(el.innerText||el.textContent);}
+}else{
+var lines=(document.body?document.body.innerText:'').split('\n');
+for(var m=0;m<lines.length&&parts.length<300;m++){var l=lines[m].trim();if(l.length>=40)push(l);}
+}
+return {title:title,lang:(document.documentElement.lang||''),parts:parts};
+}catch(e){return null;}
+})()
+""".trimIndent()
+
+    private fun listenToPage() {
+        val web = activeWeb() ?: return
+        if (webPageUrl() == null) { needAPage(); return }
+        if (listening && listenWeb === web) { toggleListenPause(); return }
+        try {
+            web.evaluateJavascript(LISTEN_JS) { raw ->
+                if (isFinishing || isDestroyed) return@evaluateJavascript
+                val o = try { JSONObject(raw ?: "") } catch (e: Exception) { null }
+                val arr = o?.optJSONArray("parts")
+                val parts = ArrayList<String>()
+                val title = o?.optString("title", "")?.trim().orEmpty()
+                if (title.isNotEmpty()) parts.add(title)
+                if (arr != null) for (i in 0 until arr.length()) {
+                    val p = arr.optString(i, "").trim()
+                    if (p.isNotEmpty() && p != title) parts.add(p)
+                }
+                val chunks = splitForSpeech(parts)
+                if (chunks.size <= (if (title.isNotEmpty()) 1 else 0)) {
+                    toast("There's nothing on this page to read aloud")
+                    return@evaluateJavascript
+                }
+                listenLang = o?.optString("lang", "")?.trim()?.ifBlank { null }
+                listenChunks = chunks
+                listenWeb = web
+                withTts { speakFrom(0) }
+            }
+        } catch (e: Exception) {
+            toast("This page can't be read aloud")
+        }
+    }
+
+    /** Paragraphs, with any too long for one utterance cut at sentence ends. */
+    private fun splitForSpeech(parts: List<String>): List<String> {
+        val max = try { android.speech.tts.TextToSpeech.getMaxSpeechInputLength() } catch (e: Throwable) { 4000 }
+        val limit = (max - 100).coerceIn(500, 3900)
+        val out = ArrayList<String>()
+        for (p in parts) {
+            if (p.length <= limit) { out.add(p); continue }
+            var rest = p
+            while (rest.length > limit) {
+                val cut = rest.lastIndexOfAny(charArrayOf('.', '!', '?', ';'), limit).takeIf { it > limit / 3 }
+                    ?: rest.lastIndexOf(' ', limit).takeIf { it > limit / 3 } ?: limit
+                out.add(rest.substring(0, cut + 1).trim())
+                rest = rest.substring(cut + 1).trim()
+            }
+            if (rest.isNotEmpty()) out.add(rest)
+        }
+        return out
+    }
+
+    private fun withTts(then: () -> Unit) {
+        if (tts != null && ttsReady) { then(); return }
+        if (ttsFailed) {
+            toast("This phone has no text-to-speech voice. Add one in Android's settings.")
+            return
+        }
+        pendingListen = then
+        if (tts != null) return
+        tts = android.speech.tts.TextToSpeech(applicationContext) { status ->
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                if (status == android.speech.tts.TextToSpeech.SUCCESS) {
+                    ttsReady = true
+                    tts?.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
+                        override fun onStart(id: String?) {
+                            val i = id?.removePrefix("listen-")?.toIntOrNull() ?: return
+                            runOnUiThread { if (listening && !listenPaused) listenIndex = i }
+                        }
+                        override fun onDone(id: String?) {
+                            val i = id?.removePrefix("listen-")?.toIntOrNull() ?: return
+                            runOnUiThread {
+                                if (listening && !listenPaused && i >= listenChunks.size - 1) stopListening()
+                            }
+                        }
+                        @Deprecated("Deprecated in Java")
+                        override fun onError(id: String?) {}
+                    })
+                    val go = pendingListen
+                    pendingListen = null
+                    go?.invoke()
+                } else {
+                    ttsFailed = true
+                    try { tts?.shutdown() } catch (e: Exception) {}
+                    tts = null
+                    pendingListen = null
+                    toast("This phone has no text-to-speech voice. Add one in Android's settings.")
+                }
+            }
+        }
+    }
+
+    private fun speakFrom(i: Int) {
+        val t = tts ?: return
+        if (i !in listenChunks.indices) { stopListening(); return }
+        try {
+            val loc = listenLang?.let { java.util.Locale.forLanguageTag(it) }
+            if (loc != null && t.isLanguageAvailable(loc) >= android.speech.tts.TextToSpeech.LANG_AVAILABLE) {
+                t.language = loc
+            }
+            t.stop()
+            for (k in i until listenChunks.size) {
+                t.speak(listenChunks[k],
+                    if (k == i) android.speech.tts.TextToSpeech.QUEUE_FLUSH else android.speech.tts.TextToSpeech.QUEUE_ADD,
+                    null, "listen-$k")
+            }
+        } catch (e: Exception) {
+            toast("Couldn't read this page aloud")
+            stopListening()
+            return
+        }
+        listening = true
+        listenPaused = false
+        listenIndex = i
+        showListenBar()
+    }
+
+    private fun toggleListenPause() {
+        if (!listening) return
+        if (listenPaused) speakFrom(listenIndex)
+        else {
+            try { tts?.stop() } catch (e: Exception) {}
+            listenPaused = true
+            showListenBar()
+        }
+    }
+
+    private fun stopListening() {
+        try { tts?.stop() } catch (e: Exception) {}
+        listening = false
+        listenPaused = false
+        listenWeb = null
+        binding.listenBar.visibility = View.GONE
+    }
+
+    private fun showListenBar() {
+        val bar = binding.listenBar
+        if (!listenBarWired) {
+            listenBarWired = true
+            binding.listenToggle.setOnClickListener { v -> Haptics.tap(v); toggleListenPause() }
+            binding.listenStop.setOnClickListener { v -> Haptics.tap(v); stopListening() }
+        }
+        val accent = android.content.res.ColorStateList.valueOf(currentAccent())
+        binding.listenToggle.imageTintList = accent
+        binding.listenStop.imageTintList = accent
+        binding.listenToggle.setImageResource(if (listenPaused) R.drawable.listen_play else R.drawable.listen_pause)
+        binding.listenToggle.contentDescription = if (listenPaused) "Resume reading" else "Pause reading"
+        binding.listenLabel.text = if (listenPaused) "Paused" else "Listening"
+        bar.visibility = View.VISIBLE
+    }
+
     /** The page as its own icon on the home screen, opening in Search. */
     private fun addToHomeScreen() {
         val url = webPageUrl() ?: run { needAPage(); return }
@@ -8906,7 +9471,11 @@ class MainActivity : AppCompatActivity() {
         // If the user disabled download confirmation, download straight away -
         // unless the file would take most of the space left, which is worth a
         // word first whatever the setting.
-        if (!Settings.getBool(this, Settings.SEC_CONFIRM_DOWNLOADS, true) && room == ROOM_OK) {
+        // Settings > Security > Warn about risky downloads: said even with
+        // confirmation off, since it is the one case the question matters.
+        val risks = downloadRisks(url, fileName)
+        if (!Settings.getBool(this, Settings.SEC_CONFIRM_DOWNLOADS, true) && room == ROOM_OK &&
+            risks.isEmpty()) {
             performDownload(url, userAgent, contentDisposition, mimeType)
             return
         }
@@ -8919,9 +9488,12 @@ class MainActivity : AppCompatActivity() {
             (if (contentLength > 0) fmt(contentLength) else "Size unknown") +
                 " \u00B7 to Downloads" +
                 (if (free >= 0) " \u00B7 " + fmt(free) + " free" else "")
-        if (room == ROOM_TIGHT) {
+        val warnings = ArrayList<String>()
+        if (room == ROOM_TIGHT) warnings.add("This will use most of your free space.")
+        warnings.addAll(risks)
+        if (warnings.isNotEmpty()) {
             view.findViewById<android.widget.TextView>(R.id.dlSpaceWarn).apply {
-                text = "This will use most of your free space."
+                text = warnings.joinToString("\n")
                 visibility = View.VISIBLE
             }
             (view.findViewById<android.widget.TextView>(R.id.dlSize).layoutParams
@@ -9776,6 +10348,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun beginSwipe(): Boolean {
+        if (!swipeTabsPref) return false
         if (searchMode || deckVisible || swipeSpring.isRunning || activeWeb() == null) return false
         if (binding.menuScrim.visibility == View.VISIBLE) return false
         swipeDir = 0
@@ -9856,8 +10429,12 @@ class MainActivity : AppCompatActivity() {
     private val pullReach get() = 140f * resources.displayMetrics.density
     private val pullHold get() = 64f * resources.displayMetrics.density
 
+    /** Settings > Customize > Pull to refresh and Swipe the bottom bar (refreshScrollPrefs). */
+    private var pullRefreshPref = true
+    private var swipeTabsPref = true
+
     private fun pullBy(px: Int) {
-        if (pullRefreshing || searchMode || deckVisible) return
+        if (!pullRefreshPref || pullRefreshing || searchMode || deckVisible) return
         val url = tabs.activeTab?.url
         if (url == null || url == homePage) return
         pullSpring.cancel()
@@ -10030,6 +10607,10 @@ class MainActivity : AppCompatActivity() {
         binding.menuVideo.setOnClickListener {
             closeMenuNow()
             downloadVideoFromMenu()
+        }
+        binding.menuListen.setOnClickListener {
+            closeMenuNow()
+            listenToPage()
         }
         binding.menuSaveOffline.setOnClickListener {
             closeMenuNow()
@@ -10329,8 +10910,11 @@ class MainActivity : AppCompatActivity() {
         val list = if (foundVideosFor == web.url) foundVideos else emptyList()
         if (list.isEmpty()) {
             val host = try { android.net.Uri.parse(web.url ?: "").host } catch (e: Exception) { null }
-            toast(if (VideoFinder.pageExcluded(host)) "YouTube's terms don't allow saving its videos"
-                else "No video on this page can be saved. Start it playing, then try again.")
+            toast(when {
+                VideoFinder.youTube(host) -> "YouTube's terms don't allow saving its videos"
+                VideoFinder.pageExcluded(host) -> "Open the video's own page to save it"
+                else -> "No video on this page can be saved. Start it playing, then try again."
+            })
             return
         }
         if (list.size == 1) { fetchVideo(list[0]); return }

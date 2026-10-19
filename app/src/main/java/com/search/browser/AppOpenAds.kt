@@ -153,6 +153,9 @@ object AppOpenAds {
     /** May this open have an ad at all (not a link, not a return from the share sheet)? */
     fun wantedThisOpen(): Boolean = !skipOpen
 
+    /** No screen of the app is started: the user has left it (Night Owl's lock). */
+    fun inBackground(): Boolean = installed && started == 0
+
     /** The browser is sending the user to another app (a picker, share, a link elsewhere). */
     fun leftForOtherApp() { leftAt = SystemClock.elapsedRealtime() }
 
