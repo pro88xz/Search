@@ -366,6 +366,12 @@ These were built without a phone to run them on. Check each once:
       and after rotating. With the feed offline (no stories) it sits at the
       end of the page. Taps on its button open the ad; a tap that stops a
       fling does not.
+- [ ] (2.1.2) Bars always match home: in Zen open a site, change to
+      Explore in Settings, come back and press Back to home - grey bar, no
+      wash. The other way round (Explore to Zen) - the wash on both page
+      and bars. Switch Settings > Theme light/dark on each mode: bars and
+      page change together. Dark Focus/Zen: violet, plum and indigo, no
+      brown band at the top right.
 - [ ] (2.1.1) Home in Explore: no white band at the top - the owl and the
       gear sit on the page's grey (dark grey in dark theme), with no line
       or shadow under them; scroll the stories and the address pill comes

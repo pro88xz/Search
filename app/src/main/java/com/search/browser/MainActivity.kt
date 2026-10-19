@@ -2018,6 +2018,31 @@ class MainActivity : AppCompatActivity() {
     inner class SearchAppBridge {
         // Volatile: bridge calls arrive on a WebView thread, not the main one.
         @Volatile var privileged: Boolean = false
+        /**
+         * The mode the home page in this WebView says it is showing
+         * (homeShown), or null before it has said - the bars follow what the
+         * page really shows (homeWash), not what it was last told.
+         */
+        @Volatile var shownMode: String? = null
+        /** Whether that page is drawn dark (its prefers-color-scheme), or null before it has said. */
+        @Volatile var shownDark: Boolean? = null
+
+        /**
+         * home.html: the mode it is showing and whether it is drawn dark, on
+         * load and on every change of either, for the bars.
+         */
+        @JavascriptInterface
+        fun homeShown(mode: String, dark: Boolean) {
+            if (!privileged) return
+            if (mode != BrowsingMode.EXPLORE && mode != BrowsingMode.FOCUS && mode != BrowsingMode.ZEN) return
+            shownMode = mode
+            shownDark = dark
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                if (activeWeb()?.tag === this@SearchAppBridge && tabs.activeTab?.url == homePage &&
+                    !searchMode) plainBars(homePage, animate = true)
+            }
+        }
 
         @JavascriptInterface
         fun submit(query: String) {
@@ -2954,6 +2979,8 @@ class MainActivity : AppCompatActivity() {
                 // shipped inside the app may.
                 (view?.tag as? SearchAppBridge)?.privileged =
                     url != null && url.startsWith("file:///android_asset/")
+                // A new document: what the last one showed no longer counts.
+                (view?.tag as? SearchAppBridge)?.let { it.shownMode = null; it.shownDark = null }
                 (view as? BrowserWebView)?.notePageSite(url)
                 // The site's own zoom (Menu > Zoom), or the size from Settings.
                 view?.settings?.let { s -> zoomFor(url).let { z -> if (s.textZoom != z) s.textZoom = z } }
@@ -3935,11 +3962,19 @@ class MainActivity : AppCompatActivity() {
      */
     private fun homeWash(url: String?): Array<IntArray?>? {
         if (nightOwl || url == null || url != homePage) return null
-        if (browsingMode != BrowsingMode.FOCUS && browsingMode != BrowsingMode.ZEN) {
-            val page = getColor(R.color.appBackground)
+        // What the page on screen says it shows; until it has said, the mode
+        // it was asked for. They differ only for a moment - home takes up the
+        // app's mode whenever it comes into view - but in that moment the
+        // bars must match the page, not the setting.
+        val shown = activeWeb()?.tag as? SearchAppBridge
+        val mode = shown?.shownMode ?: browsingMode
+        // Light or dark as the page is drawn, which is what the bar meets.
+        val dark = shown?.shownDark ?: isDarkTheme()
+        if (mode != BrowsingMode.FOCUS && mode != BrowsingMode.ZEN) {
+            // home.html's --bg, light and dark.
+            val page = if (dark) 0xFF0E0E10.toInt() else 0xFFF5F5F5.toInt()
             return arrayOf(IntArray(3) { page }, null)
         }
-        val dark = isDarkTheme()
         val bottom = BrowsingMode.washBottom(dark)
         return arrayOf(BrowsingMode.washTop(dark), IntArray(3) { bottom })
     }
