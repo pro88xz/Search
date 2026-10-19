@@ -28,6 +28,16 @@ Volume down takes each one. Save them as `captures/01.png` ... `10.png`:
 | 09 | Built-in **video downloader** | A free stock-video page (landscape or nature footage, no people, never YouTube) with the Download video button showing above the bar, still in its long form |
 | 10 | Read **offline** | An article saved with Save offline, opened from Offline pages in flight mode, title and first picture in view |
 
+## The landscape intro
+
+`out/00-intro.png` (1920 x 1080) opens the listing for the video downloader
+and offline reading: "Save videos / Read offline" with captures 09 and 10
+side by side and "See how ->" leading on to the upright frames. In Play
+Console put it first, then 09 and 10, then 01 to 08. Play takes landscape
+and portrait phone screenshots in the same listing.
+
+    node store/screenshots/make.js intro   # only the intro (needs 09 and 10)
+
 ## Making the frames
 
     npm i playwright
