@@ -2367,8 +2367,12 @@ class MainActivity : AppCompatActivity() {
             val tiles = Settings.getBool(this@MainActivity, Settings.HOME_SHOW_TILES, true)
             val mode = browsingMode
             val zen = zenShortcuts
+            // Battery Saver on: Zen's wash holds still.
+            val powerSave = try {
+                (getSystemService(POWER_SERVICE) as android.os.PowerManager).isPowerSaveMode
+            } catch (e: Exception) { false }
             return "{\"background\":\"$bg\",\"accent\":\"$accent\",\"tiles\":$tiles,\"nightOwl\":$nightOwl," +
-                "\"mode\":\"$mode\",\"zenTiles\":$zen}"
+                "\"mode\":\"$mode\",\"zenTiles\":$zen,\"powerSave\":$powerSave}"
         }
         /** home.html: the stories and publishers the reader hid (FeedHidden). */
         @JavascriptInterface
@@ -3919,21 +3923,28 @@ class MainActivity : AppCompatActivity() {
         else PageTint.mix(bar, android.graphics.Color.BLACK, 0.075f)
 
     /**
-     * Focus and Zen's wash in the owl's colours, as the bars carry it on
-     * their home page: the top edge's three colours (BrowsingMode.washTop,
-     * home.html's --wash-v, -m, -a, at the same places) for the top bar and
-     * the indigo the page settles into for the bottom one. Null anywhere
-     * else, and in Night Owl, which keeps its own sky.
+     * The bars on the home page, top and bottom (null: the plain surface).
+     * Home has no white sheet across its top: the owl and the gear sit on
+     * the page itself, and the bar's sheet, line and shadow are for web
+     * pages and search. In Explore that is the page's grey (appBackground,
+     * home.html's --bg) with the bottom bar as it is; in Focus and Zen the
+     * owl's wash - the top edge's three colours (BrowsingMode.washTop,
+     * home.html's --wash-v, -m, -a, at the same places) and the indigo the
+     * page settles into for the bottom bar. Null anywhere but home, and in
+     * Night Owl, which keeps its own sky.
      */
-    private fun homeWash(url: String?): Array<IntArray>? {
+    private fun homeWash(url: String?): Array<IntArray?>? {
         if (nightOwl || url == null || url != homePage) return null
-        if (browsingMode != BrowsingMode.FOCUS && browsingMode != BrowsingMode.ZEN) return null
+        if (browsingMode != BrowsingMode.FOCUS && browsingMode != BrowsingMode.ZEN) {
+            val page = getColor(R.color.appBackground)
+            return arrayOf(IntArray(3) { page }, null)
+        }
         val dark = isDarkTheme()
         val bottom = BrowsingMode.washBottom(dark)
         return arrayOf(BrowsingMode.washTop(dark), IntArray(3) { bottom })
     }
 
-    /** The bars for a page that does not lend them its colours: plain, or on Focus and Zen's home, the wash. */
+    /** The bars for a page that does not lend them its colours: plain, or on home, the page's own (homeWash). */
     private fun plainBars(url: String?, animate: Boolean) {
         val w = homeWash(url)
         binding.topBar.seamless = w != null
