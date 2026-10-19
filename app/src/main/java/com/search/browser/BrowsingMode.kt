@@ -51,7 +51,7 @@ object BrowsingMode {
      * and bar meet without a seam. Kept in step with home.html's --wash-*.
      */
     fun washTop(dark: Boolean): IntArray =
-        if (dark) intArrayOf(0xFF2B1A5C.toInt(), 0xFF271B4A.toInt(), 0xFF45280F.toInt())
+        if (dark) intArrayOf(0xFF2B1A5C.toInt(), 0xFF271B4A.toInt(), 0xFF3B2034.toInt())
         else intArrayOf(0xFFD4C2F7.toInt(), 0xFFE8DBF7.toInt(), 0xFFFBE2C6.toInt())
 
     fun washBottom(dark: Boolean): Int =

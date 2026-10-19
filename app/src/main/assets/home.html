@@ -511,7 +511,8 @@
      brand's colours, softened - the owl's violet at the top left, its amber
      eyes as a warm glow at the top right, lilac between, and the pale indigo
      of its night sky rising from the bottom. Fixed behind everything. In the
-     dark theme the same owl at night: deep violet, dim amber, indigo.
+     dark theme the same owl at night: deep violet, dusky plum and indigo,
+     with the amber only as Zen's glow.
      The top edge is a plain left-to-right violet, lilac, amber - the same
      three colours the app paints into the top bar (BrowsingMode.washTop), at
      the same places - so bar and page meet with no seam. Nothing else may
@@ -532,9 +533,9 @@
     :root {
       --wash-v:#2B1A5C; --wash-v-rgb:43,26,92;
       --wash-m:#271B4A; --wash-m-rgb:39,27,74;
-      --wash-a:#45280F; --wash-a-rgb:69,40,15;
+      --wash-a:#3B2034; --wash-a-rgb:59,32,52;
       --wash-b:#150F33; --wash-b-rgb:21,15,51;
-      --glow-v-rgb:74,40,150; --glow-a-rgb:92,54,22;
+      --glow-v-rgb:74,40,150; --glow-a-rgb:128,74,34;
     }
   }
   html.wash { background:var(--wash-b); }
@@ -731,9 +732,17 @@
     root.classList.remove('mode-explore', 'mode-focus', 'mode-zen');
     root.classList.add('mode-' + mode);
     root.classList.toggle('zen-tiles', zenTiles);
-    // Focus and Zen sit on the pastel wash; Night Owl keeps its own sky.
+    // Focus and Zen sit on the owl's wash; Night Owl keeps its own sky.
     root.classList.toggle('wash', !nightOwl && mode !== 'explore');
+    // The app colours its bars by what this page shows, so it is told -
+    // the mode and whether the page is drawn dark.
+    try {
+      var B = bridge();
+      if (B && B.homeShown) B.homeShown(mode, !!(darkQuery && darkQuery.matches));
+    } catch (e) {}
   }
+  var darkQuery = null;
+  try { darkQuery = window.matchMedia('(prefers-color-scheme: dark)'); } catch (e) {}
   modeClasses();
 
   var tilesHost = document.getElementById('tiles');
@@ -2078,6 +2087,29 @@
   // recomposes where it is, with no reload. Leaving Explore drops the
   // stories (their pictures stop loading and decoding, nothing more is
   // fetched); coming back to it loads them.
+  // Home and the app agree on the mode whenever home comes into view: a mode
+  // changed while this page was out of sight - in the tab's history, in a
+  // tab in the background, mid-load - is taken up now, and the bars are
+  // told either way (modeClasses).
+  function syncMode(){
+    try {
+      var B = bridge();
+      if (!B || !B.getConfig) return;
+      var c = JSON.parse(B.getConfig());
+      var m = (c.mode === 'focus' || c.mode === 'zen') ? c.mode : 'explore';
+      var zt = (c.zenTiles === true);
+      if (m !== mode || zt !== zenTiles) window.__setMode(m, zt);
+      else modeClasses();
+    } catch (e) {}
+  }
+  document.addEventListener('visibilitychange', function(){ if (!document.hidden) syncMode(); });
+  // Light to dark or back: the bars follow the page.
+  try {
+    if (darkQuery && darkQuery.addEventListener) darkQuery.addEventListener('change', modeClasses);
+    else if (darkQuery && darkQuery.addListener) darkQuery.addListener(modeClasses);
+  } catch (e) {}
+  window.addEventListener('pageshow', function(e){ if (e.persisted) syncMode(); });
+
   window.__setMode = function(m, zt){
     var next = (m === 'focus' || m === 'zen') ? m : 'explore';
     var tilesNext = zt === true;
