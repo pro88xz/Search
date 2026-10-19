@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Offline page</title>
+<style>
+  /* A page kept for offline reading (OfflinePages), in Reader view's type.
+     What the site wrote is never put in as HTML: it is parsed into a
+     document that is never shown, and copied out element by element from an
+     allow-list - plain text, headings, lists, quotes, tables, links to web
+     addresses and the pictures kept with it. No attribute is copied but those
+     few, so no script, handler or style from the site can run here. */
+  :root { --bg:#FAFAF7; --fg:#1C1C1F; --muted:#6E6B78; --accent:#6C53A8; --chip:#EEE8FA; --line:rgba(28,28,31,0.1); }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#121214; --fg:#E6E6E8; --muted:#9C99A6; --accent:#BCA9EA; --chip:#241C38; --line:rgba(255,255,255,0.1); }
+  }
+  html, body { margin:0; background:var(--bg); color:var(--fg); }
+  [hidden] { display:none !important; }
+  body { font:19px/1.7 Georgia,"Noto Serif",serif; padding:20px 22px 120px; max-width:680px; margin:0 auto;
+    -webkit-text-size-adjust:100%; overflow-wrap:break-word; }
+  .badge { display:inline-flex; align-items:center; gap:6px; font:600 12.5px/1 Roboto,sans-serif;
+    color:var(--accent); background:var(--chip); border-radius:999px; padding:7px 11px; margin:0 0 18px; }
+  .badge svg { width:14px; height:14px; }
+  h1.t { font:700 28px/1.25 Roboto,"Google Sans",sans-serif; margin:0 0 8px; }
+  .s { font:14px Roboto,sans-serif; color:var(--muted); margin:0 0 28px; }
+  h2,h3,h4,h5,h6 { font-family:Roboto,sans-serif; line-height:1.3; margin:28px 0 8px; }
+  p { margin:0 0 18px; }
+  img, figure, picture { max-width:100%; height:auto; border-radius:12px; }
+  figure { margin:24px 0; } figcaption { font:14px/1.5 Roboto,sans-serif; color:var(--muted); margin-top:6px; }
+  a { color:inherit; text-decoration-color:rgba(127,127,127,.6); }
+  blockquote { margin:20px 0; padding-left:16px; border-left:3px solid rgba(127,127,127,.45); }
+  pre, code { white-space:pre-wrap; font-size:15px; }
+  table { border-collapse:collapse; max-width:100%; display:block; overflow-x:auto; }
+  td, th { border:1px solid rgba(127,127,127,.3); padding:6px; }
+  .foot { margin-top:40px; padding-top:20px; border-top:1px solid var(--line); display:flex; gap:10px; flex-wrap:wrap;
+    font:600 15px Roboto,sans-serif; }
+  .foot a, .foot button { font:inherit; border:0; border-radius:999px; padding:11px 18px; text-decoration:none; cursor:pointer; }
+  .foot a { background:var(--chip); color:var(--accent); }
+  .foot button { background:transparent; color:var(--muted); }
+  .gone { font:16px/1.6 Roboto,sans-serif; color:var(--muted); margin-top:40px; text-align:center; }
+</style>
+</head>
+<body>
+  <div class="badge" id="badge" hidden>
+    <svg viewBox="0 0 256 256" aria-hidden="true"><path fill="currentColor" d="M192.49,167.51a12,12,0,0,1,0,17l-32,32a12,12,0,0,1-17,0l-32-32a12,12,0,1,1,17-17L140,179V128a12,12,0,0,1,24,0v51l11.51-11.52A12,12,0,0,1,192.49,167.51ZM160,36A92.08,92.08,0,0,0,79,84.37,68,68,0,1,0,72,220H84a12,12,0,0,0,0-24H72a44,44,0,0,1-1.81-87.95A91.7,91.7,0,0,0,68,128a12,12,0,0,0,24,0,68,68,0,0,1,136,0,67.27,67.27,0,0,1-7.25,30.59,12,12,0,1,0,21.42,10.82A91.08,91.08,0,0,0,252,128,92.1,92.1,0,0,0,160,36Z"/></svg>
+    <span id="badgeText">Offline copy</span>
+  </div>
+  <h1 class="t" id="title"></h1>
+  <div class="s" id="sub"></div>
+  <article id="body"></article>
+  <div class="foot" id="foot" hidden>
+    <a id="orig" href="#">Open the live page</a>
+    <button id="del" type="button">Remove offline copy</button>
+  </div>
+<script>
+(function(){
+  var A = window.SearchApp;
+  var id = '';
+  try { id = new URLSearchParams(location.search).get('id') || ''; } catch (e) {}
+  var raw = '';
+  try { raw = (A && A.getOfflinePage) ? A.getOfflinePage(id) : ''; } catch (e) {}
+  var page = null;
+  try { page = raw ? JSON.parse(raw) : null; } catch (e) {}
+  var body = document.getElementById('body');
+
+  function gone(msg){
+    document.getElementById('title').textContent = 'Not saved any more';
+    document.getElementById('sub').textContent = '';
+    body.textContent = '';
+    var p = document.createElement('p'); p.className = 'gone'; p.textContent = msg;
+    body.appendChild(p);
+    document.getElementById('foot').hidden = true;
+    document.getElementById('badge').hidden = true;
+  }
+  if (!page || typeof page.html !== 'string') { gone('This page is no longer in your offline pages.'); return; }
+
+  var web = /^https?:\/\//i;
+  document.title = page.title || page.site || 'Offline page';
+  document.getElementById('title').textContent = page.title || page.site || '';
+  var when = '';
+  try { when = new Date(page.savedAt).toLocaleDateString(undefined, { day:'numeric', month:'short', year:'numeric' }); } catch (e) {}
+  document.getElementById('sub').textContent = (page.site || '') + (when ? ' · saved ' + when : '');
+  document.getElementById('badge').hidden = false;
+
+  // Kept as themselves; anything else is unwrapped (its text and children
+  // kept) or, for DROP, left out with everything inside it.
+  var KEEP = {P:1,DIV:1,SECTION:1,ARTICLE:1,MAIN:1,SPAN:1,H1:1,H2:1,H3:1,H4:1,H5:1,H6:1,UL:1,OL:1,LI:1,
+    DL:1,DT:1,DD:1,BLOCKQUOTE:1,PRE:1,CODE:1,EM:1,STRONG:1,B:1,I:1,U:1,S:1,SMALL:1,SUB:1,SUP:1,MARK:1,
+    A:1,IMG:1,FIGURE:1,FIGCAPTION:1,PICTURE:1,TABLE:1,THEAD:1,TBODY:1,TFOOT:1,TR:1,TD:1,TH:1,CAPTION:1,
+    BR:1,HR:1,TIME:1,ABBR:1,Q:1,CITE:1};
+  var DROP = {SCRIPT:1,STYLE:1,NOSCRIPT:1,IFRAME:1,OBJECT:1,EMBED:1,FORM:1,BUTTON:1,INPUT:1,SELECT:1,
+    TEXTAREA:1,SVG:1,CANVAS:1,VIDEO:1,AUDIO:1,SOURCE:1,TEMPLATE:1,LINK:1,META:1,DIALOG:1,FRAME:1,FRAMESET:1,
+    MATH:1,PORTAL:1,BASE:1,TITLE:1,HEAD:1};
+  var imgs = Array.isArray(page.imgs) ? page.imgs : [];
+  var count = 0;
+
+  function copy(from, to, depth){
+    if (depth > 60) return;
+    for (var n = from.firstChild; n; n = n.nextSibling){
+      if (++count > 60000) return;
+      if (n.nodeType === 3) { to.appendChild(document.createTextNode(n.nodeValue)); continue; }
+      if (n.nodeType !== 1) continue;
+      var tag = (n.tagName || '').toUpperCase();
+      if (DROP[tag]) continue;
+      if (!KEEP[tag]) { copy(n, to, depth + 1); continue; }
+      if (tag === 'IMG') {
+        var i = parseInt(n.getAttribute('data-i'), 10);
+        var src = (i >= 0 && i < imgs.length) ? imgs[i] : null;
+        if (typeof src !== 'string' || !/^data:image\/(png|jpe?g|gif|webp|avif|bmp|x-icon|vnd\.microsoft\.icon);base64,/i.test(src)) continue;
+        var im = document.createElement('img');
+        im.src = src;
+        var alt = n.getAttribute('alt');
+        if (alt) im.alt = alt.slice(0, 300);
+        to.appendChild(im);
+        continue;
+      }
+      var el = document.createElement(tag.toLowerCase());
+      if (tag === 'A') {
+        var href = n.getAttribute('href') || '';
+        if (web.test(href)) el.setAttribute('href', href);
+      } else if (tag === 'TD' || tag === 'TH') {
+        var cs = parseInt(n.getAttribute('colspan'), 10), rs = parseInt(n.getAttribute('rowspan'), 10);
+        if (cs > 1 && cs < 50) el.setAttribute('colspan', String(cs));
+        if (rs > 1 && rs < 50) el.setAttribute('rowspan', String(rs));
+      }
+      copy(n, el, depth + 1);
+      to.appendChild(el);
+    }
+  }
+
+  try {
+    var doc = new DOMParser().parseFromString('<!DOCTYPE html><html><body>' + page.html + '</body></html>', 'text/html');
+    copy(doc.body, body, 0);
+  } catch (e) { gone('This page could not be opened.'); return; }
+
+  var orig = document.getElementById('orig');
+  if (typeof page.url === 'string' && web.test(page.url)) orig.setAttribute('href', page.url);
+  else orig.hidden = true;
+  document.getElementById('del').addEventListener('click', function(){
+    try { if (A && A.deleteOfflinePage) A.deleteOfflinePage(id); } catch (e) {}
+    gone('Removed from your offline pages.');
+  });
+  document.getElementById('foot').hidden = false;
+})();
+</script>
+</body>
+</html>

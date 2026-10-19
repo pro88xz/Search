@@ -81,6 +81,19 @@ class TopSheetBar @JvmOverloads constructor(
     var tint: IntArray? = null
         set(v) { field = v; repaint() }
 
+    /**
+     * Focus and Zen's home: the bar is the top of the page's pastel wash
+     * ([tint] holds its three colours), with no line and no shadow, so the
+     * owl and the gear sit on the wash itself. [blend] does not fade it
+     * toward the plain background: the wash is the background there.
+     */
+    var seamless = false
+        set(v) {
+            if (field == v) return
+            field = v
+            repaint()
+        }
+
     /** The home page's background, which [blend] fades toward. */
     private val pageBackground = context.getColor(R.color.appBackground)
 
@@ -121,12 +134,14 @@ class TopSheetBar @JvmOverloads constructor(
     private fun repaint() {
         // What is left of the bar's own look: none of it while flat or fully
         // blended into the home page.
-        val own = if (flat) 0f else 1f - blend
-        fill.color = if (flat) flatColor else mix(surfaceColor, pageBackground, blend)
         val t = tint
+        val wash = seamless && !flat && t != null && t.size == 3
+        val own = if (flat || wash) 0f else 1f - blend
+        val toPage = if (wash) 0f else blend
+        fill.color = if (flat) flatColor else mix(surfaceColor, pageBackground, toPage)
         fill.shader = if (!flat && t != null && t.size == 3 && width > 0) {
             android.graphics.LinearGradient(0f, 0f, width.toFloat(), 0f,
-                IntArray(3) { mix(t[it], pageBackground, blend) }, TINT_STOPS,
+                IntArray(3) { mix(t[it], pageBackground, toPage) }, TINT_STOPS,
                 android.graphics.Shader.TileMode.CLAMP)
         } else null
         // The bottom bar's shadow, mirrored: same blur and colour, cast down.
@@ -173,7 +188,7 @@ class TopSheetBar @JvmOverloads constructor(
     fun paintColours(): IntArray {
         if (flat) return IntArray(3) { flatColor }
         val t = tint
-        if (t != null && t.size == 3) return IntArray(3) { mix(t[it], pageBackground, blend) }
+        if (t != null && t.size == 3) return IntArray(3) { mix(t[it], pageBackground, if (seamless) 0f else blend) }
         val solid = mix(surfaceColor, pageBackground, blend)
         return IntArray(3) { solid }
     }

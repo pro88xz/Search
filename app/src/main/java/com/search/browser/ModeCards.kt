@@ -222,14 +222,35 @@ class ModeCards(
         }
         private var canvas: Canvas? = null
 
+        /** home.html's wash in miniature: the owl's violet, lilac and amber across the top, its indigo rising from below. */
+        private fun wash(w: Float, h: Float) {
+            val c = canvas ?: return
+            val rad = 12f * d
+            r.set(d, d, w - d, h - d)
+            val across = BrowsingMode.washTop(night)
+            val blue = BrowsingMode.washBottom(night)
+            p.style = Paint.Style.FILL
+            p.shader = android.graphics.LinearGradient(r.left, 0f, r.right, 0f, across,
+                floatArrayOf(1f / 6f, 0.5f, 5f / 6f), android.graphics.Shader.TileMode.CLAMP)
+            c.drawRoundRect(r, rad, rad, p)
+            p.shader = android.graphics.LinearGradient(0f, r.top, 0f, r.bottom,
+                intArrayOf(tint(blue, 0f), tint(blue, 0f), tint(blue, 0.72f), blue),
+                floatArrayOf(0f, 0.26f, 0.62f, 0.9f), android.graphics.Shader.TileMode.CLAMP)
+            c.drawRoundRect(r, rad, rad, p)
+            p.shader = null
+            p.style = Paint.Style.STROKE; p.strokeWidth = d * 0.8f; p.color = hair
+            c.drawRoundRect(r, rad, rad, p)
+        }
+
         private fun tint(c: Int, a: Float): Int =
             Color.argb((a * 255).toInt(), Color.red(c), Color.green(c), Color.blue(c))
 
         override fun onDraw(c: Canvas) {
             canvas = c
             val w = width.toFloat(); val h = height.toFloat()
-            // The phone.
-            box(d, d, w - d, h - d, 12f * d, pageBg, stroke = true)
+            // The phone: Focus and Zen on their pastel wash, as home draws it.
+            if (mode == BrowsingMode.FOCUS || mode == BrowsingMode.ZEN) wash(w, h)
+            else box(d, d, w - d, h - d, 12f * d, pageBg, stroke = true)
             val in0 = 7f * d
             val cw = w - 2 * in0
             fun pill(y: Float, hh: Float, frac: Float) {

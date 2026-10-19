@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Download video button: a pill in the accent (tinted from code), with
+     a ripple for the press. -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="#33FFFFFF">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#8B6BD8" />
+            <corners android:radius="22dp" />
+        </shape>
+    </item>
+</ripple>

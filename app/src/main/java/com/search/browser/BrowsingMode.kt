@@ -43,6 +43,20 @@ object BrowsingMode {
     fun set(c: Context, mode: String): Boolean =
         mode in ALL && Settings.putStringNow(c, KEY, mode)
 
+    /**
+     * Focus and Zen's home sits on the owl's wash (home.html, html.wash): the
+     * brand's violet, lilac and amber across the top, and the pale indigo of
+     * its night sky below. These are the same colours, for what the app paints
+     * itself - the bars over that home page and the modes' previews - so page
+     * and bar meet without a seam. Kept in step with home.html's --wash-*.
+     */
+    fun washTop(dark: Boolean): IntArray =
+        if (dark) intArrayOf(0xFF2B1A5C.toInt(), 0xFF271B4A.toInt(), 0xFF45280F.toInt())
+        else intArrayOf(0xFFD4C2F7.toInt(), 0xFFE8DBF7.toInt(), 0xFFFBE2C6.toInt())
+
+    fun washBottom(dark: Boolean): Int =
+        if (dark) 0xFF150F33.toInt() else 0xFFE1DAFB.toInt()
+
     fun title(mode: String): String = when (mode) {
         FOCUS -> "Focus"
         ZEN -> "Zen"

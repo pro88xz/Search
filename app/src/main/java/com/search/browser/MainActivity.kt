@@ -323,6 +323,13 @@ class MainActivity : AppCompatActivity() {
         val cm = getSystemService(android.content.Context.CONNECTIVITY_SERVICE)
             as android.net.ConnectivityManager
         val cb = object : android.net.ConnectivityManager.NetworkCallback() {
+            // Wi-Fi to mobile data and back: Save data on mobile data follows.
+            override fun onCapabilitiesChanged(
+                network: android.net.Network,
+                caps: android.net.NetworkCapabilities
+            ) {
+                runOnUiThread { if (!isFinishing && !isDestroyed) applyDataSaverNow() }
+            }
             override fun onAvailable(network: android.net.Network) {
                 runOnUiThread {
                     if (wasOffline) {
@@ -557,10 +564,38 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /** What lastSiteSig last applied for pictures; Save data on mobile data changes it between networks. */
+    private var lastImagesBlocked: Boolean? = null
+
+    /**
+     * Pictures off: Data saver on, or Save data on mobile data while the
+     * phone is on a metered network (mobile data, a hotspot).
+     */
+    private fun imagesBlocked(): Boolean {
+        if (Settings.getBool(this, Settings.SITE_BLOCK_IMAGES, false)) return true
+        if (!Settings.getBool(this, Settings.DATA_SAVER_MOBILE, false)) return false
+        return try {
+            (getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager).isActiveNetworkMetered
+        } catch (e: Exception) { false }
+    }
+
+    /** On a change of network: every tab's pictures on or off to match, at once. Turning them on loads them. */
+    private fun applyDataSaverNow() {
+        val b = imagesBlocked()
+        if (b == lastImagesBlocked) return
+        lastImagesBlocked = b
+        tabs.tabs.forEach { t -> try { t.webView?.settings?.blockNetworkImage = b } catch (e: Exception) {} }
+    }
+
+    private fun cleanLinksOn() = Settings.getBool(this, Settings.CLEAN_LINKS, true)
+
+    /** [url] as it is copied or shared: without its tracking tags, while that is on (LinkCleaner). */
+    private fun shareable(url: String): String = if (cleanLinksOn()) LinkCleaner.clean(url) ?: url else url
+
     private fun siteSettingsSignature(): String {
         return listOf(
             Settings.getBool(this, Settings.SITE_JAVASCRIPT, true),
-            Settings.getBool(this, Settings.SITE_BLOCK_IMAGES, false),
+            imagesBlocked(),
             Settings.getBool(this, Settings.SITE_BLOCK_AUTOPLAY, true),
             // Both of these were read once, when a tab's WebView was built, and
             // never looked at again. Toggling either did nothing to any tab
@@ -1217,6 +1252,8 @@ class MainActivity : AppCompatActivity() {
         // left up, it covered the browser for good, and Back (which it
         // holds while it is up) did nothing: the app looked frozen.
         if (launchCover != null && coverAdShowing) hideLaunchCover()
+        // The Download video button may have been switched off in Settings.
+        updateVideoFab()
         // Back from the background: an app open ad that is ready opens the
         // way in (a launch is handled by the splash: onSplashMinimumDone).
         if (AppOpenAds.takeOpen() == AppOpenAds.WARM_OPEN) warmOpenAd()
@@ -1252,7 +1289,7 @@ class MainActivity : AppCompatActivity() {
         // Back from the introduction on a fresh install: consent, then the ads.
         if (adsDeferred && BrowsingMode.introDone(this)) { adsDeferred = false; initAds() }
         uiHandler.postDelayed({ maybeAnnounceModes() }, 900L)
-        if (!tintBarsPref) setBarTint(null, null, animate = false)
+        if (!tintBarsPref) plainBars(tabs.activeTab?.url, animate = false)
         HealthStats.sessionStarted(this)
         registerNetworkWatch()
         // If a flexible update finished downloading while away, offer to install it.
@@ -1284,7 +1321,8 @@ class MainActivity : AppCompatActivity() {
         lastSiteSig = sig
 
         val js = Settings.getBool(this, Settings.SITE_JAVASCRIPT, true)
-        val blockImg = Settings.getBool(this, Settings.SITE_BLOCK_IMAGES, false)
+        val blockImg = imagesBlocked()
+        lastImagesBlocked = blockImg
         val blockAutoplay = Settings.getBool(this, Settings.SITE_BLOCK_AUTOPLAY, true)
         val safeBrowsing = Settings.getBool(this, Settings.SEC_SAFE_BROWSING, true)
         val block3p = Settings.getBool(this, Settings.SEC_BLOCK_3P_COOKIES, false)
@@ -2024,6 +2062,17 @@ class MainActivity : AppCompatActivity() {
             if (!privileged) return
             runOnUiThread { launchVoiceSearch() }
         }
+        /** saved.html: one offline page's JSON, or "" (OfflinePages). Asset pages only. */
+        @JavascriptInterface
+        fun getOfflinePage(id: String): String {
+            if (!privileged) return ""
+            return OfflinePages.read(this@MainActivity, id)
+        }
+        @JavascriptInterface
+        fun deleteOfflinePage(id: String) {
+            if (!privileged) return
+            OfflinePages.delete(this@MainActivity, id)
+        }
         @JavascriptInterface
         fun startScan() {
             // A site being able to open the camera scanner on its own is
@@ -2588,8 +2637,8 @@ class MainActivity : AppCompatActivity() {
             // and never played.
             mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
 
-            // Data saver: block images when enabled.
-            blockNetworkImage = Settings.getBool(this@MainActivity, Settings.SITE_BLOCK_IMAGES, false)
+            // Data saver: block images when enabled (always, or on mobile data).
+            blockNetworkImage = imagesBlocked()
 
             // Present as clean mobile Chrome: drop the "; wv" WebView token AND
             // the legacy "Version/4.0" token. Strict sites (e.g. Notion) read
@@ -2700,6 +2749,17 @@ class MainActivity : AppCompatActivity() {
                     openPlayListing(uri.toString())) {
                     closeIfNeverLoaded(view)
                     return true
+                }
+                // A tapped link loses its tracking tags before it loads
+                // (LinkCleaner): only a tap, never a redirect, so a site's own
+                // hops are left alone; ad click ids are kept.
+                if ((scheme == "https" || scheme == "http") && request.isForMainFrame &&
+                    request.hasGesture() && !request.isRedirect && cleanLinksOn()) {
+                    val clean = LinkCleaner.clean(uri.toString())
+                    if (clean != null) {
+                        loadAfterCallback(view, clean)
+                        return true
+                    }
                 }
                 // Web content and our own asset pages: load here as normal.
                 if (scheme == "http" || scheme == "https" || scheme == "file" ||
@@ -2874,6 +2934,7 @@ class MainActivity : AppCompatActivity() {
                 if (t != null && url != null && url != t.url) {
                     t.url = url
                     if (view === activeWeb()) {
+                        scheduleVideoScan(1200L)
                         if (!binding.urlBar.hasFocus()) binding.urlBar.setText(displayUrl(url))
                         refreshStar()
                         refreshAdSlot()
@@ -2898,9 +2959,12 @@ class MainActivity : AppCompatActivity() {
                 if (view == tabs.activeTab?.webView) {
                     // A new page arrives with the bars, as in Chrome.
                     showBars()
+                    // The last page's videos are not this one's.
+                    setFoundVideos(emptyList(), null)
                     // Plain bars for home and pages that are not to be tinted;
                     // a site's colours arrive once it has painted.
-                    if (!tintAllowed(url)) setBarTint(null, null, animate = true)
+                    // Leaving Focus or Zen's home takes its wash off the bars too.
+                    if (!tintAllowed(url) || binding.topBar.seamless) plainBars(url, animate = true)
                     if (!binding.urlBar.hasFocus()) binding.urlBar.setText(displayUrl(url))
                     refreshOmniboxVisibility(url)
                     tabs.activeTab?.let { beginLoadWatch(it, url) }
@@ -2931,6 +2995,7 @@ class MainActivity : AppCompatActivity() {
                     uiHandler.postDelayed(tintLate, 1600L)
                     // The page's own icon list exists now.
                     showSiteIcon(tabs.activeTab?.url ?: url)
+                    scheduleVideoScan(700L)
                 }
                 // The upgrade worked, so nothing needs remembering about it.
                 url?.let { upgradedFrom.remove(it) }
@@ -3456,6 +3521,7 @@ class MainActivity : AppCompatActivity() {
         val area = binding.webArea
         if (barsHidden || top.height <= 0 || top.visibility != View.VISIBLE) return
         barsHidden = true
+        updateVideoFab()
         barsMovedAt = android.os.SystemClock.uptimeMillis()
         top.animate().cancel(); area.animate().cancel(); bottom.animate().cancel()
         barsTopH = top.height
@@ -3561,6 +3627,7 @@ class MainActivity : AppCompatActivity() {
     private fun showBars(animate: Boolean = true) {
         if (!barsHidden) return
         barsHidden = false
+        updateVideoFab()
         barScrollAcc = 0
         barsMovedAt = android.os.SystemClock.uptimeMillis()
         val top = binding.topBar
@@ -3635,7 +3702,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun samplePageTint() {
         val web = activeWeb() ?: return
-        if (!tintAllowed(tabs.activeTab?.url)) { setBarTint(null, null, animate = true); return }
+        if (!tintAllowed(tabs.activeTab?.url)) { plainBars(tabs.activeTab?.url, animate = true); return }
+        // A tab switched to from Focus or Zen's home: not the wash while its own colours are found.
+        if (binding.topBar.seamless) plainBars(tabs.activeTab?.url, animate = false)
         // Only a settled page with nothing over it: the strips must be the page.
         // (The loading pill sits lower than the top strip, so it does not count.)
         if (barsHidden || searchMode || deckVisible || fullscreenView != null ||
@@ -3848,6 +3917,28 @@ class MainActivity : AppCompatActivity() {
     private fun fieldPane(bar: Int, onDark: Boolean): Int =
         if (onDark) PageTint.mix(bar, android.graphics.Color.WHITE, 0.18f)
         else PageTint.mix(bar, android.graphics.Color.BLACK, 0.075f)
+
+    /**
+     * Focus and Zen's wash in the owl's colours, as the bars carry it on
+     * their home page: the top edge's three colours (BrowsingMode.washTop,
+     * home.html's --wash-v, -m, -a, at the same places) for the top bar and
+     * the indigo the page settles into for the bottom one. Null anywhere
+     * else, and in Night Owl, which keeps its own sky.
+     */
+    private fun homeWash(url: String?): Array<IntArray>? {
+        if (nightOwl || url == null || url != homePage) return null
+        if (browsingMode != BrowsingMode.FOCUS && browsingMode != BrowsingMode.ZEN) return null
+        val dark = isDarkTheme()
+        val bottom = BrowsingMode.washBottom(dark)
+        return arrayOf(BrowsingMode.washTop(dark), IntArray(3) { bottom })
+    }
+
+    /** The bars for a page that does not lend them its colours: plain, or on Focus and Zen's home, the wash. */
+    private fun plainBars(url: String?, animate: Boolean) {
+        val w = homeWash(url)
+        binding.topBar.seamless = w != null
+        setBarTint(w?.get(0), w?.get(1), animate)
+    }
 
     /** Eases both bars to [top] / [bottom] (null: their plain surface). */
     private fun setBarTint(top: IntArray?, bottom: IntArray?, animate: Boolean) {
@@ -4102,7 +4193,7 @@ class MainActivity : AppCompatActivity() {
             if (!nightOwl && webLink != null) {
                 labels.add("Open in Night Owl tab"); acts.add { enterNightOwl(webLink) }
             }
-            labels.add("Copy link address"); acts.add { copyText("Link", link) }
+            labels.add("Copy link address"); acts.add { copyText("Link", shareable(link)) }
             val text = linkText?.trim()?.takeIf { it.isNotEmpty() && it != link }
             if (text != null) { labels.add("Copy link text"); acts.add { copyText("Link text", text) } }
             labels.add("Share link"); acts.add { shareLink(link, "") }
@@ -4569,6 +4660,10 @@ class MainActivity : AppCompatActivity() {
      * hide what the page really is.
      */
     private fun displayUrl(url: String?): String {
+        // A page kept for offline reading says so, and where it came from.
+        OfflinePages.idOf(url)?.let { id ->
+            return "Offline" + (OfflinePages.siteOf(id)?.takeIf { it.isNotBlank() }?.let { " \u00B7 $it" } ?: "")
+        }
         if (url == null || url.startsWith("file:///android_asset/")) return ""
         val uri = try {
             android.net.Uri.parse(url)
@@ -5130,6 +5225,8 @@ class MainActivity : AppCompatActivity() {
         endPullRefresh(now = true)
         showBars(animate = false)
         schedulePageTint(350L)
+        setFoundVideos(emptyList(), null)
+        scheduleVideoScan(600L)
         // The tab being left keeps a picture of itself for the deck, taken
         // while it is still on screen. PixelCopy reads what the display already
         // shows and asks the page for nothing. freezeTab used to draw the
@@ -5210,8 +5307,9 @@ class MainActivity : AppCompatActivity() {
      * Everywhere else, the native bar behaves exactly as it always has.
      */
     /** Opens Android's native share sheet for a feed article. */
-    private fun shareLink(url: String, title: String) {
-        if (url.isBlank()) return
+    private fun shareLink(link: String, title: String) {
+        if (link.isBlank()) return
+        val url = shareable(link)
         try {
             val text = if (title.isBlank()) url else "$title\n$url"
             val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
@@ -5668,7 +5766,9 @@ class MainActivity : AppCompatActivity() {
     private fun applyNightOwlChrome(on: Boolean) {
         // Night Owl tabs always show the owl's night sky.
         binding.navOwl.privateMode = on
-        // And keep the Night Owl wash: no page colours in its bars.
+        // And keep the Night Owl wash: no page colours in its bars, nor
+        // Focus and Zen's pastel one (home brings that back on its reload).
+        binding.topBar.seamless = false
         setBarTint(null, null, animate = false)
         // By id, not by binding.homeBtn.parent. The owl now sits inside a
         // FrameLayout so its tab badge can be positioned against it, and the
@@ -6931,6 +7031,7 @@ class MainActivity : AppCompatActivity() {
         }
         refreshAdSlot()
         if (mode == BrowsingMode.EXPLORE) loadFeedAd()
+        plainBars(tabs.activeTab?.url, animate = true)
     }
 
 
@@ -7287,7 +7388,7 @@ class MainActivity : AppCompatActivity() {
                 target: androidx.recyclerview.widget.RecyclerView.ViewHolder
             ): Boolean {
                 // Only in the full list: a filtered one has gaps in it.
-                if (deckFilter.isNotBlank()) return false
+                if (deckFilter.isNotBlank() || deckGroup != null) return false
                 val from = vh.bindingAdapterPosition
                 val to = target.bindingAdapterPosition
                 if (from < 0 || to < 0 || from >= tabs.tabs.size || to >= tabs.tabs.size) return false
@@ -7392,6 +7493,7 @@ class MainActivity : AppCompatActivity() {
     private fun showDeckNow() {
         deckVisible = true
         androidx.core.view.ViewCompat.requestApplyInsets(binding.root)
+        renderDeckGroups()
         tabAdapter.notifyDataSetChanged()
         val deck = binding.tabDeck
         // It rises into place on a spring rather than appearing.
@@ -7439,6 +7541,7 @@ class MainActivity : AppCompatActivity() {
     private fun closeDeck() {
         hideKeyboard()
         if (deckFilter.isNotEmpty()) { deckFilter = ""; binding.deckSearch.setText("") }
+        deckGroup = null
         deckSpring.cancel()
         deckOpenSeq++
         endDeckLayer()
@@ -7513,14 +7616,129 @@ class MainActivity : AppCompatActivity() {
         if (home != null) openTab(home) else addNewTab(homePage)
     }
 
+    // ---------- Smart tab groups ----------
+    //
+    // Over the tab cards, a chip for every site with two or more tabs open -
+    // "All 9", "Bbc 3", "Wikipedia 2" - so a long row of tabs sorts itself by
+    // where they are. A chip shows just that site's tabs; holding one offers
+    // to close them all at once (each remembered, so Reopen closed tab brings
+    // them back). Nothing to set up and nothing stored: the groups are the
+    // tabs as they are. Home and new tabs belong to no group.
+
+    /** The site group the deck is showing, or null for every tab. */
+    private var deckGroup: String? = null
+
+    /** A tab's site, as its group knows it ("bbc.co.uk"), or null for home, a new tab or an app page. */
+    private fun tabGroupKey(t: Tab): String? {
+        val url = t.url
+        if (!url.startsWith("https://") && !url.startsWith("http://")) return null
+        return try {
+            android.net.Uri.parse(url).host?.lowercase()
+                ?.removePrefix("www.")?.removePrefix("m.")?.removePrefix("mobile.")
+                ?.ifBlank { null }
+        } catch (e: Exception) { null }
+    }
+
+    private fun renderDeckGroups() {
+        val row = binding.deckGroupRow
+        val counts = LinkedHashMap<String, Int>()
+        tabs.tabs.forEach { t -> tabGroupKey(t)?.let { counts[it] = (counts[it] ?: 0) + 1 } }
+        val groups = counts.entries.filter { it.value >= 2 }
+            .sortedByDescending { it.value }.take(8).map { it.key }
+        if (deckGroup != null && deckGroup !in groups) deckGroup = null
+        row.removeAllViews()
+        if (groups.isEmpty() || binding.tabList.visibility != View.VISIBLE) {
+            binding.deckGroups.visibility = View.GONE
+            return
+        }
+        binding.deckGroups.visibility = View.VISIBLE
+        row.addView(groupChip("All", tabs.count(), deckGroup == null, null))
+        groups.forEach { key ->
+            row.addView(groupChip(siteNameOf("https://$key/").ifBlank { key }, counts[key] ?: 0,
+                deckGroup == key, key))
+        }
+    }
+
+    private fun groupChip(label: String, n: Int, selected: Boolean, key: String?): View {
+        val d = resources.displayMetrics.density
+        val accent = currentAccent()
+        val chip = android.widget.TextView(this)
+        chip.text = label + "  " + n
+        chip.textSize = 13.5f
+        chip.setTypeface(chip.typeface, android.graphics.Typeface.BOLD)
+        chip.maxLines = 1
+        chip.gravity = android.view.Gravity.CENTER
+        chip.setPaddingRelative((14 * d).toInt(), 0, (14 * d).toInt(), 0)
+        chip.minHeight = (36 * d).toInt()
+        val bg = android.graphics.drawable.GradientDrawable()
+        bg.cornerRadius = 18f * d
+        if (selected) {
+            bg.setColor(accent)
+            chip.setTextColor(if (android.graphics.Color.luminance(accent) > 0.6f)
+                android.graphics.Color.BLACK else android.graphics.Color.WHITE)
+        } else {
+            bg.setColor(getColor(R.color.menuTileBg))
+            chip.setTextColor(getColor(R.color.feedFg))
+        }
+        chip.background = android.graphics.drawable.RippleDrawable(
+            android.content.res.ColorStateList.valueOf(0x22000000), bg, null)
+        chip.isSelected = selected
+        chip.contentDescription = (if (key == null) "All tabs, " else "$label tabs, ") + n +
+            if (selected) ", showing" else ""
+        val lp = android.widget.LinearLayout.LayoutParams(
+            android.view.ViewGroup.LayoutParams.WRAP_CONTENT, (36 * d).toInt())
+        lp.marginEnd = (8 * d).toInt()
+        chip.layoutParams = lp
+        chip.setOnClickListener { v ->
+            Haptics.tap(v)
+            deckGroup = key
+            renderDeckGroups()
+            tabAdapter.notifyDataSetChanged()
+        }
+        if (key != null) chip.setOnLongClickListener { v ->
+            Haptics.confirm(v)
+            confirmCloseGroup(key, label)
+            true
+        }
+        return chip
+    }
+
+    /** Closes every tab of the site group [key], asked first; each is remembered for Reopen closed tab. */
+    private fun confirmCloseGroup(key: String, label: String) {
+        val going = tabs.tabs.filter { tabGroupKey(it) == key }.sortedBy { it === tabs.activeTab }
+        if (going.isEmpty()) return
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(this, R.style.Theme_Search_Dialog)
+            .setTitle("Close " + going.size + " " + label + " tabs?")
+            .setMessage("Menu > Reopen closed tab brings them back.")
+            .setPositiveButton("Close") { _, _ ->
+                Haptics.confirm(binding.tabList)
+                if (deckGroup == key) deckGroup = null
+                going.forEach { t ->
+                    if (!tabs.tabs.contains(t)) return@forEach
+                    rememberClosed(t)
+                    closeTabFromDeck(t)
+                }
+                if (deckVisible) renderDeckGroups()
+                tabAdapter.notifyDataSetChanged()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
     /** What is typed in the deck's search field, filtering its cards. */
     private var deckFilter = ""
 
-    /** The tabs the deck shows: all, or those whose title or address has [deckFilter] in it. */
+    /**
+     * The tabs the deck shows: all, or those of the site group picked
+     * ([deckGroup]), and of those the ones whose title or address has
+     * [deckFilter] in it.
+     */
     private fun shownTabs(): List<Tab> {
         val q = deckFilter
-        if (q.isBlank()) return tabs.tabs
-        return tabs.tabs.filter { t ->
+        val g = deckGroup
+        val base = if (g == null) tabs.tabs else tabs.tabs.filter { tabGroupKey(it) == g }
+        if (q.isBlank()) return base
+        return base.filter { t ->
             t.title.contains(q, ignoreCase = true) || t.url.contains(q, ignoreCase = true) ||
                 PageLabel.title(t.title, t.url).contains(q, ignoreCase = true)
         }
@@ -7914,6 +8132,95 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // ---------- Offline pages ----------
+    //
+    // Menu > Page tools > Save offline keeps the page's reading content, with
+    // its pictures inside it, to read with no connection (OfflinePages); Menu
+    // > History & downloads > Offline pages lists them, newest first, and one
+    // opens in a new tab (saved.html). With Data saver on, or Save data on
+    // mobile data while on it, only the text is kept - the pictures would be
+    // the data it is there to save. Never in Night Owl, which keeps nothing.
+
+    private fun savePageOffline() {
+        val url = webPageUrl() ?: run { needAPage(); return }
+        if (nightOwl) { toast("Night Owl keeps nothing. Turn it off to save pages offline."); return }
+        val web = activeWeb() ?: return
+        val ua = web.settings.userAgentString
+        val withImages = !imagesBlocked()
+        toast("Saving for offline…")
+        try {
+            web.evaluateJavascript(OfflinePages.JS) { raw ->
+                if (isFinishing || isDestroyed) return@evaluateJavascript
+                val page = OfflinePages.parseCapture(raw)
+                if (page == null) { toast("This page couldn't be saved"); return@evaluateJavascript }
+                Thread {
+                    val imgs = if (withImages) try {
+                        OfflinePages.fetchImages(page.imgs, ua, url) { u ->
+                            try { android.webkit.CookieManager.getInstance().getCookie(u) } catch (e: Exception) { null }
+                        }
+                    } catch (e: Throwable) { List(page.imgs.size) { null } } else List(page.imgs.size) { null }
+                    val entry = try { OfflinePages.save(this, page, imgs) } catch (e: Throwable) { null }
+                    runOnUiThread {
+                        if (isFinishing || isDestroyed) return@runOnUiThread
+                        if (entry == null) { toast("Couldn't save the page. Is the phone's storage full?"); return@runOnUiThread }
+                        try {
+                            com.google.android.material.snackbar.Snackbar
+                                .make(binding.webArea, "Saved for offline reading",
+                                    com.google.android.material.snackbar.Snackbar.LENGTH_LONG)
+                                .setAction("View all") { showOfflinePages() }
+                                .setActionTextColor(currentAccent())
+                                .show()
+                        } catch (e: Exception) { toast("Saved for offline reading") }
+                    }
+                }.start()
+            }
+        } catch (e: Exception) {
+            toast("This page couldn't be saved")
+        }
+    }
+
+    private fun showOfflinePages() {
+        Thread {
+            val list = try { OfflinePages.list(this) } catch (e: Exception) { emptyList() }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                if (list.isEmpty()) {
+                    com.google.android.material.dialog.MaterialAlertDialogBuilder(this, R.style.Theme_Search_Dialog)
+                        .setTitle("No offline pages yet")
+                        .setMessage("On any page, open Menu > Page tools > Save offline. The page stays " +
+                            "readable here with no connection.")
+                        .setPositiveButton("OK", null)
+                        .show()
+                    return@runOnUiThread
+                }
+                val fmt = java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM)
+                val labels = list.map { e ->
+                    e.title.ifBlank { e.site } + "\n" + e.site + " · " + fmt.format(java.util.Date(e.savedAt))
+                }.toTypedArray<CharSequence>()
+                com.google.android.material.dialog.MaterialAlertDialogBuilder(this, R.style.Theme_Search_Dialog)
+                    .setTitle("Offline pages")
+                    .setItems(labels) { _, which ->
+                        list.getOrNull(which)?.let { leaveTransientUi(); addNewTab(OfflinePages.urlFor(it.id)) }
+                    }
+                    .setNeutralButton("Remove all") { _, _ -> confirmRemoveOfflinePages(list.size) }
+                    .setNegativeButton("Close", null)
+                    .show()
+            }
+        }.start()
+    }
+
+    private fun confirmRemoveOfflinePages(n: Int) {
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(this, R.style.Theme_Search_Dialog)
+            .setTitle("Remove all offline pages?")
+            .setMessage(n.toString() + (if (n == 1) " page" else " pages") + " will be removed from this phone.")
+            .setPositiveButton("Remove") { _, _ ->
+                Thread { try { OfflinePages.deleteAll(this) } catch (e: Exception) {} }.start()
+                toast("Offline pages removed")
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
     /** The page as its own icon on the home screen, opening in Search. */
     private fun addToHomeScreen() {
         val url = webPageUrl() ?: run { needAPage(); return }
@@ -7990,6 +8297,7 @@ class MainActivity : AppCompatActivity() {
             // it closes itself. openTab puts a real view back on screen.
             (fallback ?: tabs.tabs.lastOrNull())?.let { openTab(it) }
         }
+        if (deckVisible) renderDeckGroups()
         tabAdapter.notifyDataSetChanged()
         updateTabCount()
         scheduleSessionSave()
@@ -8040,6 +8348,7 @@ class MainActivity : AppCompatActivity() {
             binding.downloadList.adapter = downloadsAdapter
         }
         binding.tabList.visibility = View.GONE
+        binding.deckGroups.visibility = View.GONE
         binding.historyList.visibility = View.GONE
         binding.bookmarkList.visibility = View.GONE
         downloadsOpen = true
@@ -8386,6 +8695,7 @@ class MainActivity : AppCompatActivity() {
             androidx.recyclerview.widget.LinearLayoutManager(this)
         binding.historyList.adapter = adapter
         binding.tabList.visibility = View.GONE
+        binding.deckGroups.visibility = View.GONE
         binding.bookmarkList.visibility = View.GONE
         if (entries.isEmpty()) {
             showDeckEmpty(R.drawable.menu_history, "No history yet", "Pages you visit will show up here.")
@@ -8411,6 +8721,7 @@ class MainActivity : AppCompatActivity() {
             androidx.recyclerview.widget.LinearLayoutManager(this)
         binding.bookmarkList.adapter = adapter
         binding.tabList.visibility = View.GONE
+        binding.deckGroups.visibility = View.GONE
         binding.historyList.visibility = View.GONE
         if (entries.isEmpty()) {
             showDeckEmpty(R.drawable.menu_bookmarks, "No bookmarks yet", "Tap the star on any page to save it here.")
@@ -9119,7 +9430,7 @@ class MainActivity : AppCompatActivity() {
             menu.menu.add(0, 4, 3, if (url != null) "Edit address" else "Search")
             menu.setOnMenuItemClickListener { item ->
                 when (item.itemId) {
-                    1 -> url?.let { copyText("Link", it) }
+                    1 -> url?.let { copyText("Link", shareable(it)) }
                     2 -> url?.let { shareLink(it, activeWeb()?.title ?: "") }
                     3 -> readClipboardText()?.let { go(it) }
                     4 -> enterSearchMode()
@@ -9670,6 +9981,18 @@ class MainActivity : AppCompatActivity() {
             closeMenuNow()
             toggleReaderView()
         }
+        binding.menuVideo.setOnClickListener {
+            closeMenuNow()
+            downloadVideoFromMenu()
+        }
+        binding.menuSaveOffline.setOnClickListener {
+            closeMenuNow()
+            savePageOffline()
+        }
+        binding.menuOfflinePages.setOnClickListener {
+            closeMenuNow()
+            showOfflinePages()
+        }
         binding.menuAddHome.setOnClickListener {
             closeMenuNow()
             addToHomeScreen()
@@ -9788,6 +10111,8 @@ class MainActivity : AppCompatActivity() {
     private fun onMediaState(state: String, title: String, host: String) {
         when (state) {
             "playing", "paused" -> {
+                // Many players only take their source once they start.
+                if (state == "playing" && foundVideos.isEmpty()) scheduleVideoScan(400L)
                 ensureNotifPermission()
                 val intent = android.content.Intent(this, MediaService::class.java).apply {
                     action = MediaService.ACTION_UPDATE
@@ -9802,6 +10127,202 @@ class MainActivity : AppCompatActivity() {
             }
             "none" -> stopMediaService()
         }
+    }
+
+    // ---------- Video downloader ----------
+    //
+    // A web page with a video that is a plain file (VideoFinder) gets a button
+    // above the bottom bar, "Download video", which shrinks to its icon after
+    // a few seconds. One video goes through the same confirmation as any
+    // other download; several are offered in a list first. Menu > Page tools
+    // has the same, and says why when there is nothing to save. Never for
+    // YouTube. Looked for when a page finishes, when a video starts playing
+    // (many players only set their source then) and twice more a little later.
+    // Never on home, so the button is never near the ad cards.
+
+    private var foundVideos: List<VideoFinder.Found> = emptyList()
+    /** The address the WebView showed when [foundVideos] were found. */
+    private var foundVideosFor: String? = null
+    private var videoScans = 0
+    private val videoScan = Runnable { scanVideos(null) }
+    private val videoFabShrink = Runnable { setVideoFabExtended(false) }
+    private var videoFabStyled = false
+
+    private fun videoButtonOn() = Settings.getBool(this, Settings.VIDEO_BUTTON, true)
+
+    private fun scheduleVideoScan(delay: Long) {
+        videoScans = 0
+        uiHandler.removeCallbacks(videoScan)
+        uiHandler.postDelayed(videoScan, delay)
+    }
+
+    /** Asks the page on screen for its videos; [then] runs once the answer is in. */
+    private fun scanVideos(then: (() -> Unit)?) {
+        val web = activeWeb()
+        val url = web?.url
+        if (web == null || url == null || url == homePage ||
+            !(url.startsWith("https://") || url.startsWith("http://"))) {
+            setFoundVideos(emptyList(), url)
+            then?.invoke()
+            return
+        }
+        val host = try { android.net.Uri.parse(url).host } catch (e: Exception) { null }
+        if (VideoFinder.pageExcluded(host)) {
+            setFoundVideos(emptyList(), url)
+            then?.invoke()
+            return
+        }
+        videoScans++
+        try {
+            web.evaluateJavascript(VideoFinder.JS) { raw ->
+                if (isFinishing || isDestroyed || web !== activeWeb() || web.url != url) return@evaluateJavascript
+                val found = VideoFinder.parse(raw, url)
+                setFoundVideos(found, url)
+                then?.invoke()
+                if (then == null && found.isEmpty() && videoScans < 3) {
+                    uiHandler.removeCallbacks(videoScan)
+                    uiHandler.postDelayed(videoScan, 2500L)
+                }
+            }
+        } catch (e: Exception) {
+            then?.invoke()
+        }
+    }
+
+    private fun setFoundVideos(list: List<VideoFinder.Found>, url: String?) {
+        val had = foundVideos.isNotEmpty() && foundVideosFor == url
+        foundVideos = list
+        foundVideosFor = url
+        updateVideoFab(announce = list.isNotEmpty() && !had)
+    }
+
+    /** Shows or hides the button for the page on screen; [announce] spells it out again for a moment. */
+    private fun updateVideoFab(announce: Boolean = false) {
+        val fab = binding.videoFab
+        val web = activeWeb()
+        val show = foundVideos.isNotEmpty() && web != null && foundVideosFor != null &&
+            foundVideosFor == web.url && tabs.activeTab?.url != homePage &&
+            videoButtonOn() && !barsHidden && !searchMode && !deckVisible && fullscreenView == null
+        if (!show) {
+            uiHandler.removeCallbacks(videoFabShrink)
+            if (fab.visibility == View.VISIBLE) {
+                fab.animate().cancel()
+                fab.animate().alpha(0f).scaleX(0.8f).scaleY(0.8f).setDuration(140L)
+                    .withEndAction { if (fab.alpha == 0f) fab.visibility = View.GONE }.start()
+            }
+            return
+        }
+        styleVideoFab()
+        val n = foundVideos.size
+        fab.contentDescription = if (n == 1) "Download video" else "Download videos, " + n + " found"
+        if (fab.visibility != View.VISIBLE || fab.alpha < 1f) {
+            fab.animate().cancel()
+            if (fab.visibility != View.VISIBLE) {
+                fab.alpha = 0f; fab.scaleX = 0.8f; fab.scaleY = 0.8f
+                fab.visibility = View.VISIBLE
+            }
+            fab.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(200L)
+                .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
+        }
+        if (announce) {
+            setVideoFabExtended(true)
+            uiHandler.removeCallbacks(videoFabShrink)
+            uiHandler.postDelayed(videoFabShrink, 4000L)
+        }
+    }
+
+    private fun styleVideoFab() {
+        val fab = binding.videoFab
+        val accent = currentAccent()
+        val pill = android.graphics.drawable.GradientDrawable().apply {
+            cornerRadius = 22f * resources.displayMetrics.density
+            setColor(accent)
+        }
+        fab.background = android.graphics.drawable.RippleDrawable(
+            android.content.res.ColorStateList.valueOf(0x33FFFFFF), pill, null)
+        val icon = androidx.core.content.ContextCompat.getDrawable(this, R.drawable.menu_downloads)?.mutate()
+        icon?.setTint(android.graphics.Color.WHITE)
+        fab.setCompoundDrawablesRelativeWithIntrinsicBounds(icon, null, null, null)
+        if (!videoFabStyled) {
+            videoFabStyled = true
+            fab.setOnClickListener { v ->
+                Haptics.tap(v)
+                offerVideoDownload()
+            }
+        }
+    }
+
+    /** The button with its words ("Download video"), or shrunk to its icon. */
+    private fun setVideoFabExtended(extended: Boolean) {
+        val fab = binding.videoFab
+        val d = resources.displayMetrics.density
+        if (animationsOn() && fab.isLaidOut) {
+            android.transition.TransitionManager.beginDelayedTransition(binding.webArea,
+                android.transition.ChangeBounds().addTarget(fab).setDuration(220L))
+        }
+        val n = foundVideos.size
+        if (extended) {
+            fab.text = if (n > 1) "Download video (" + n + ")" else "Download video"
+            fab.compoundDrawablePadding = (8 * d).toInt()
+            fab.setPaddingRelative((12 * d).toInt(), 0, (16 * d).toInt(), 0)
+        } else {
+            fab.text = ""
+            fab.compoundDrawablePadding = 0
+            fab.setPaddingRelative((11 * d).toInt(), 0, (11 * d).toInt(), 0)
+        }
+    }
+
+    /** Menu > Page tools > Download video: looks again first, then offers what is there. */
+    private fun downloadVideoFromMenu() {
+        if (webPageUrl() == null) { needAPage(); return }
+        scanVideos { offerVideoDownload() }
+    }
+
+    private fun offerVideoDownload() {
+        val web = activeWeb() ?: return
+        val list = if (foundVideosFor == web.url) foundVideos else emptyList()
+        if (list.isEmpty()) {
+            val host = try { android.net.Uri.parse(web.url ?: "").host } catch (e: Exception) { null }
+            toast(if (VideoFinder.pageExcluded(host)) "YouTube's terms don't allow saving its videos"
+                else "No video on this page can be saved. Start it playing, then try again.")
+            return
+        }
+        if (list.size == 1) { fetchVideo(list[0]); return }
+        val labels = list.mapIndexed { i, f -> VideoFinder.label(f, i) }.toTypedArray<CharSequence>()
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(this, R.style.Theme_Search_Dialog)
+            .setTitle("Download video")
+            .setItems(labels) { _, which -> list.getOrNull(which)?.let { fetchVideo(it) } }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    /**
+     * Checks [f] with the server first - what it is and how big - so the
+     * confirmation can show its size and a stream's page is turned away with
+     * a reason instead of saving as a broken file. Then the usual download.
+     */
+    private fun fetchVideo(f: VideoFinder.Found) {
+        val web = activeWeb()
+        val ua = web?.settings?.userAgentString
+        val referer = web?.url?.takeIf { it.startsWith("http") }
+        toast("Getting the video…")
+        Thread {
+            val probe = try {
+                VideoFinder.probe(f.url, ua, referer) { u ->
+                    try { android.webkit.CookieManager.getInstance().getCookie(u) } catch (e: Exception) { null }
+                }
+            } catch (e: Throwable) { null }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                if (probe != null && !VideoFinder.looksLikeVideo(probe.finalUrl, probe.type)) {
+                    toast("This video can't be saved: the site plays it in pieces")
+                    return@runOnUiThread
+                }
+                val type = probe?.type?.substringBefore(';')?.trim()?.lowercase()
+                val mime = type?.takeIf { it.startsWith("video/") } ?: VideoFinder.mimeFor(f)
+                startDownload(f.url, ua, VideoFinder.disposition(f, mime), mime, probe?.length ?: -1L)
+            }
+        }.start()
     }
 
     private fun stopMediaService() {

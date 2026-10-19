@@ -506,6 +506,82 @@
   .wrap.modeswap { animation:modeIn .32s var(--ease-out); }
   @keyframes modeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
 
+  /* ---------- Focus and Zen: the owl's wash ----------
+     html.wash (Focus or Zen, never Night Owl, which keeps its own sky): the
+     brand's colours, softened - the owl's violet at the top left, its amber
+     eyes as a warm glow at the top right, lilac between, and the pale indigo
+     of its night sky rising from the bottom. Fixed behind everything. In the
+     dark theme the same owl at night: deep violet, dim amber, indigo.
+     The top edge is a plain left-to-right violet, lilac, amber - the same
+     three colours the app paints into the top bar (BrowsingMode.washTop), at
+     the same places - so bar and page meet with no seam. Nothing else may
+     touch that edge: Zen's glows sit low enough to fade out before it.
+     Focus introduces the wash: two layers, static. Zen takes it further:
+     glows that give it depth and a diagonal drift between violet and amber,
+     a lilac blend through the middle, and a frosted search box over it. */
+  :root {
+    --wash-v:#D4C2F7; --wash-v-rgb:212,194,247;
+    --wash-m:#E8DBF7; --wash-m-rgb:232,219,247;
+    --wash-a:#FBE2C6; --wash-a-rgb:251,226,198;
+    --wash-b:#E1DAFB; --wash-b-rgb:225,218,251;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --wash-v:#2B1A5C; --wash-v-rgb:43,26,92;
+      --wash-m:#271B4A; --wash-m-rgb:39,27,74;
+      --wash-a:#45280F; --wash-a-rgb:69,40,15;
+      --wash-b:#150F33; --wash-b-rgb:21,15,51;
+    }
+  }
+  html.wash { background:var(--wash-b); }
+  html.wash body { background:transparent; }
+  html.wash::before {
+    content:""; position:fixed; left:0; top:0; right:0; bottom:0; z-index:-1; pointer-events:none;
+    background:
+      linear-gradient(180deg, rgba(var(--wash-b-rgb),0) 0%, rgba(var(--wash-b-rgb),0) 26%,
+        rgba(var(--wash-b-rgb),0.72) 62%, var(--wash-b) 90%),
+      linear-gradient(90deg, var(--wash-v) 16.667%, var(--wash-m) 50%, var(--wash-a) 83.333%);
+  }
+  html.wash.mode-zen::before {
+    background:
+      radial-gradient(64vw 40vh at 8% 42%, rgba(var(--wash-v-rgb),0.9), rgba(var(--wash-v-rgb),0) 70%),
+      radial-gradient(58vw 36vh at 94% 34%, rgba(var(--wash-a-rgb),0.85), rgba(var(--wash-a-rgb),0) 70%),
+      radial-gradient(96vw 30vh at 52% 54%, rgba(var(--wash-m-rgb),0.6), rgba(var(--wash-m-rgb),0) 70%),
+      linear-gradient(180deg, rgba(var(--wash-b-rgb),0) 0%, rgba(var(--wash-b-rgb),0) 30%,
+        rgba(var(--wash-b-rgb),0.6) 60%, var(--wash-b) 86%),
+      linear-gradient(90deg, var(--wash-v) 16.667%, var(--wash-m) 50%, var(--wash-a) 83.333%);
+    animation:washIn .7s var(--ease-out);
+  }
+  @keyframes washIn { from { opacity:0; } to { opacity:1; } }
+  /* On the violet the light end of the wordmark's gradient fades out; it
+     keeps to the deeper half of the accent there. */
+  html.wash .wordmark {
+    background:linear-gradient(100deg, var(--accent-deep) 0%, var(--accent) 80%);
+    -webkit-background-clip:text; background-clip:text;
+  }
+  @media (prefers-color-scheme: dark) {
+    html.wash .wordmark { background:linear-gradient(100deg, var(--accent-d) 0%, var(--accent-2) 100%);
+      -webkit-background-clip:text; background-clip:text; }
+  }
+  /* A letter tile's faint accent fill vanishes into the wash; frosted white holds its shape. */
+  html.wash .tile .fav:not(.has-icon) { background:rgba(255,255,255,0.55); }
+  @media (prefers-color-scheme: dark) {
+    html.wash .tile .fav:not(.has-icon) { background:rgba(255,255,255,0.08); }
+  }
+  /* Zen's frosted search box: the wash shows through it, softened. */
+  html.wash.mode-zen .field {
+    background:rgba(255,255,255,0.74);
+    -webkit-backdrop-filter:blur(18px) saturate(1.15); backdrop-filter:blur(18px) saturate(1.15);
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,0.7), 0 2px 6px rgba(22,20,40,0.04),
+      0 18px 36px -16px rgba(var(--accent-rgb),0.38);
+  }
+  @media (prefers-color-scheme: dark) {
+    html.wash.mode-zen .field {
+      background:rgba(30,22,58,0.6);
+      box-shadow:inset 0 0 0 1px rgba(255,255,255,0.08), 0 18px 36px -16px rgba(0,0,0,0.6);
+    }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
       animation-duration:1ms !important; animation-delay:0s !important; animation-iteration-count:1 !important;
@@ -621,6 +697,8 @@
     root.classList.remove('mode-explore', 'mode-focus', 'mode-zen');
     root.classList.add('mode-' + mode);
     root.classList.toggle('zen-tiles', zenTiles);
+    // Focus and Zen sit on the pastel wash; Night Owl keeps its own sky.
+    root.classList.toggle('wash', !nightOwl && mode !== 'explore');
   }
   modeClasses();
 
