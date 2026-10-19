@@ -524,6 +524,9 @@
     --wash-m:#E8DBF7; --wash-m-rgb:232,219,247;
     --wash-a:#FBE2C6; --wash-a-rgb:251,226,198;
     --wash-b:#E1DAFB; --wash-b-rgb:225,218,251;
+    /* Zen's moving glows: the same violet and amber, a little richer, so
+       their drift reads against the wash under them. */
+    --glow-v-rgb:184,150,246; --glow-a-rgb:252,206,158;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -531,6 +534,7 @@
       --wash-m:#271B4A; --wash-m-rgb:39,27,74;
       --wash-a:#45280F; --wash-a-rgb:69,40,15;
       --wash-b:#150F33; --wash-b-rgb:21,15,51;
+      --glow-v-rgb:74,40,150; --glow-a-rgb:92,54,22;
     }
   }
   html.wash { background:var(--wash-b); }
@@ -544,8 +548,6 @@
   }
   html.wash.mode-zen::before {
     background:
-      radial-gradient(64vw 40vh at 8% 42%, rgba(var(--wash-v-rgb),0.9), rgba(var(--wash-v-rgb),0) 70%),
-      radial-gradient(58vw 36vh at 94% 34%, rgba(var(--wash-a-rgb),0.85), rgba(var(--wash-a-rgb),0) 70%),
       radial-gradient(96vw 30vh at 52% 54%, rgba(var(--wash-m-rgb),0.6), rgba(var(--wash-m-rgb),0) 70%),
       linear-gradient(180deg, rgba(var(--wash-b-rgb),0) 0%, rgba(var(--wash-b-rgb),0) 30%,
         rgba(var(--wash-b-rgb),0.6) 60%, var(--wash-b) 86%),
@@ -553,6 +555,36 @@
     animation:washIn .7s var(--ease-out);
   }
   @keyframes washIn { from { opacity:0; } to { opacity:1; } }
+  /* Zen's glows drift: the violet one slowly down and to the right, the
+     amber one down and to the left, on different clocks so the wash never
+     repeats the same way twice, breathing a little as they go. Each is its
+     own layer moved by transform and opacity only, so the drift is the
+     compositor's work - nothing is repainted and the page's script is never
+     woken. Both stay at least 9vh below the top edge at every point of
+     their path, so the strip the top bar matches is never touched. Still (at its first frame) with reduced motion, and in
+     Battery Saver (html.still, from the app's config). */
+  html.wash.mode-zen body::before, html.wash.mode-zen body::after {
+    content:""; position:fixed; z-index:-1; pointer-events:none; will-change:transform;
+  }
+  html.wash.mode-zen body::before {
+    left:-36.8vw; top:14vh; width:89.6vw; height:56vh;
+    background:radial-gradient(closest-side, rgba(var(--glow-v-rgb),0.78), rgba(var(--glow-v-rgb),0));
+    animation:washIn .7s var(--ease-out), zenDriftV 24s ease-in-out .7s infinite alternate;
+  }
+  html.wash.mode-zen body::after {
+    left:53.4vw; top:8.8vh; width:81.2vw; height:50.4vh;
+    background:radial-gradient(closest-side, rgba(var(--glow-a-rgb),0.7), rgba(var(--glow-a-rgb),0));
+    animation:washIn .7s var(--ease-out), zenDriftA 31s ease-in-out .7s infinite alternate;
+  }
+  @keyframes zenDriftV {
+    from { transform:translate3d(0,0,0) scale(1); opacity:1; }
+    to { transform:translate3d(24vw,11vh,0) scale(1.16); opacity:0.8; }
+  }
+  @keyframes zenDriftA {
+    from { transform:translate3d(0,2vh,0) scale(1.04); opacity:1; }
+    to { transform:translate3d(-26vw,11vh,0) scale(0.94); opacity:0.72; }
+  }
+  html.wash.mode-zen.still body::before, html.wash.mode-zen.still body::after { animation:none; }
   /* On the violet the light end of the wordmark's gradient fades out; it
      keeps to the deeper half of the accent there. */
   html.wash .wordmark {
@@ -691,6 +723,8 @@
       nightOwl = (cfg.nightOwl === true);
       if (cfg.mode === 'focus' || cfg.mode === 'zen') mode = cfg.mode;
       zenTiles = (cfg.zenTiles === true);
+      // Battery Saver: Zen's glows hold still.
+      if (cfg.powerSave === true) root.classList.add('still');
     }
   } catch (e) {}
   function modeClasses(){

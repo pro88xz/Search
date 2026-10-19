@@ -366,6 +366,15 @@ These were built without a phone to run them on. Check each once:
       and after rotating. With the feed offline (no stories) it sits at the
       end of the page. Taps on its button open the ad; a tap that stops a
       fling does not.
+- [ ] (2.1.1) Home in Explore: no white band at the top - the owl and the
+      gear sit on the page's grey (dark grey in dark theme), with no line
+      or shadow under them; scroll the stories and the address pill comes
+      in on the same grey. Open a site or a search: the white bar with its
+      line is back. Night Owl's home keeps its purple bar.
+- [ ] (2.1.1) Zen: the violet and amber glows drift slowly (watch for
+      half a minute); the band behind the owl and gear never changes, so
+      no edge appears there. With Battery Saver on (then reopen home) or
+      Remove animations on, they hold still.
 - [ ] (2.1.0) Settings > Browsing experience > Focus, then Zen: home sits
       on the owl's wash (violet top left, amber glow top right, pale indigo
       below; deep violet and indigo in dark theme). The top bar behind the
