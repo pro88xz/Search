@@ -366,6 +366,30 @@ These were built without a phone to run them on. Check each once:
       and after rotating. With the feed offline (no stories) it sits at the
       end of the page. Taps on its button open the ad; a tap that stops a
       fling does not.
+- [ ] (2.2.0) Payments: on a shop with PayPal (sandbox shops work), pay
+      with PayPal: the PayPal pop-up opens as a tab, log in, approve, and
+      it closes back onto the shop, which shows the order. Back in the
+      PayPal tab instead returns to the shop. Repeat with a card that asks
+      for 3-D Secure, and with Paystack or Flutterwave checkout. Open 4 more
+      tabs while on the cart: the cart tab is not reloaded when you return.
+- [ ] (2.2.0) A site that opens a window by itself (no tap): "Pop-up
+      blocked" with Allow on this site; allowed, the next one opens.
+      Site settings lists it under Pop-ups; Reset site permissions clears it.
+- [ ] (2.2.0) Upload several photos to a form that takes multiple files:
+      the picker lets you choose several. A CSV upload (accept=".csv")
+      shows your files, not greyed out.
+- [ ] (2.2.0) Google search results with moving previews: no Download
+      video button. A stock video page: the button, and the real video.
+- [ ] (2.2.0) Download an .apk or a file from an http:// link: the
+      dialog warns, even with Confirm every download off.
+- [ ] (2.2.0) Night Owl lock on: open a Night Owl tab, press Home, come
+      back: the lock, then fingerprint/face/PIN; cancel it - the lock
+      stays, Unlock asks again; Close Night Owl tabs ends it. Settings from
+      the menu and back: no lock. Hide from screenshots on: screenshot
+      refused while Night Owl is on.
+- [ ] (2.2.0) Page tools > Listen on an article: it is read aloud; the
+      pill pauses, resumes and stops; opening another page in that tab
+      stops it. Pull to refresh and Swipe the bar off: neither happens.
 - [ ] (2.1.2) Bars always match home: in Zen open a site, change to
       Explore in Settings, come back and press Back to home - grey bar, no
       wash. The other way round (Explore to Zen) - the wash on both page

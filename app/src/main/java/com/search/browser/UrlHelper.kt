@@ -119,6 +119,60 @@ object UrlHelper {
 
     private fun search(query: String, prefix: String): String = prefix + Uri.encode(query)
 
+    /**
+     * Payment providers' own sites: wallets, pay-later, card checkouts and
+     * the processors behind them, including those common in Africa
+     * (Paystack, Flutterwave). Matched as the host or anything under it.
+     */
+    private val PAYMENT_HOSTS = listOf(
+        "paypal.com", "paypal.me", "venmo.com", "pay.google.com", "payments.google.com",
+        "checkout.stripe.com", "hooks.stripe.com", "klarna.com", "afterpay.com", "clearpay.co.uk",
+        "affirm.com", "sezzle.com", "zip.co", "quadpay.com", "razorpay.com", "paystack.com",
+        "paystack.co", "flutterwave.com", "ravepay.co", "mollie.com", "adyen.com",
+        "authorize.net", "braintreegateway.com", "squareup.com", "square.link", "mercadopago.com",
+        "payu.com", "payu.in", "paytm.com", "2checkout.com", "skrill.com", "wise.com", "revolut.com",
+        "checkout.com", "worldpay.com", "opayo.com", "sagepay.com", "cybersource.com"
+    )
+
+    /**
+     * Whether an address is part of a payment: a payment provider's page, or
+     * a card issuer's 3-D Secure check (an "acs" host, or a 3ds path). Like
+     * [looksLikeSignIn], the evidence that a pop-up is a hand-off to another
+     * site that will come back to the shop.
+     */
+    fun looksLikePayment(url: String?): Boolean {
+        if (url == null) return false
+        val uri = try { Uri.parse(url) } catch (e: Exception) { return false }
+        if (uri.isOpaque) return false
+        val host = uri.host?.lowercase()?.removeSuffix(".") ?: return false
+        if (PAYMENT_HOSTS.any { host == it || host.endsWith(".$it") }) return true
+        if (host.startsWith("acs.") || host.contains(".acs.") || host.contains("3dsecure") ||
+            host.contains("securecode") || host.contains("3ds.")) return true
+        val path = (uri.path ?: "").lowercase()
+        return path.contains("/3ds") || path.contains("3dsecure") || path.contains("threedsecure")
+    }
+
+    private val CHECKOUT_PATH = Regex(
+        """(^|/)(checkout|checkouts|cart|basket|bag|payment|payments|pay|billing|order|orders|purchase|buy|shipping|place-order)(/|$|[._-])"""
+    )
+
+    /**
+     * Whether an address looks like a cart, a checkout or a payment step -
+     * a page whose state (what is in the basket, an address typed half-way)
+     * is worth keeping in memory rather than reloading.
+     */
+    fun looksLikeCheckout(url: String?): Boolean {
+        if (url == null) return false
+        if (looksLikePayment(url)) return true
+        val uri = try { Uri.parse(url) } catch (e: Exception) { return false }
+        if (uri.isOpaque) return false
+        val scheme = uri.scheme?.lowercase()
+        if (scheme != "https" && scheme != "http") return false
+        val host = uri.host?.lowercase() ?: return false
+        if (host.startsWith("checkout.") || host.startsWith("pay.") || host.startsWith("cart.")) return true
+        return CHECKOUT_PATH.containsMatchIn((uri.path ?: "").lowercase())
+    }
+
     /** Query parameters that only an authorisation request or its answer carries. */
     private val SIGN_IN_PARAMS = setOf(
         "client_id", "redirect_uri", "response_type", "code_challenge",

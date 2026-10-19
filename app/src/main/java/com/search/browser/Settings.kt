@@ -133,6 +133,12 @@ object Settings {
     const val DATA_SAVER_MOBILE = "data_saver_mobile"  // default false: block images on mobile data (metered networks) only
     const val VIDEO_BUTTON = "video_button"            // default true: the Download video button on pages with a saveable video
     const val CLEAN_LINKS = "clean_links"              // default true: tracking tags off tapped, copied and shared links
+    const val SEC_RISKY_DOWNLOADS = "sec_risky_downloads" // default true: a warning on app/program files and files sent without https
+    const val SEC_LOOKALIKE = "sec_lookalike"          // default true: a warning on sites whose name uses look-alike letters (xn--)
+    const val NIGHT_OWL_LOCK = "night_owl_lock"        // default false: Night Owl tabs need the screen lock after leaving the app
+    const val NIGHT_OWL_SECURE = "night_owl_secure"    // default false: no screenshots, blank in recent apps, while Night Owl is on
+    const val PULL_REFRESH = "pull_refresh"            // default true: pull a page down to reload it
+    const val SWIPE_TABS = "swipe_tabs"                // default true: swipe the bottom bar to the next tab
 
     // Customize your Search (home page)
     const val HOME_BACKGROUND = "home_background"      // "clean" | "gradient" | "dark"

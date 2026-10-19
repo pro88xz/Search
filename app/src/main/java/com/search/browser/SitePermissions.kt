@@ -15,6 +15,8 @@ object SitePermissions {
 
     const val CAMERA_MIC = "cammic"
     const val LOCATION = "location"
+    /** Pop-ups the site may open by itself (ALLOW), past the pop-up blocker. */
+    const val POPUPS = "popups"
 
     const val UNSET = 0
     const val ALLOW = 1

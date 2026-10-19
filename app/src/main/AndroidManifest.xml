@@ -20,6 +20,9 @@
     <!-- The owl's click (Haptics.owlPress) goes through the vibrator itself;
          a normal permission, granted at install. -->
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Lock Night Owl tabs: the system's fingerprint/face/PIN prompt
+         (BiometricPrompt). A normal permission, granted at install. -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <!--
       Needed for the web to reach them at all. A site asking for the camera,
       the microphone or a location gets nothing unless this app itself holds
@@ -38,6 +41,15 @@
     <uses-feature android:name="android.hardware.location" android:required="false" />
     <!-- enableOnBackInvokedCallback: predictive back (Android 13+). Every back
          path goes through OnBackPressedDispatcher, which already speaks it. -->
+    <!-- Listen to this page reads aloud through the phone's text-to-speech
+         engine, a service in another app: from Android 11 an app has to say
+         it looks for one, or the engine cannot be bound and nothing speaks. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+    </queries>
+
     <application
         android:enableOnBackInvokedCallback="true"
         android:allowBackup="true"

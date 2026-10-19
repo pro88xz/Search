@@ -15,6 +15,10 @@ package com.search.browser
  *    fragments, not a video.
  *  - Never from YouTube, on YouTube or embedded anywhere: its terms do not
  *    allow saving its videos, and Google Play removes apps that do.
+ *  - Not on a search engine's own pages, and not a player that is
+ *    decoration: a silent loop, a clip of a few seconds, a tiny preview
+ *    ([decorative]) - the "GIF" a results page plays is not a video anyone
+ *    asked to save.
  *
  * Kept free of Android types beyond org.json, so it can be tested on the JVM.
  */
@@ -27,6 +31,15 @@ object VideoFinder {
         val width: Int,
         val height: Int,
         val title: String
+    )
+
+    /**
+     * Search engines' own pages: what plays there is a preview of something
+     * elsewhere - a silent loop of a result - never the video itself.
+     */
+    private val SEARCH_PAGES = listOf(
+        "google.", "bing.com", "duckduckgo.com", "search.yahoo.com", "yandex.",
+        "ecosia.org", "startpage.com", "search.brave.com"
     )
 
     /** Videos on a page beyond this are not listed: a chooser of hundreds helps nobody. */
@@ -42,7 +55,17 @@ object VideoFinder {
     )
 
     /** True on a page whose videos are never offered, whatever it holds. */
-    fun pageExcluded(pageHost: String?): Boolean = blocked(pageHost)
+    fun pageExcluded(pageHost: String?): Boolean = blocked(pageHost) || isSearchPage(pageHost)
+
+    /** YouTube's own hosts (the page or the video). */
+    fun youTube(host: String?): Boolean = blocked(host)
+
+    private fun isSearchPage(host: String?): Boolean {
+        val h = host?.lowercase()?.trimEnd('.') ?: return false
+        return SEARCH_PAGES.any { p ->
+            if (p.endsWith(".")) h.startsWith(p) || h.contains(".$p") else h == p || h.endsWith(".$p")
+        }
+    }
 
     private fun blocked(host: String?): Boolean {
         val h = host?.lowercase()?.trimEnd('.') ?: return false
@@ -58,22 +81,34 @@ object VideoFinder {
     const val JS = """(function(){
   try {
     var out = [], seen = {};
-    function add(u, t, w, h, n){
+    function add(u, t, w, h, n, f){
       if (!u || typeof u !== 'string') return;
       try { u = new URL(u, location.href).href; } catch (e) { return; }
       if (seen[u] || out.length >= 40) return;
       seen[u] = 1;
-      out.push({u:u, t:t || '', w:w || 0, h:h || 0, n:(n || '').slice(0, 120)});
+      var o = {u:u, t:t || '', w:w || 0, h:h || 0, n:(n || '').slice(0, 120)};
+      if (f) { for (var k in f) o[k] = f[k]; }
+      out.push(o);
+    }
+    // What a player is: a silent loop (a GIF in all but name), a clip of a
+    // few seconds, a thumbnail-sized preview - or something being watched.
+    function kind(v){
+      var r = v.getBoundingClientRect();
+      var d = (isFinite(v.duration) && v.duration > 0) ? v.duration : 0;
+      return {v:1, m:(v.muted || v.hasAttribute('muted')) ? 1 : 0, l:v.loop ? 1 : 0,
+        c:v.controls ? 1 : 0, d:Math.round(d * 10) / 10, rw:Math.round(r.width), rh:Math.round(r.height),
+        p:(!v.paused && !v.muted && v.currentTime > 0) ? 1 : 0};
     }
     var title = (document.title || '').trim();
     var vids = document.getElementsByTagName('video');
     for (var i = 0; i < vids.length && i < 40; i++){
       var v = vids[i];
       var name = v.getAttribute('title') || v.getAttribute('aria-label') || title;
-      add(v.currentSrc || v.src, v.getAttribute('type'), v.videoWidth, v.videoHeight, name);
+      var f = kind(v);
+      add(v.currentSrc || v.src, v.getAttribute('type'), v.videoWidth, v.videoHeight, name, f);
       var ss = v.getElementsByTagName('source');
       for (var j = 0; j < ss.length; j++){
-        add(ss[j].src, ss[j].getAttribute('type'), v.videoWidth, v.videoHeight, name);
+        add(ss[j].src, ss[j].getAttribute('type'), v.videoWidth, v.videoHeight, name, f);
       }
     }
     var metas = document.querySelectorAll('meta[property="og:video"],meta[property="og:video:url"],meta[property="og:video:secure_url"]');
@@ -97,7 +132,7 @@ object VideoFinder {
      */
     fun parse(raw: String?, pageUrl: String?): List<Found> {
         if (raw.isNullOrBlank() || raw == "null") return emptyList()
-        if (blocked(hostOf(pageUrl))) return emptyList()
+        if (pageExcluded(hostOf(pageUrl))) return emptyList()
         val arr = try { org.json.JSONArray(raw) } catch (e: Exception) { return emptyList() }
         val out = ArrayList<Found>()
         val seen = HashSet<String>()
@@ -106,12 +141,35 @@ object VideoFinder {
             val url = o.optString("u", "")
             val type = o.optString("t", "").ifBlank { null }
             if (!usable(url, type)) continue
+            if (decorative(o)) continue
             if (!seen.add(url.substringBefore('#'))) continue
             out.add(Found(url, type, o.optInt("w", 0), o.optInt("h", 0),
                 o.optString("n", "").trim()))
             if (out.size >= MAX) break
         }
         return out
+    }
+
+    /**
+     * A player that is decoration rather than a video to keep: a silent loop
+     * (sites, and Google's results, serve GIFs as muted looping videos), a
+     * clip under 10 seconds, or a preview smaller than a thumbnail on screen.
+     * One the reader has set playing with its sound on is never decoration.
+     * Only players are judged; a link to a video file or a page's og:video
+     * is what the page itself offers.
+     */
+    fun decorative(o: org.json.JSONObject): Boolean {
+        if (o.optInt("v", 0) != 1) return false
+        if (o.optInt("p", 0) == 1) return false
+        val muted = o.optInt("m", 0) == 1
+        val loop = o.optInt("l", 0) == 1
+        if (muted && loop) return true
+        val d = o.optDouble("d", 0.0)
+        if (d > 0.0 && d < 10.0) return true
+        val rw = o.optInt("rw", 0)
+        val rh = o.optInt("rh", 0)
+        if (rw in 1..159 || rh in 1..89) return true
+        return false
     }
 
     /** A whole video file on the web, not a stream, not YouTube. */
