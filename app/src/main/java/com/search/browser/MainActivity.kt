@@ -2077,17 +2077,20 @@ class MainActivity : AppCompatActivity() {
         @Volatile var shownMode: String? = null
         /** Whether that page is drawn dark (its prefers-color-scheme), or null before it has said. */
         @Volatile var shownDark: Boolean? = null
+        /** The accent its wash is painted in, or null before it has said. */
+        @Volatile var shownAccent: String? = null
 
         /**
          * home.html: the mode it is showing and whether it is drawn dark, on
          * load and on every change of either, for the bars.
          */
         @JavascriptInterface
-        fun homeShown(mode: String, dark: Boolean) {
+        fun homeShown(mode: String, dark: Boolean, accent: String) {
             if (!privileged) return
             if (mode != BrowsingMode.EXPLORE && mode != BrowsingMode.FOCUS && mode != BrowsingMode.ZEN) return
             shownMode = mode
             shownDark = dark
+            shownAccent = HomeWash.normalise(accent)
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 if (activeWeb()?.tag === this@SearchAppBridge && tabs.activeTab?.url == homePage &&
@@ -2447,8 +2450,10 @@ class MainActivity : AppCompatActivity() {
             val powerSave = try {
                 (getSystemService(POWER_SERVICE) as android.os.PowerManager).isPowerSaveMode
             } catch (e: Exception) { false }
+            // Focus and Zen's colours in this accent, light and dark (HomeWash).
+            val wash = HomeWash.json(accent).toString()
             return "{\"background\":\"$bg\",\"accent\":\"$accent\",\"tiles\":$tiles,\"nightOwl\":$nightOwl," +
-                "\"mode\":\"$mode\",\"zenTiles\":$zen,\"powerSave\":$powerSave}"
+                "\"mode\":\"$mode\",\"zenTiles\":$zen,\"powerSave\":$powerSave,\"wash\":$wash}"
         }
         /** home.html: the stories and publishers the reader hid (FeedHidden). */
         @JavascriptInterface
@@ -3034,7 +3039,7 @@ class MainActivity : AppCompatActivity() {
                 (view?.tag as? SearchAppBridge)?.privileged =
                     url != null && url.startsWith("file:///android_asset/")
                 // A new document: what the last one showed no longer counts.
-                (view?.tag as? SearchAppBridge)?.let { it.shownMode = null; it.shownDark = null }
+                (view?.tag as? SearchAppBridge)?.let { it.shownMode = null; it.shownDark = null; it.shownAccent = null }
                 // The page being read aloud has gone: so does the reading.
                 if (view != null && view === listenWeb && listening) stopListening()
                 (view as? BrowserWebView)?.notePageSite(url)
@@ -4023,8 +4028,8 @@ class MainActivity : AppCompatActivity() {
      * the page itself, and the bar's sheet, line and shadow are for web
      * pages and search. In Explore that is the page's grey (appBackground,
      * home.html's --bg) with the bottom bar as it is; in Focus and Zen the
-     * owl's wash - the top edge's three colours (BrowsingMode.washTop,
-     * home.html's --wash-v, -m, -a, at the same places) and the indigo the
+     * wash in the accent - the top edge's three colours (HomeWash, which
+     * home.html is painted from too, at the same places) and the colour the
      * page settles into for the bottom bar. Null anywhere but home, and in
      * Night Owl, which keeps its own sky.
      */
@@ -4043,8 +4048,9 @@ class MainActivity : AppCompatActivity() {
             val page = if (dark) 0xFF0E0E10.toInt() else 0xFFF5F5F5.toInt()
             return arrayOf(IntArray(3) { page }, null)
         }
-        val bottom = BrowsingMode.washBottom(dark)
-        return arrayOf(BrowsingMode.washTop(dark), IntArray(3) { bottom })
+        // In the accent the page is painted in (or will be).
+        val wash = HomeWash.palette(shown?.shownAccent ?: Settings.getHomeAccent(this), dark)
+        return arrayOf(wash.top.copyOf(), IntArray(3) { wash.bottom })
     }
 
     /** The bars for a page that does not lend them its colours: plain, or on home, the page's own (homeWash). */
@@ -11209,8 +11215,11 @@ return {title:title,lang:(document.documentElement.lang||''),parts:parts};
         if (shift > 180f) shift -= 360f
         if (shift < -180f) shift += 360f
         val hex = String.format("#%06X", 0xFFFFFF and accent)
+        // And Focus and Zen's colours for it, built here (HomeWash), so the
+        // page and the bars over it are painted from the same values.
+        val wash = HomeWash.json(hex).toString()
         web?.evaluateJavascript(
-            "window.__setAccent && window.__setAccent('$hex', ${shift.toInt()})", null)
+            "window.__setAccent && window.__setAccent('$hex', ${shift.toInt()}, $wash)", null)
     }
 
     private fun applyArtAccent(accent: Int) {

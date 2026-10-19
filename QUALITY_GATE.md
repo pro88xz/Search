@@ -366,6 +366,13 @@ These were built without a phone to run them on. Check each once:
       and after rotating. With the feed offline (no stories) it sits at the
       end of the page. Taps on its button open the ad; a tap that stops a
       fling does not.
+- [ ] (2.2.1) Settings > Customize > each accent, with Focus and with
+      Zen, light and dark: the wash is in that accent and its companion
+      (Blue/aqua, Green/lime, Amber/rose, Rose/lavender, Ink/steel,
+      Purple/amber); the band behind the owl and gear matches the page with
+      no edge; the wordmark reads clearly. Zen: three glows drift slowly and
+      a soft halo breathes round the search box; Battery Saver stills them.
+      Change the accent and come back: page and bars change together.
 - [ ] (2.2.0) Payments: on a shop with PayPal (sandbox shops work), pay
       with PayPal: the PayPal pop-up opens as a tab, log in, approve, and
       it closes back onto the shop, which shows the order. Back in the

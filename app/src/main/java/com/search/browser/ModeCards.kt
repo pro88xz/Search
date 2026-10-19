@@ -222,13 +222,14 @@ class ModeCards(
         }
         private var canvas: Canvas? = null
 
-        /** home.html's wash in miniature: the owl's violet, lilac and amber across the top, its indigo rising from below. */
+        /** home.html's wash in miniature, in the accent: its tint, blend and companion across the top, its base rising from below. */
         private fun wash(w: Float, h: Float) {
             val c = canvas ?: return
             val rad = 12f * d
             r.set(d, d, w - d, h - d)
-            val across = BrowsingMode.washTop(night)
-            val blue = BrowsingMode.washBottom(night)
+            val palette = HomeWash.palette(Settings.getHomeAccent(context), night)
+            val across = palette.top
+            val blue = palette.bottom
             p.style = Paint.Style.FILL
             p.shader = android.graphics.LinearGradient(r.left, 0f, r.right, 0f, across,
                 floatArrayOf(1f / 6f, 0.5f, 5f / 6f), android.graphics.Shader.TileMode.CLAMP)
