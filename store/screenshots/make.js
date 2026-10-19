@@ -24,6 +24,8 @@ const FRAMES = [
   { head: 'Every tool [one tap] away', sub: 'Tabs, Night Owl, page tools and more in one short menu.' },
   { head: 'Switch between [tabs] in a tap', sub: 'Every open page at a glance.' },
   { head: 'Search [widget] for your home screen', sub: 'Search, voice and QR scan in one tap.' },
+  { head: 'Built-in [video downloader]', sub: 'Save video files from websites to your phone.' },
+  { head: 'Read [offline]', sub: 'Save any page with its pictures. No connection needed.' },
 ];
 
 function page(f, capture) {

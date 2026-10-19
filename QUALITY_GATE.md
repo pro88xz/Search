@@ -366,6 +366,36 @@ These were built without a phone to run them on. Check each once:
       and after rotating. With the feed offline (no stories) it sits at the
       end of the page. Taps on its button open the ad; a tap that stops a
       fling does not.
+- [ ] (2.1.0) Settings > Browsing experience > Focus, then Zen: home sits
+      on the owl's wash (violet top left, amber glow top right, pale indigo
+      below; deep violet and indigo in dark theme). The top bar behind the
+      owl and gear is the same colours with no line or seam where it meets
+      the page; Zen has the glows and a frosted search box. Explore and
+      Night Owl look as before. Open a site and come back: the bars go plain
+      and the wash returns.
+- [ ] (2.1.0) A page with a video file (a stock video site, not YouTube):
+      "Download video" appears above the bottom bar's right side and
+      shrinks to its icon after a few seconds; tap it, the download
+      dialog shows the video's name and size, it downloads and plays from
+      Downloads. On YouTube: no button, and Menu > Page tools > Download
+      video says YouTube's terms don't allow it. The button hides with the
+      bars and never shows on home. The ads on home still show as before.
+- [ ] (2.1.0) Menu > Page tools > Save offline on an article: "Saved for
+      offline reading". Flight mode on, Menu > History & downloads >
+      Offline pages, open it: text and pictures there, "Offline · site" in
+      the address bar. Remove offline copy works; Remove all asks first.
+      In Night Owl Save offline refuses.
+- [ ] (2.1.0) Settings > Site settings > Save data on mobile data on: on
+      mobile data pages load with no pictures; switch to Wi-Fi and the
+      pictures load in. Off, nothing changes.
+- [ ] (2.1.0) Tap a link carrying utm_ or fbclid tags: the page opens
+      without them; Copy link and Share give the clean link. A Google ad
+      link keeps its gclid. Settings > Security > Remove tracking from
+      links off: links are left as they are.
+- [ ] (2.1.0) Open 3 tabs on one site and 2 on another, open the tab
+      switcher: chips "All 5", the two sites; a chip shows only its tabs
+      (dragging off while filtered), holding it offers to close them all,
+      Reopen closed tab brings them back.
 - [ ] (2.0.8) Tap the owl: a clear click in the hand, with the phone's own
       touch vibration on and off; none with Settings > Customize >
       Vibration on tap off.

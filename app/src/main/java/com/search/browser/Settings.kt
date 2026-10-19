@@ -130,6 +130,9 @@ object Settings {
     const val SITE_CAMERA_MIC = "site_camera_mic"      // default true (ask)
     const val SITE_BLOCK_AUTOPLAY = "site_block_autoplay" // default true
     const val SITE_BLOCK_IMAGES = "site_block_images"  // default false
+    const val DATA_SAVER_MOBILE = "data_saver_mobile"  // default false: block images on mobile data (metered networks) only
+    const val VIDEO_BUTTON = "video_button"            // default true: the Download video button on pages with a saveable video
+    const val CLEAN_LINKS = "clean_links"              // default true: tracking tags off tapped, copied and shared links
 
     // Customize your Search (home page)
     const val HOME_BACKGROUND = "home_background"      // "clean" | "gradient" | "dark"

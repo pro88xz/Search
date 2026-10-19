@@ -126,6 +126,12 @@ class SectionActivity : AppCompatActivity() {
         )
         group("Privacy")
         addToggle(
+            "Remove tracking from links",
+            "Take tracking tags (utm_, fbclid and the like) off links you tap, copy " +
+                "or share. The page is the same without them.",
+            Settings.CLEAN_LINKS, true
+        )
+        addToggle(
             "Search suggestions",
             "Suggestions from your search engine as you type. Off, nothing you " +
                 "type leaves the phone until you search for it.",
@@ -395,14 +401,20 @@ class SectionActivity : AppCompatActivity() {
                 "Follows the phone's own touch feedback setting.",
             Settings.HAPTICS, true
         )
+        group("Websites")
+        addToggle(
+            "Download video button",
+            "On a page with a video you can save, a button to download it. " +
+                "Not for YouTube, whose terms do not allow it.",
+            Settings.VIDEO_BUTTON, true
+        )
         if (android.os.Build.VERSION.SDK_INT >= 33) {
-            group("Websites")
             addToggle(
                 "Dark websites",
                 "In dark theme, sites with no dark look of their own are darkened too.",
                 Settings.DARK_WEB, false
             )
-            addNote("Applies to pages as they load. Sites that have their own dark look use it either way.")
+            addNote("Dark websites applies to pages as they load. Sites that have their own dark look use it either way.")
         }
     }
 
@@ -435,6 +447,11 @@ class SectionActivity : AppCompatActivity() {
             "Data saver (block images)",
             "Skip loading images for faster browsing and less data use.",
             Settings.SITE_BLOCK_IMAGES, false
+        )
+        addToggle(
+            "Save data on mobile data",
+            "Skip images only while on mobile data. On Wi-Fi, pages load in full.",
+            Settings.DATA_SAVER_MOBILE, false
         )
         addNote("Reload open pages for changes to take effect.")
         sitePermList = group("Permissions by site")

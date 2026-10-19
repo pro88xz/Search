@@ -13,7 +13,7 @@ from a phone, not from a mock-up.
 On the phone: light theme, the default purple accent, Explore mode, a full
 battery and no notifications if possible. Nothing private on screen, and no
 ad in view (a store screenshot showing an ad looks like a test). Power +
-Volume down takes each one. Save them as `captures/01.png` ... `08.png`:
+Volume down takes each one. Save them as `captures/01.png` ... `10.png`:
 
 | # | Headline | What to capture |
 |---|----------|-----------------|
@@ -25,6 +25,8 @@ Volume down takes each one. Save them as `captures/01.png` ... `08.png`:
 | 06 | Every tool **one tap** away | The menu open on the home page |
 | 07 | Switch between **tabs** in a tap | The tab switcher with three or four neutral tabs open (no well-known people, adult topics, artists' videos or cookie pop-ups) |
 | 08 | Search **widget** for your home screen | The phone's home screen with the Search widget on it |
+| 09 | Built-in **video downloader** | A free stock-video page (landscape or nature footage, no people, never YouTube) with the Download video button showing above the bar, still in its long form |
+| 10 | Read **offline** | An article saved with Save offline, opened from Offline pages in flight mode, title and first picture in view |
 
 ## Making the frames
 

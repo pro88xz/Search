@@ -257,6 +257,35 @@
                 android:layout_gravity="top|start"
                 android:alpha="0"
                 android:visibility="gone" />
+
+            <!-- The video downloader's button: on a web page with a video that
+                 can be saved (VideoFinder), above the bottom bar's straight
+                 edge at the end side, clear of the arc and the New tab button.
+                 It says what it does at first and then shrinks to its icon
+                 (MainActivity, video downloader). Never on home, so never near
+                 the ad cards. -->
+            <TextView
+                android:id="@+id/videoFab"
+                android:layout_width="wrap_content"
+                android:layout_height="44dp"
+                android:layout_gravity="bottom|end"
+                android:layout_marginEnd="16dp"
+                android:layout_marginBottom="46dp"
+                android:minWidth="44dp"
+                android:paddingStart="12dp"
+                android:paddingEnd="16dp"
+                android:gravity="center_vertical"
+                android:drawableStart="@drawable/menu_downloads"
+                android:drawablePadding="8dp"
+                android:text="Download video"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:background="@drawable/video_fab_bg"
+                android:elevation="6dp"
+                android:contentDescription="Download video"
+                android:visibility="gone" />
         </FrameLayout>
 
         <!-- ===== BOTTOM navigation bar: Home, Bookmarks, New tab, Tabs, Menu.
@@ -472,6 +501,27 @@
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="More tab options" />
         </LinearLayout>
+
+        <!-- Smart tab groups: a chip for every site with two or more tabs
+             open, to see just those (MainActivity.renderDeckGroups). Only
+             over the tabs, and only when there is a group to show. -->
+        <HorizontalScrollView
+            android:id="@+id/deckGroups"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:scrollbars="none"
+            android:overScrollMode="never"
+            android:clipToPadding="false"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:paddingBottom="8dp"
+            android:visibility="gone">
+            <LinearLayout
+                android:id="@+id/deckGroupRow"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal" />
+        </HorizontalScrollView>
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/tabList"
@@ -753,6 +803,14 @@
                     <ImageView style="@style/MenuTileIcon" android:src="@drawable/menu_reader" />
                     <TextView style="@style/MenuTileLabel" android:text="Reader view" />
                 </LinearLayout>
+                <LinearLayout android:id="@+id/menuVideo" style="@style/MenuTile">
+                    <ImageView style="@style/MenuTileIcon" android:src="@drawable/menu_video_download" />
+                    <TextView style="@style/MenuTileLabel" android:text="Download video" />
+                </LinearLayout>
+                <LinearLayout android:id="@+id/menuSaveOffline" style="@style/MenuTile">
+                    <ImageView style="@style/MenuTileIcon" android:src="@drawable/menu_offline" />
+                    <TextView style="@style/MenuTileLabel" android:text="Save offline" />
+                </LinearLayout>
                 <LinearLayout android:id="@+id/menuTranslate" style="@style/MenuTile">
                     <ImageView style="@style/MenuTileIcon" android:src="@drawable/menu_translate" />
                     <TextView style="@style/MenuTileLabel" android:text="Translate" />
@@ -778,7 +836,7 @@
                         android:text="History &amp; downloads" android:textSize="16sp"
                         android:textColor="?android:attr/textColorPrimary" />
                     <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-                        android:text="History · Downloads" android:textSize="12sp" android:maxLines="1"
+                        android:text="History · Downloads · Offline pages" android:textSize="12sp" android:maxLines="1"
                         android:ellipsize="end" android:textColor="@color/feedMuted" />
                 </LinearLayout>
                 <ImageView android:layout_width="18dp" android:layout_height="18dp"
@@ -795,6 +853,10 @@
                 <LinearLayout android:id="@+id/menuDownloads" style="@style/MenuTile">
                     <ImageView style="@style/MenuTileIcon" android:src="@drawable/menu_downloads" />
                     <TextView style="@style/MenuTileLabel" android:text="Downloads" />
+                </LinearLayout>
+                <LinearLayout android:id="@+id/menuOfflinePages" style="@style/MenuTile">
+                    <ImageView style="@style/MenuTileIcon" android:src="@drawable/menu_offline_pages" />
+                    <TextView style="@style/MenuTileLabel" android:text="Offline pages" />
                 </LinearLayout>
                 </LinearLayout>
             </HorizontalScrollView>
