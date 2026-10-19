@@ -12,9 +12,10 @@
 //   node store/screenshots/make.js feature    just the feature graphic
 //
 // The feature graphic (1024 x 500, the banner at the top of the listing):
-// the owl, the name and one line, beside two of the real screenshots
-// (FEATURE.shots - Night Owl and the browsing modes: pure Search, no faces
-// and no other companies' logos). Key content stays clear of the edges.
+// the name, "Web Browser", one line and three things Search does, beside the
+// real owl, large, in rings of light. No screenshots, so nothing in it can
+// show a face or another company's logo; key content stays clear of the
+// edges.
 //
 // The intro is landscape (1920 x 1080): it opens the listing for the video
 // downloader and offline reading with both phones side by side, and leads
@@ -49,37 +50,58 @@ const INTRO = {
   shots: ['09', '10'],
 };
 
-// The feature graphic: name, line, and the captures it shows (front last).
+// The feature graphic: the name, what it is, one line, and three things it
+// does, beside the owl itself (owl-hero.png, cut from design/owl.png).
 const FEATURE = {
   name: 'Search',
-  line: 'Private browser with ad blocker',
-  shots: ['05', '04'],
+  kind: 'Web Browser',
+  line: 'Fast. Private. Secure.',
+  points: [
+    { icon: 'shield', title: 'Ad blocker', sub: 'Fewer ads and<br>trackers' },
+    { icon: 'moon', title: 'Night Owl', sub: 'Private tabs,<br>nothing saved' },
+    { icon: 'download', title: 'Save videos', sub: 'And read pages<br>offline' },
+  ],
 };
 
-function feature(f, shots) {
-  const owl = dataUrl(path.join(dir, 'owl.webp'));
-  const phones = shots.map((s, i) => `<div class="phone f${i}"><div class="screen"><img src="${dataUrl(s)}"><span class="cam"></span></div></div>`).join('');
+// Line icons for the feature graphic's points, drawn on a 24 x 24 grid.
+const ICONS = {
+  shield: '<path d="M12 3l7 3v5c0 4.6-3 8.4-7 10-4-1.6-7-5.4-7-10V6l7-3z"/><path d="M8.6 12.1l2.3 2.3 4.5-4.7"/>',
+  moon: '<path d="M19.5 14.6A7.6 7.6 0 0 1 9.4 4.5a7.6 7.6 0 1 0 10.1 10.1z"/><path d="M16.5 3.5v3M15 5h3"/>',
+  download: '<path d="M12 3.5v11M7.5 10L12 14.5 16.5 10"/><path d="M4.5 15.5v3a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3"/>',
+};
+
+function feature(f) {
+  const owl = dataUrl(path.join(dir, 'owl-hero.png'));
+  const points = f.points.map(p => `<div class="pt"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${ICONS[p.icon]}</svg></span><b>${p.title}</b><small>${p.sub}</small></div>`).join('');
+  const rings = [150, 205, 262, 322, 386].map((r, i) => `<circle cx="790" cy="262" r="${r}" fill="none" stroke="#C4AEFF" stroke-opacity="${[0.22, 0.17, 0.12, 0.08, 0.05][i]}" stroke-width="1.5"/>`).join('');
+  const stars = [[512, 64, 2], [596, 112, 1.5], [470, 196, 1.2], [968, 74, 1.8], [944, 428, 1.4], [612, 452, 1.6], [372, 40, 1.2], [1000, 250, 1.2]]
+    .map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="#fff" fill-opacity=".55"/>`).join('');
   return `<!doctype html><meta charset="utf-8"><style>
   html,body{margin:0;width:1024px;height:500px;overflow:hidden}
   body{position:relative;font-family:'Inter Display','Inter',sans-serif;color:#fff;
-    background:radial-gradient(60% 90% at 8% 10%,#8E5CF7 0%,rgba(142,92,247,0) 60%),
-               radial-gradient(55% 80% at 92% 100%,#9A63F2 0%,rgba(154,99,242,0) 60%),
-               linear-gradient(120deg,#3B138C 0%,#5B21C9 50%,#7A3FE6 100%)}
-  .copy{position:absolute;left:84px;top:0;bottom:0;width:470px;display:flex;flex-direction:column;justify-content:center}
-  .brand{display:flex;align-items:center;gap:22px}
-  .owl{width:104px;height:104px;object-fit:contain;filter:drop-shadow(0 10px 18px rgba(20,0,60,.45))}
-  h1{margin:0;font-weight:800;font-size:92px;line-height:1;letter-spacing:-0.035em}
-  p{margin:26px 0 0;font-size:31px;font-weight:600;line-height:1.25;letter-spacing:-0.01em;color:rgba(255,255,255,.92)}
-  .phone{position:absolute;width:212px;padding:8px;border-radius:36px;background:#0E0E12;
-    box-shadow:0 28px 56px -18px rgba(10,0,40,.75),inset 0 0 0 2px #2A2A31}
-  .screen{position:relative;height:476px;border-radius:28px;overflow:hidden;background:#fff}
-  .screen img{display:block;width:100%}
-  .cam{position:absolute;top:8px;left:50%;width:10px;height:10px;margin-left:-5px;border-radius:50%;background:#0E0E12}
-  .f0{left:566px;top:92px;transform:rotate(-6deg)}
-  .f1{left:742px;top:58px;transform:rotate(4deg)}
+    background:radial-gradient(330px 330px at 790px 262px,rgba(120,70,245,.55) 0%,rgba(104,58,232,.26) 50%,rgba(100,50,230,0) 100%),
+               radial-gradient(60% 80% at 0% 0%,rgba(110,60,230,.45) 0%,rgba(110,60,230,0) 70%),
+               linear-gradient(115deg,#13073D 0%,#1D0A58 45%,#2A1080 100%)}
+  svg.sky{position:absolute;inset:0}
+  .owl{position:absolute;left:628px;top:66px;height:396px;
+    filter:drop-shadow(0 0 2px rgba(222,206,255,.7)) drop-shadow(0 0 26px rgba(170,132,255,.55)) drop-shadow(0 26px 34px rgba(8,0,36,.55))}
+  .copy{position:absolute;left:62px;top:52px;width:560px}
+  h1{margin:0;font-weight:800;font-size:108px;line-height:.98;letter-spacing:-0.04em}
+  h2{margin:4px 0 0;font-weight:800;font-size:50px;line-height:1.05;letter-spacing:-0.025em;color:#B9A0FF}
+  p{margin:18px 0 0;font-size:25px;font-weight:600;letter-spacing:-0.005em;color:rgba(255,255,255,.94)}
+  .pts{position:absolute;left:62px;top:332px;display:flex}
+  .pt{width:170px;display:flex;flex-direction:column;align-items:center;text-align:center;padding:0 6px}
+  .pt + .pt{border-left:1px solid rgba(196,174,255,.24)}
+  .ic{width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(160deg,#7C4DFF,#5426D6);box-shadow:0 0 0 1.5px rgba(205,186,255,.38),0 10px 22px -8px rgba(124,77,255,.8)}
+  .ic svg{width:26px;height:26px}
+  b{margin-top:11px;font-size:17.5px;font-weight:700;letter-spacing:-0.01em}
+  small{margin-top:4px;font-size:13.5px;font-weight:500;line-height:1.3;color:rgba(222,212,255,.8)}
   </style>
-  <div class="copy"><div class="brand"><img class="owl" src="${owl}"><h1>${f.name}</h1></div><p>${f.line}</p></div>
-  ${phones}`;
+  <svg class="sky" width="1024" height="500">${rings}${stars}</svg>
+  <img class="owl" src="${owl}">
+  <div class="copy"><h1>${f.name}</h1><h2>${f.kind}</h2><p>${f.line}</p></div>
+  <div class="pts">${points}</div>`;
 }
 
 function findCapture(n) {
@@ -156,18 +178,14 @@ function page(f, capture) {
   const browser = await chromium.launch();
   fs.mkdirSync(path.join(dir, 'out'), { recursive: true });
   if (onlyFeature || (want.length === 0 && !onlyIntro)) {
-    const shots = FEATURE.shots.map(findCapture);
-    if (shots.some(s => !s)) console.log('feature: needs captures ' + FEATURE.shots.join(' and ') + ', skipped');
-    else {
-      const banner = await browser.newContext({ viewport: { width: 1024, height: 500 }, deviceScaleFactor: 1 });
-      const t = await banner.newPage();
-      await t.setContent(feature(FEATURE, shots));
-      await t.waitForTimeout(150);
-      // JPEG: Play wants the feature graphic without transparency.
-      await t.screenshot({ path: path.join(dir, 'out', 'feature-graphic.jpg'), type: 'jpeg', quality: 95 });
-      console.log('feature: out/feature-graphic.jpg (1024 x 500)');
-      await banner.close();
-    }
+    const banner = await browser.newContext({ viewport: { width: 1024, height: 500 }, deviceScaleFactor: 1 });
+    const t = await banner.newPage();
+    await t.setContent(feature(FEATURE));
+    await t.waitForTimeout(150);
+    // JPEG: Play wants the feature graphic without transparency.
+    await t.screenshot({ path: path.join(dir, 'out', 'feature-graphic.jpg'), type: 'jpeg', quality: 95 });
+    console.log('feature: out/feature-graphic.jpg (1024 x 500)');
+    await banner.close();
     if (onlyFeature) { await browser.close(); return; }
   }
   if (onlyIntro || want.length === 0) {
