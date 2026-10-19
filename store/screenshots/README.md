@@ -28,6 +28,17 @@ Volume down takes each one. Save them as `captures/01.png` ... `10.png`:
 | 09 | Built-in **video downloader** | A free stock-video page (landscape or nature footage, no people, never YouTube) with the Download video button showing above the bar, still in its long form |
 | 10 | Read **offline** | An article saved with Save offline, opened from Offline pages in flight mode, title and first picture in view |
 
+## The feature graphic
+
+`out/feature-graphic.jpg` (1024 x 500, JPEG so there is no transparency)
+is the banner at the top of the listing: the owl, "Search", "Private browser
+with ad blocker", and two real screenshots - Night Owl (04) and the browsing
+modes (05), chosen because they are all Search: no faces, no other
+companies' logos. Upload it in Play Console > Main store listing > Graphics >
+Feature graphic, replacing the old one.
+
+    node store/screenshots/make.js feature   # only the feature graphic
+
 ## The landscape intro
 
 `out/00-intro.png` (1920 x 1080) opens the listing for the video downloader

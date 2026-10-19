@@ -9,6 +9,12 @@
 //   node store/screenshots/make.js            all of them, and the intro
 //   node store/screenshots/make.js 2 5        just those
 //   node store/screenshots/make.js intro      just the landscape intro
+//   node store/screenshots/make.js feature    just the feature graphic
+//
+// The feature graphic (1024 x 500, the banner at the top of the listing):
+// the owl, the name and one line, beside two of the real screenshots
+// (FEATURE.shots - Night Owl and the browsing modes: pure Search, no faces
+// and no other companies' logos). Key content stays clear of the edges.
 //
 // The intro is landscape (1920 x 1080): it opens the listing for the video
 // downloader and offline reading with both phones side by side, and leads
@@ -42,6 +48,39 @@ const INTRO = {
   next: 'See how',
   shots: ['09', '10'],
 };
+
+// The feature graphic: name, line, and the captures it shows (front last).
+const FEATURE = {
+  name: 'Search',
+  line: 'Private browser with ad blocker',
+  shots: ['05', '04'],
+};
+
+function feature(f, shots) {
+  const owl = dataUrl(path.join(dir, 'owl.webp'));
+  const phones = shots.map((s, i) => `<div class="phone f${i}"><div class="screen"><img src="${dataUrl(s)}"><span class="cam"></span></div></div>`).join('');
+  return `<!doctype html><meta charset="utf-8"><style>
+  html,body{margin:0;width:1024px;height:500px;overflow:hidden}
+  body{position:relative;font-family:'Inter Display','Inter',sans-serif;color:#fff;
+    background:radial-gradient(60% 90% at 8% 10%,#8E5CF7 0%,rgba(142,92,247,0) 60%),
+               radial-gradient(55% 80% at 92% 100%,#9A63F2 0%,rgba(154,99,242,0) 60%),
+               linear-gradient(120deg,#3B138C 0%,#5B21C9 50%,#7A3FE6 100%)}
+  .copy{position:absolute;left:84px;top:0;bottom:0;width:470px;display:flex;flex-direction:column;justify-content:center}
+  .brand{display:flex;align-items:center;gap:22px}
+  .owl{width:104px;height:104px;object-fit:contain;filter:drop-shadow(0 10px 18px rgba(20,0,60,.45))}
+  h1{margin:0;font-weight:800;font-size:92px;line-height:1;letter-spacing:-0.035em}
+  p{margin:26px 0 0;font-size:31px;font-weight:600;line-height:1.25;letter-spacing:-0.01em;color:rgba(255,255,255,.92)}
+  .phone{position:absolute;width:212px;padding:8px;border-radius:36px;background:#0E0E12;
+    box-shadow:0 28px 56px -18px rgba(10,0,40,.75),inset 0 0 0 2px #2A2A31}
+  .screen{position:relative;height:476px;border-radius:28px;overflow:hidden;background:#fff}
+  .screen img{display:block;width:100%}
+  .cam{position:absolute;top:8px;left:50%;width:10px;height:10px;margin-left:-5px;border-radius:50%;background:#0E0E12}
+  .f0{left:566px;top:92px;transform:rotate(-6deg)}
+  .f1{left:742px;top:58px;transform:rotate(4deg)}
+  </style>
+  <div class="copy"><div class="brand"><img class="owl" src="${owl}"><h1>${f.name}</h1></div><p>${f.line}</p></div>
+  ${phones}`;
+}
 
 function findCapture(n) {
   return ['png', 'jpg', 'jpeg'].map(e => path.join(captures, n + '.' + e)).find(fs.existsSync);
@@ -113,8 +152,24 @@ function page(f, capture) {
   const args = process.argv.slice(2);
   const want = args.map(Number).filter(Boolean);
   const onlyIntro = args.includes('intro');
+  const onlyFeature = args.includes('feature');
   const browser = await chromium.launch();
   fs.mkdirSync(path.join(dir, 'out'), { recursive: true });
+  if (onlyFeature || (want.length === 0 && !onlyIntro)) {
+    const shots = FEATURE.shots.map(findCapture);
+    if (shots.some(s => !s)) console.log('feature: needs captures ' + FEATURE.shots.join(' and ') + ', skipped');
+    else {
+      const banner = await browser.newContext({ viewport: { width: 1024, height: 500 }, deviceScaleFactor: 1 });
+      const t = await banner.newPage();
+      await t.setContent(feature(FEATURE, shots));
+      await t.waitForTimeout(150);
+      // JPEG: Play wants the feature graphic without transparency.
+      await t.screenshot({ path: path.join(dir, 'out', 'feature-graphic.jpg'), type: 'jpeg', quality: 95 });
+      console.log('feature: out/feature-graphic.jpg (1024 x 500)');
+      await banner.close();
+    }
+    if (onlyFeature) { await browser.close(); return; }
+  }
   if (onlyIntro || want.length === 0) {
     const shots = INTRO.shots.map(findCapture);
     if (shots.some(s => !s)) console.log('intro: needs captures ' + INTRO.shots.join(' and ') + ', skipped');
