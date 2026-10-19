@@ -31,11 +31,12 @@ Volume down takes each one. Save them as `captures/01.png` ... `10.png`:
 ## The feature graphic
 
 `out/feature-graphic.jpg` (1024 x 500, JPEG so there is no transparency)
-is the banner at the top of the listing: the owl, "Search", "Private browser
-with ad blocker", and two real screenshots - Night Owl (04) and the browsing
-modes (05), chosen because they are all Search: no faces, no other
-companies' logos. Upload it in Play Console > Main store listing > Graphics >
-Feature graphic, replacing the old one.
+is the banner at the top of the listing: "Search", "Web Browser", "Fast.
+Private. Secure." and three things it does (Ad blocker, Night Owl, Save
+videos), beside the real owl, large, in rings of light. It needs no
+captures: the owl is `owl-hero.png`, cut from `design/owl.png`, and the
+icons are drawn in make.js. Upload it in Play Console > Main store listing >
+Graphics > Feature graphic, replacing the old one.
 
     node store/screenshots/make.js feature   # only the feature graphic
 
