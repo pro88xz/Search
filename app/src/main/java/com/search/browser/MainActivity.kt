@@ -10383,7 +10383,11 @@ return {title:title,lang:(document.documentElement.lang||''),parts:parts};
     private fun placeSwipe(x: Float) {
         val w = binding.webArea.width.toFloat()
         binding.webContainer.translationX = x
-        binding.adSlot.translationX = x
+        // The feed ad cards ride with the page. Placed as on a scroll, which
+        // goes by where the page now sits: setting x alone dropped the card's
+        // offset into the feed's column, and a swipe that sprang back left
+        // it that far to the side until the page next scrolled.
+        activeWeb()?.let { web -> if (isLiveWeb(web)) positionAdSlot(web, web.scrollY) }
         binding.tabPeek.translationX = if (x < 0f) x + w else x - w
     }
 
