@@ -121,7 +121,7 @@
   }
   .field input::placeholder { color:transparent; }
   .field .fhint {
-    position:absolute; left:0; right:0; top:50%; margin-top:-11px; height:22px; line-height:22px;
+    position:absolute; left:0; right:0; top:50%; margin-top:-0.6667em; height:1.3333em; line-height:1.3333em;
     font-size:16.5px; color:var(--muted); letter-spacing:-0.005em;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; pointer-events:none;
   }
@@ -182,7 +182,7 @@
     background:#000; opacity:0; transition:opacity .25s ease; pointer-events:none;
   }
   .tile .lbl {
-    margin-top:7px; font-size:12px; line-height:15px; font-weight:500; letter-spacing:0.005em;
+    margin-top:7px; font-size:12px; line-height:1.25; font-weight:500; letter-spacing:0.005em;
     max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
   /* Press dips the icon; holding keeps sinking it, so a long press visibly
@@ -302,7 +302,7 @@
 
   .tag {
     position:absolute; left:14px; top:14px; z-index:2;
-    display:flex; align-items:center; gap:6px;
+    display:flex; align-items:center;
     height:28px; padding:0 11px 0 9px; border-radius:14px;
     background:rgba(16,14,24,0.52); color:#fff;
     -webkit-backdrop-filter:blur(10px) saturate(1.4); backdrop-filter:blur(10px) saturate(1.4);
@@ -311,6 +311,7 @@
   }
   .tag i { width:7px; height:7px; border-radius:50%; background:var(--accent-2);
     box-shadow:0 0 0 3px rgba(var(--accent-rgb),0.35); }
+  .tag i { margin-right:6px; }
 
   /* Video: a play button in the middle of the picture, as on YouTube's own cards. */
   .play {
@@ -420,7 +421,10 @@
   .sk-hero .sk-media { height:0; padding-top:62.5%;
     background-image:linear-gradient(135deg, rgba(var(--accent-rgb),0.10), rgba(var(--accent-rgb),0.02)); }
   .sk-hero .sk-body { padding:18px 20px 18px; }
-  .sk-meta { display:flex; align-items:center; gap:10px; margin-top:18px; }
+  /* Spacing by margins, not flex gap: gap in a flex row needs Chrome 84, and
+     a phone whose WebView never updated would set these pieces touching. */
+  .sk-meta { display:flex; align-items:center; margin-top:18px; }
+  .sk-meta > .sk + .sk { margin-left:10px; }
   .sk-meta .sk-line { margin:0; }
   .sk-dot { flex:none; width:24px; height:24px; border-radius:50%; }
   .sk-line { height:12px; border-radius:6px; }
@@ -448,13 +452,14 @@
      whatever was left half-done, as Chrome's home offers. */
   .resume {
     width:100%; max-width:400px; margin-top:22px;
-    display:flex; align-items:center; gap:12px;
+    display:flex; align-items:center;
     padding:12px 14px; border-radius:20px;
     background:var(--surface); box-shadow:var(--shadow-card);
     color:var(--fg); text-decoration:none;
     transition:transform .5s var(--ease-spring), opacity .3s ease;
     -webkit-tap-highlight-color:transparent;
   }
+  .resume > * + * { margin-left:12px; }
   .resume.hidden { display:none; }
   .resume.enter { animation:resumeIn .55s var(--ease-out) backwards; }
   @keyframes resumeIn { from { opacity:0; transform:translateY(10px) scale(.98); } }
@@ -480,9 +485,10 @@
      for you this week, counted on the phone (SearchApp.getPrivacyStats). */
   .shield {
     width:100%; max-width:400px; margin-top:16px;
-    display:flex; align-items:center; justify-content:center; gap:8px;
+    display:flex; align-items:center; justify-content:center;
     font-size:13px; color:var(--muted);
   }
+  .shield > * + * { margin-left:8px; }
   .shield.hidden { display:none; }
   .shield svg { width:16px; height:16px; color:var(--accent-text); flex:none; }
   .shield b { color:var(--fg-2); font-weight:700; }
