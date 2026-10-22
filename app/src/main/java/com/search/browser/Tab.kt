@@ -54,6 +54,9 @@ class Tab(
 
     val isLive: Boolean get() = webView != null
 
+    /** The tab group this tab is in (TabManager.groups), or null. */
+    var groupId: Long? = null
+
     /**
      * Opened in Night Owl. Such a tab is never written to disk with the
      * session (SessionStore), even after Night Owl is turned off.

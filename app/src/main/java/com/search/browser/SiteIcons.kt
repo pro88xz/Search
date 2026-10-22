@@ -72,6 +72,33 @@ object SiteIcons {
     /** The icon already in memory for [url]'s site, if any. */
     fun cached(url: String?): Bitmap? = keyOf(url)?.let { memory.get(it) }
 
+    /** Sites looked for on disk this run and not found there (main thread only). */
+    private val notOnDisk = HashSet<String>()
+
+    /**
+     * [url]'s site icon if it is in memory; otherwise null, and it is read
+     * from the disk cache in the background and handed to [onIcon] on the
+     * main thread if it is there. Never the network. For the tab deck, which
+     * shows many sites at once and should not wait on any of them. Call on
+     * the main thread.
+     */
+    fun cachedOrDisk(context: Context, url: String?, onIcon: (Bitmap) -> Unit): Bitmap? {
+        val key = keyOf(url) ?: return null
+        memory.get(key)?.let { return it }
+        if (key in notOnDisk) return null
+        notOnDisk.add(key)
+        val dir = File(context.cacheDir, "site_icons")
+        io.execute {
+            val icon = decodeFile(File(dir, sha1(key) + ".png")) ?: return@execute
+            memory.put(key, icon)
+            main.post {
+                notOnDisk.remove(key)
+                onIcon(icon)
+            }
+        }
+        return null
+    }
+
     /** Memory is short: the icons in memory go; the ones on disk come back when next wanted. */
     fun trimMemory() = memory.evictAll()
 

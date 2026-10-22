@@ -1,54 +1,92 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- A tab in the deck (DeckAdapter): the site's icon, the page's title and a
+     close button over a picture of the page. Its card and header are coloured
+     in code - the tab on screen wears the accent. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:layout_margin="7dp"
-    android:background="@drawable/tab_card_bg"
-    android:elevation="2dp"
-    android:clipToOutline="true"
+    android:layout_margin="6dp"
     android:clickable="true"
     android:focusable="true">
 
-    <!-- Thumbnail with an overlaid corner close button -->
-    <FrameLayout
+    <LinearLayout
+        android:id="@+id/tabHeader"
         android:layout_width="match_parent"
-        android:layout_height="200dp">
+        android:layout_height="40dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="11dp"
+        android:paddingEnd="2dp">
 
+        <FrameLayout
+            android:layout_width="18dp"
+            android:layout_height="18dp">
+            <ImageView
+                android:id="@+id/tabIcon"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="fitCenter"
+                android:importantForAccessibility="no" />
+            <TextView
+                android:id="@+id/tabLetter"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:textColor="#FFFFFF"
+                android:importantForAccessibility="no" />
+        </FrameLayout>
+
+        <TextView
+            android:id="@+id/tabTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:textSize="13sp"
+            android:fontFamily="sans-serif-medium"
+            android:text="New Tab" />
+
+        <FrameLayout
+            android:layout_width="38dp"
+            android:layout_height="38dp">
+            <ImageButton
+                android:id="@+id/closeTab"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:padding="12dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_tab_close"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Close tab" />
+            <ImageView
+                android:id="@+id/tabCheck"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:layout_gravity="center"
+                android:scaleType="center"
+                android:src="@drawable/deck_check"
+                android:visibility="gone"
+                android:importantForAccessibility="no" />
+        </FrameLayout>
+    </LinearLayout>
+
+    <com.search.browser.RatioFrameLayout
+        android:id="@+id/tabThumbBox"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="4dp"
+        android:layout_marginEnd="4dp"
+        android:layout_marginBottom="4dp">
         <ImageView
             android:id="@+id/tabThumb"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:scaleType="matrix"
-            android:background="@drawable/tab_thumb_bg"
             android:contentDescription="Tab preview" />
-
-        <ImageButton
-            android:id="@+id/closeTab"
-            android:layout_width="26dp"
-            android:layout_height="26dp"
-            android:layout_gravity="top|end"
-            android:layout_margin="8dp"
-            android:padding="6dp"
-            android:scaleType="fitCenter"
-            android:background="@drawable/tab_close_bg"
-            android:src="@drawable/ic_tab_close"
-            android:contentDescription="Close tab" />
-    </FrameLayout>
-
-    <!-- Title row -->
-    <TextView
-        android:id="@+id/tabTitle"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:maxLines="1"
-        android:ellipsize="end"
-        android:textSize="13sp"
-        android:textStyle="bold"
-        android:textColor="?android:attr/textColorPrimary"
-        android:paddingStart="12dp"
-        android:paddingEnd="12dp"
-        android:paddingTop="10dp"
-        android:paddingBottom="12dp"
-        android:text="New Tab" />
+    </com.search.browser.RatioFrameLayout>
 </LinearLayout>

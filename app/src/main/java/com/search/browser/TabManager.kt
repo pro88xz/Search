@@ -41,6 +41,56 @@ class TabManager(
 
     fun count(): Int = tabs.size
 
+    // ---------- Tab groups ----------
+
+    /** The user's tab groups, in the order they were made. */
+    val groups = mutableListOf<TabGroup>()
+    private var nextGroupId = 1L
+
+    fun newGroup(name: String, color: Int): TabGroup =
+        TabGroup(nextGroupId++, name, color).also { groups.add(it) }
+
+    fun group(id: Long?): TabGroup? = if (id == null) null else groups.firstOrNull { it.id == id }
+
+    /** [g]'s tabs, in the order they sit in [tabs]. */
+    fun tabsIn(g: TabGroup): List<Tab> = tabs.filter { it.groupId == g.id }
+
+    /**
+     * Puts [tab] in [g], just after the group's other tabs (or where it is, if
+     * that is already beside one of them): a group's tabs sit together in the
+     * list, so swiping along the bottom bar walks through a group before
+     * leaving it.
+     */
+    fun addToGroup(tab: Tab, g: TabGroup) {
+        if (tab.groupId == g.id) return
+        val i = tabs.indexOf(tab)
+        val beside = tabs.getOrNull(i - 1)?.groupId == g.id || tabs.getOrNull(i + 1)?.groupId == g.id
+        val last = tabs.lastOrNull { it.groupId == g.id && it !== tab }
+        tab.groupId = g.id
+        if (last != null && !beside) {
+            tabs.remove(tab)
+            tabs.add(tabs.indexOf(last) + 1, tab)
+        }
+        pruneGroups()
+    }
+
+    /** Takes [tab] out of its group, to just after the group's tabs. */
+    fun removeFromGroup(tab: Tab) {
+        val id = tab.groupId ?: return
+        tab.groupId = null
+        val last = tabs.lastOrNull { it.groupId == id }
+        if (last != null) {
+            tabs.remove(tab)
+            tabs.add(tabs.indexOf(last) + 1, tab)
+        }
+        pruneGroups()
+    }
+
+    /** Drops the groups no tab is in any more. */
+    fun pruneGroups() {
+        groups.removeAll { g -> tabs.none { it.groupId == g.id } }
+    }
+
     fun setActive(tab: Tab) {
         activeTab = tab
         touchLive(tab.id)
@@ -106,6 +156,7 @@ class TabManager(
     fun removeTab(tab: Tab) {
         tabs.remove(tab)
         liveOrder.remove(tab.id)
+        pruneGroups()
         if (activeTab == tab) {
             activeTab = tabs.lastOrNull()
         }

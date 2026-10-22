@@ -2012,11 +2012,8 @@ internal fun MainActivity.applyAccentTints() {
     val tint = android.content.res.ColorStateList.valueOf(accent)
     binding.micBtn.imageTintList = tint
     binding.scanBtn.imageTintList = tint
-    // The deck's "+ New" and "Done" too; they were a fixed blue.
-    Settings.accentInk(this).let { ink ->
-        binding.deckNewTab.setTextColor(ink)
-        binding.deckClose.setTextColor(ink)
-    }
+    // The deck's new-tab button and its other accented parts too.
+    if (deckVisible) renderDeckHeader()
     // Selected Home wears the accent, so the bars follow it too.
     refreshNav()
     applyArtAccent(accent)
