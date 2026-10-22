@@ -2021,6 +2021,8 @@ internal fun MainActivity.applyAccentTints() {
     refreshNav()
     applyArtAccent(accent)
     pushAccentToPage(activeWeb())
+    activeWeb()?.evaluateJavascript("window.__setWallpaper && window.__setWallpaper(" +
+        HomeWallpapers.json(HomeWallpapers.current(this)) + ")", null)
 }
 
 /**

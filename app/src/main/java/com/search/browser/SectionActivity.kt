@@ -396,6 +396,8 @@ class SectionActivity : AppCompatActivity() {
         group("Accent colour").addView(scroll)
         addNote("Buttons, switches, the owl and the loading ring all take it.")
 
+        buildWallpapers()
+
         group("Home page")
         addToggle(
             "Show shortcut tiles",
@@ -452,6 +454,87 @@ class SectionActivity : AppCompatActivity() {
             )
             addNote("Dark websites applies to pages as they load. Sites that have their own dark look use it either way.")
         }
+    }
+
+    /**
+     * Home's wallpaper: Plain (home's own background) or one of the scenes
+     * in HomeWallpapers, each shown as a small portrait of itself. The one
+     * in use wears a ring in the accent. Home takes up a new choice as soon
+     * as the browser is back in front (applyAccentTints, __setWallpaper).
+     */
+    private fun buildWallpapers() {
+        val current = Settings.getHomeWallpaper(this)
+        val row = LinearLayout(this)
+        row.orientation = LinearLayout.HORIZONTAL
+        row.setPadding(dp(18), dp(16), dp(6), dp(14))
+        val choices = listOf<Pair<String, String>>("none" to "Plain") +
+            HomeWallpapers.ALL.map { it.id to it.name }
+        choices.forEach { (id, name) ->
+            val selected = id == current || (id == "none" && HomeWallpapers.byId(current) == null)
+            val cell = LinearLayout(this)
+            cell.orientation = LinearLayout.VERTICAL
+            cell.gravity = Gravity.CENTER_HORIZONTAL
+            val cellLp = LinearLayout.LayoutParams(dp(68), ViewGroup.LayoutParams.WRAP_CONTENT)
+            cellLp.marginEnd = dp(12)
+            cell.layoutParams = cellLp
+
+            val pic = android.widget.ImageView(this)
+            pic.layoutParams = LinearLayout.LayoutParams(dp(64), dp(114))
+            pic.scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
+            val shape = android.graphics.drawable.GradientDrawable()
+            shape.cornerRadius = dp(12).toFloat()
+            if (id == "none") {
+                // Plain: home's own grey, light or dark as the phone is.
+                val night = (resources.configuration.uiMode and
+                    android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
+                shape.setColor(if (night) 0xFF0E0E10.toInt() else 0xFFF5F5F5.toInt())
+                shape.setStroke(maxOf(1, dp(1) / 2), 0x33808080)
+            } else {
+                try {
+                    assets.open("wallpapers/$id-thumb.webp").use {
+                        pic.setImageBitmap(android.graphics.BitmapFactory.decodeStream(it))
+                    }
+                } catch (e: Exception) { /* a missing thumbnail leaves the cell blank, not the screen */ }
+            }
+            pic.background = shape
+            pic.clipToOutline = true
+            if (selected) {
+                pic.foreground = android.graphics.drawable.GradientDrawable().apply {
+                    cornerRadius = dp(12).toFloat()
+                    setStroke(dp(3), Settings.accentInk(this@SectionActivity))
+                }
+            }
+            cell.addView(pic)
+
+            val label = TextView(this)
+            label.text = name
+            label.textSize = 12f
+            label.maxLines = 1
+            label.ellipsize = android.text.TextUtils.TruncateAt.END
+            label.gravity = Gravity.CENTER_HORIZONTAL
+            label.setTextColor(if (selected) Settings.accentInk(this) else resolveTextColor())
+            if (selected) label.setTypeface(label.typeface, android.graphics.Typeface.BOLD)
+            label.setPadding(0, dp(6), 0, 0)
+            cell.addView(label)
+
+            cell.contentDescription = if (selected) "$name, in use" else name
+            cell.isClickable = true
+            cell.isFocusable = true
+            cell.setOnClickListener {
+                if (selected) return@setOnClickListener
+                Settings.setHomeWallpaper(this, id)
+                android.widget.Toast.makeText(this,
+                    if (id == "none") "Home: plain background" else "Wallpaper: $name",
+                    android.widget.Toast.LENGTH_SHORT).show()
+                recreate()
+            }
+            row.addView(cell)
+        }
+        val scroll = android.widget.HorizontalScrollView(this)
+        scroll.isHorizontalScrollBarEnabled = false
+        scroll.addView(row)
+        group("Wallpaper").addView(scroll)
+        addNote("Home wears it in Explore, Focus and Zen. Night Owl keeps its own sky.")
     }
 
     /** Ends the card being filled; whatever comes next starts a new one. */
