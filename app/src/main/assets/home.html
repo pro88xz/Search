@@ -367,9 +367,15 @@
 
   .list { display:block; }
   /* The feed ad's place: the app's native card is laid over it, so it is an
-     empty box exactly the card's size (SearchApp.adSlotAt / __setAdSlot). */
-  .adslot { display:block; height:0; margin:0;
+     empty box exactly the card's size (SearchApp.adSlotAt / __setAdSlot).
+     Always the feed's full column, wherever it sits. With no stories on the
+     page - while a refresh brings them, or when it finds none - it sits in
+     .wrap, which centres each child at its own width; an empty box's own
+     width is nothing, so the place was a sliver in the middle of the screen
+     and the card, laid from its left edge, hung half off the side. */
+  .adslot { display:block; width:100%; height:0; margin:0;
     transition:height .34s var(--ease-out), margin-bottom .34s var(--ease-out); }
+  .wrap > .adslot { max-width:560px; } /* .feed's column */
   /* Under the stories: an invisible marker that brings in the next stories
      as the reader nears it (moreObserver), and, once every story is on the
      page, a quiet line saying so. */
@@ -1556,6 +1562,10 @@
     if (!nightOwl && mode === 'explore' && adSlotEl && adSlotEl.parentNode && adSlotEl.offsetParent !== null) {
       top = docTop(adSlotEl); left = docLeft(adSlotEl);
       width = adSlotEl.offsetWidth; h = adSlotEl.offsetHeight;
+      // A place with no width is no place: the card would be laid from its
+      // left edge at its last width and hang off the side. No card rather
+      // than half of one - the .adslot rule keeps this from ever arising.
+      if (width < 1) { top = -1; left = 0; width = 0; h = 0; }
     }
     var key = top + ',' + left + ',' + width + ',' + h;
     if (key === adRep) return;
