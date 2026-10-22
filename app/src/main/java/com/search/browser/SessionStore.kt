@@ -51,8 +51,13 @@ object SessionStore {
         /** Whether the tab has saved history on disk after this save. */
         val hasState: Boolean,
         /** New history to write, or null when the file on disk is current. */
-        val state: ByteArray?
+        val state: ByteArray?,
+        /** The tab's group, as a position in the groups saved with it, or -1. */
+        val group: Int = -1
     )
+
+    /** A tab group as saved: what the user named it and the colour picked (TabGroups). */
+    class Group(val name: String, val color: Int)
 
     class Saved(
         val key: String,
@@ -60,11 +65,13 @@ object SessionStore {
         val title: String,
         val openerIndex: Int,
         val signIn: Boolean,
-        val hasState: Boolean
+        val hasState: Boolean,
+        val group: Int = -1
     )
 
     class Session(
         val tabs: List<Saved>,
+        val groups: List<Group>,
         val active: Int,
         /** False when saved history must not be used (see the class notes). */
         val stateUsable: Boolean
@@ -140,7 +147,7 @@ object SessionStore {
      * the list last, so the list on disk never names a file not yet written;
      * files no tab names any more are deleted after.
      */
-    fun save(c: Context, entries: List<Entry>, active: Int) {
+    fun save(c: Context, entries: List<Entry>, active: Int, groups: List<Group> = emptyList()) {
         val app = c.applicationContext
         val stamp = engineStamp()
         val savedAt = System.currentTimeMillis()
@@ -160,14 +167,18 @@ object SessionStore {
                         .put("title", e.title)
                         .put("opener", e.openerIndex)
                         .put("signIn", e.signIn)
-                        .put("state", e.hasState))
+                        .put("state", e.hasState)
+                        .put("group", e.group))
                 }
+                val groupList = JSONArray()
+                groups.forEach { g -> groupList.put(JSONObject().put("name", g.name).put("color", g.color)) }
                 val root = JSONObject()
                     .put("v", VERSION)
                     .put("engine", stamp)
                     .put("savedAt", savedAt)
                     .put("active", active)
                     .put("tabs", list)
+                    .put("groups", groupList)
                 writeAtomically(File(app.filesDir, FILE), root.toString().toByteArray())
                 val keep = entries.filter { it.hasState }.map { it.key + ".bin" }.toSet()
                 dir.listFiles()?.forEach { f -> if (f.name !in keep) f.delete() }
@@ -203,10 +214,16 @@ object SessionStore {
                     if (url.isBlank() || key.isBlank()) null
                     else Saved(key, url, o.optString("title", "New Tab"),
                         o.optInt("opener", -1), o.optBoolean("signIn"),
-                        o.optBoolean("state"))
+                        o.optBoolean("state"), o.optInt("group", -1))
+                }
+                // Groups came later than the rest; a session from before them has none.
+                val ga = root.optJSONArray("groups") ?: JSONArray()
+                val groups = (0 until ga.length()).map { i ->
+                    val o = ga.optJSONObject(i)
+                    Group(o?.optString("name").orEmpty(), o?.optInt("color", 0) ?: 0)
                 }
                 if (tabs.isEmpty()) null
-                else Session(tabs, root.optInt("active", 0).coerceIn(0, tabs.size - 1),
+                else Session(tabs, groups, root.optInt("active", 0).coerceIn(0, tabs.size - 1),
                     root.optString("engine") == engineStamp())
             }
         }

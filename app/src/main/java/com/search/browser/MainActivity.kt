@@ -879,9 +879,12 @@ class MainActivity : AppCompatActivity() {
             // The on-disk session's view of the tab (SessionStore, Tab.kt).
             val isPrivate: Boolean = false,
             val diskKey: String? = null,
-            val diskStateHash: Int = 0
+            val diskStateHash: Int = 0,
+            // Its tab group, as a position in [groups], or -1.
+            val group: Int = -1
         )
         var snapshot: List<Snap>? = null
+        var groups: List<SessionStore.Group> = emptyList()
         var activeIndex: Int = 0
     }
 
@@ -898,6 +901,10 @@ class MainActivity : AppCompatActivity() {
         outState.putStringArrayList("tab_urls", ArrayList(tabs.tabs.map { it.url }))
         outState.putStringArrayList("tab_titles", ArrayList(tabs.tabs.map { it.title }))
         outState.putInt("tab_active", tabStore.activeIndex)
+        // Groups too: a few names and numbers.
+        outState.putIntArray("tab_groups", tabs.tabs.map { t -> tabs.groups.indexOfFirst { it.id == t.groupId } }.toIntArray())
+        outState.putStringArrayList("group_names", ArrayList(tabs.groups.map { it.name }))
+        outState.putIntArray("group_colors", tabs.groups.map { it.color }.toIntArray())
     }
 
     // ---------- The session on disk ----------
@@ -919,6 +926,7 @@ class MainActivity : AppCompatActivity() {
         if (!::binding.isInitialized) return
         val keep = tabs.tabs.filter { !it.isPrivate && it.url != "about:blank" }
         val active = tabs.activeTab
+        val groups = tabs.groups.filter { g -> keep.any { it.groupId == g.id } }
         val entries = keep.map { t ->
             // Standing in for a page that failed: saved as that page, without
             // a history that would only lead back to the error page.
@@ -946,17 +954,19 @@ class MainActivity : AppCompatActivity() {
                 openerIndex = keep.indexOfFirst { it.id == t.openerId },
                 signIn = t.signIn,
                 hasState = t.diskStateHash != 0,
-                state = bytes
+                state = bytes,
+                group = groups.indexOfFirst { it.id == t.groupId }
             )
         }
         val activeIndex = keep.indexOf(active).let { if (it >= 0) it else keep.size - 1 }
-        SessionStore.save(this, entries, activeIndex.coerceAtLeast(0))
+        SessionStore.save(this, entries, activeIndex.coerceAtLeast(0),
+            groups.map { SessionStore.Group(it.name, it.color) })
     }
 
     internal lateinit var binding: ActivityMainBinding
     internal val homePage = "file:///android_asset/home.html"
     internal val tabs = TabManager(maxLiveTabs = 3)
-    internal lateinit var tabAdapter: TabAdapter
+    internal lateinit var deckAdapter: DeckAdapter
 
     internal val thumbWidthPx = 400
     // Capture the deck thumbnail at reduced resolution to cut the
@@ -1180,7 +1190,7 @@ class MainActivity : AppCompatActivity() {
                     findActive -> closeFindBar()
                     searchMode -> exitSearchMode()
                     binding.menuScrim.visibility == View.VISIBLE -> closeMenu()
-                    binding.tabDeck.visibility == View.VISIBLE -> closeDeck()
+                    binding.tabDeck.visibility == View.VISIBLE -> deckBack()
                     backInTab(web) -> {}
                     // A tab a PAGE opened - an ad, a sign-in pop-up, any
                     // target="_blank" link. It has no history of its own, so
@@ -2724,6 +2734,8 @@ class MainActivity : AppCompatActivity() {
                 popupTab.openerSite = UrlHelper.siteOf(opener?.url)
                 popupTab.openerLoadsAtOpen = opener?.loadsStarted ?: 0
                 popupTab.title = "Opening\u2026"
+                // A page's pop-up belongs with the page: in its tab group.
+                tabs.group(opener?.groupId)?.let { tabs.addToGroup(popupTab, it) }
                 DebugLog.add { "pop-up tab#" + popupTab.id + " opened by tab#" + opener?.id +
                     " on " + popupTab.openerSite + " (dialog=" + isDialog + ")" }
                 val popupWeb = newWebView()
@@ -4690,46 +4702,71 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupDeck() {
-        tabAdapter = TabAdapter(
-            tabs = { shownTabs() },
-            // openTab before closeDeck, here and below: openTab takes a picture
-            // of the tab being left, and refuses while the deck is still up -
-            // closed first, the last frame on screen would be the deck itself.
-            onSelect = { tab -> openTab(tab); closeDeck() },
-            onClose = { tab -> closeTabByUser(tab) },
-            // Lambdas, not values: the deck rebinds on every open, so these
-            // stay current through tab switches and accent changes without the
-            // adapter being rebuilt.
-            isActive = { tab -> tabs.activeTab?.id == tab.id },
-            accent = { currentAccent() }
-        )
+        // Read on every bind rather than captured once: the deck rebinds on
+        // every open, so tab switches and accent changes need no new adapter.
+        deckAdapter = DeckAdapter(object : DeckAdapter.Host {
+            override fun items() = deckItems()
+            override fun isActive(tab: Tab) = tabs.activeTab?.id == tab.id
+            override fun accent() = currentAccent()
+            override fun groupColor(g: TabGroup) = TabGroups.color(this@MainActivity, g.color)
+            override fun selecting() = deckSelecting
+            override fun isSelected(tab: Tab) = tab.id in deckSelected
+            override fun title(tab: Tab): String =
+                if (tab.url == homePage) "Home"
+                else PageLabel.title(tab.title, tab.url).ifBlank { tab.title.ifBlank { siteNameOf(tab.url).ifBlank { "New Tab" } } }
+            override fun icon(tab: Tab, onLoaded: () -> Unit): android.graphics.Bitmap? =
+                SiteIcons.cachedOrDisk(this@MainActivity, tab.url) { onLoaded() }
+            override fun letter(tab: Tab): Char {
+                if (tab.url == homePage) return 0.toChar()
+                return siteNameOf(tab.url).firstOrNull { it.isLetterOrDigit() }?.uppercaseChar()
+                    ?: title(tab).firstOrNull { it.isLetterOrDigit() }?.uppercaseChar() ?: '\u2022'
+            }
+            override fun onTabClick(tab: Tab) = deckTabClicked(tab)
+            override fun onTabClose(tab: Tab) = closeTabByUser(tab)
+            override fun onTabLongPress(tab: Tab, card: View) = showTabMenu(tab, card)
+            override fun onGroupClick(g: TabGroup) = openDeckGroup(g)
+            override fun onGroupLongPress(g: TabGroup, card: View) = showGroupMenu(g, card)
+        })
         binding.tabList.layoutManager = GridLayoutManager(this, 2)
-        binding.tabList.adapter = tabAdapter
-        // Flick a card sideways to close its tab. The throw keeps its
+        binding.tabList.adapter = deckAdapter
+        // Flick a tab card sideways to close its tab. The throw keeps its
         // momentum: a fast flick flies off from a short drag, a slow drag has
         // to carry the card over a third of its width, and anything less
         // springs back into place. The card tilts and fades as it goes.
+        // Hold and drag a card - a tab or a whole group - to move it; holding
+        // still opens its menu instead, which a drag puts away.
         androidx.recyclerview.widget.ItemTouchHelper(object :
-            androidx.recyclerview.widget.ItemTouchHelper.SimpleCallback(
-                // Long-press and drag a card to put the tab somewhere else.
-                androidx.recyclerview.widget.ItemTouchHelper.UP or
+            androidx.recyclerview.widget.ItemTouchHelper.Callback() {
+            override fun getMovementFlags(
+                rv: androidx.recyclerview.widget.RecyclerView,
+                vh: androidx.recyclerview.widget.RecyclerView.ViewHolder
+            ): Int {
+                if (deckSelecting || deckFilter.isNotBlank()) return 0
+                val item = deckAdapter.items.getOrNull(vh.bindingAdapterPosition) ?: return 0
+                val all = androidx.recyclerview.widget.ItemTouchHelper.UP or
                     androidx.recyclerview.widget.ItemTouchHelper.DOWN or
                     androidx.recyclerview.widget.ItemTouchHelper.LEFT or
-                    androidx.recyclerview.widget.ItemTouchHelper.RIGHT,
-                androidx.recyclerview.widget.ItemTouchHelper.LEFT or
-                    androidx.recyclerview.widget.ItemTouchHelper.RIGHT) {
+                    androidx.recyclerview.widget.ItemTouchHelper.RIGHT
+                // Groups alone (Groups, no group open) leave out the tabs in
+                // no group, so there is no whole order to drag within.
+                val drag = if (deckView == DECK_GROUPS && deckOpenGroup == null) 0 else all
+                val swipe = if (item is DeckItem.TabItem)
+                    androidx.recyclerview.widget.ItemTouchHelper.LEFT or
+                        androidx.recyclerview.widget.ItemTouchHelper.RIGHT else 0
+                return makeMovementFlags(drag, swipe)
+            }
+
             override fun onMove(
                 rv: androidx.recyclerview.widget.RecyclerView,
                 vh: androidx.recyclerview.widget.RecyclerView.ViewHolder,
                 target: androidx.recyclerview.widget.RecyclerView.ViewHolder
             ): Boolean {
-                // Only in the full list: a filtered one has gaps in it.
-                if (deckFilter.isNotBlank() || deckGroup != null) return false
                 val from = vh.bindingAdapterPosition
                 val to = target.bindingAdapterPosition
-                if (from < 0 || to < 0 || from >= tabs.tabs.size || to >= tabs.tabs.size) return false
-                java.util.Collections.swap(tabs.tabs, from, to)
-                tabAdapter.notifyItemMoved(from, to)
+                val n = deckAdapter.items.size
+                if (from < 0 || to < 0 || from >= n || to >= n) return false
+                deckAdapter.move(from, to)
+                applyDeckOrder()
                 scheduleSessionSave()
                 return true
             }
@@ -4739,7 +4776,6 @@ class MainActivity : AppCompatActivity() {
             ) {
                 super.onSelectedChanged(vh, actionState)
                 if (actionState == androidx.recyclerview.widget.ItemTouchHelper.ACTION_STATE_DRAG) {
-                    Haptics.confirm(vh?.itemView)
                     vh?.itemView?.animate()?.scaleX(1.04f)?.scaleY(1.04f)?.setDuration(160L)?.start()
                 }
             }
@@ -4750,8 +4786,8 @@ class MainActivity : AppCompatActivity() {
             override fun getSwipeEscapeVelocity(defaultValue: Float) = defaultValue * 0.6f
 
             override fun onSwiped(vh: androidx.recyclerview.widget.RecyclerView.ViewHolder, direction: Int) {
-                val tab = shownTabs().getOrNull(vh.bindingAdapterPosition)
-                if (tab == null) tabAdapter.notifyDataSetChanged() else closeTabByUser(tab)
+                val item = deckAdapter.items.getOrNull(vh.bindingAdapterPosition)
+                if (item is DeckItem.TabItem) closeTabByUser(item.tab) else refreshDeck()
             }
 
             override fun onChildDraw(
@@ -4766,6 +4802,12 @@ class MainActivity : AppCompatActivity() {
                     vh.itemView.alpha = 1f - kotlin.math.abs(t) * 0.8f
                     vh.itemView.rotation = t * 8f
                 }
+                // A held card that starts to move is being dragged, not asked
+                // about: its menu goes.
+                if (actionState == androidx.recyclerview.widget.ItemTouchHelper.ACTION_STATE_DRAG &&
+                    kotlin.math.abs(dX) + kotlin.math.abs(dY) > 14f * resources.displayMetrics.density) {
+                    deckPopup?.dismiss()
+                }
             }
 
             override fun clearView(
@@ -4779,7 +4821,30 @@ class MainActivity : AppCompatActivity() {
             }
         }).attachToRecyclerView(binding.tabList)
 
-        binding.deckClose.setOnClickListener { closeDeck() }
+        binding.deckBack.setOnClickListener { deckBack() }
+        binding.deckSegTabs.setOnClickListener { v ->
+            if (deckView != DECK_TABS) { Haptics.tick(v); deckView = DECK_TABS; refreshDeck(fade = true) }
+        }
+        binding.deckSegGroups.setOnClickListener { v ->
+            if (deckView != DECK_GROUPS) { Haptics.tick(v); deckView = DECK_GROUPS; refreshDeck(fade = true) }
+        }
+        binding.deckAction1.setOnClickListener { if (deckSelected.isNotEmpty()) showGroupDialog(null, selectedTabs()) }
+        binding.deckAction2.setOnClickListener { closeSelectedTabs() }
+        binding.deckTitleMore.setOnClickListener { v -> tabs.group(deckOpenGroup)?.let { showGroupMenu(it, v) } }
+        binding.deckTitleAdd.setOnClickListener {
+            // A new tab in the group on screen.
+            val g = tabs.group(deckOpenGroup) ?: return@setOnClickListener
+            addNewTab(homePage)
+            tabs.activeTab?.let { tabs.addToGroup(it, g) }
+            closeDeck()
+            scheduleSessionSave()
+        }
+        // The search field's magnifier, at the size of the text beside it.
+        getDrawable(R.drawable.menu_find)?.mutate()?.let { icon ->
+            val px = (18 * resources.displayMetrics.density).toInt()
+            icon.setBounds(0, 0, px, px)
+            binding.deckSearch.setCompoundDrawablesRelative(icon, null, null, null)
+        }
         binding.deckMore.setOnClickListener { showDeckMenu(it) }
         binding.deckNewTab.setOnClickListener { addNewTab(homePage); closeDeck() }
 
@@ -4792,7 +4857,7 @@ class MainActivity : AppCompatActivity() {
                 val q = e?.toString()?.trim() ?: ""
                 if (q == deckFilter) return
                 deckFilter = q
-                if (binding.tabList.visibility == View.VISIBLE) tabAdapter.notifyDataSetChanged()
+                if (deckVisible && deckOnTabs()) refreshDeck()
             }
         })
         binding.deckSearch.setOnEditorActionListener { _, actionId, event ->
@@ -4821,6 +4886,9 @@ class MainActivity : AppCompatActivity() {
         binding.deckEmpty.visibility = View.GONE
         downloadsOpen = false
         binding.tabList.visibility = View.VISIBLE
+        deckSelecting = false
+        deckSelected.clear()
+        deckOpenGroup = null
         val active = tabs.activeTab
         if (active?.webView != null && !deckVisible) captureThumbnail(active) { showDeckNow() }
         else showDeckNow()
@@ -4829,8 +4897,7 @@ class MainActivity : AppCompatActivity() {
     private fun showDeckNow() {
         deckVisible = true
         androidx.core.view.ViewCompat.requestApplyInsets(binding.root)
-        renderDeckGroups()
-        tabAdapter.notifyDataSetChanged()
+        refreshDeck()
         val deck = binding.tabDeck
         // It rises into place on a spring rather than appearing.
         deckSpring.cancel()
@@ -4874,10 +4941,13 @@ class MainActivity : AppCompatActivity() {
         deck.scaleY = scale
     }
 
-    private fun closeDeck() {
+    internal fun closeDeck() {
         hideKeyboard()
         if (deckFilter.isNotEmpty()) { deckFilter = ""; binding.deckSearch.setText("") }
-        deckGroup = null
+        deckPopup?.dismiss()
+        deckSelecting = false
+        deckSelected.clear()
+        deckOpenGroup = null
         deckSpring.cancel()
         deckOpenSeq++
         endDeckLayer()
@@ -4910,17 +4980,20 @@ class MainActivity : AppCompatActivity() {
 
     private val AWAY_FOR_HOME_MS = 4L * 60L * 60_000L
 
-    // ---------- Smart tab groups ----------
-    //
-    // Over the tab cards, a chip for every site with two or more tabs open -
-    // "All 9", "Bbc 3", "Wikipedia 2" - so a long row of tabs sorts itself by
-    // where they are. A chip shows just that site's tabs; holding one offers
-    // to close them all at once (each remembered, so Reopen closed tab brings
-    // them back). Nothing to set up and nothing stored: the groups are the
-    // tabs as they are. Home and new tabs belong to no group.
+    // ---------- Tab groups and the deck (MainActivityTabs) ----------
 
-    /** The site group the deck is showing, or null for every tab. */
-    internal var deckGroup: String? = null
+    /** Tabs or Groups, at the top of the deck: everything, or only the groups. */
+    internal var deckView = DECK_TABS
+
+    /** The group open in the deck, or null. */
+    internal var deckOpenGroup: Long? = null
+
+    /** Choosing tabs (Select tabs), and the ones chosen, by id. */
+    internal var deckSelecting = false
+    internal val deckSelected = LinkedHashSet<Long>()
+
+    /** A card's menu while it is up, so a drag that starts from the hold can put it away. */
+    internal var deckPopup: android.widget.PopupMenu? = null
 
     /** What is typed in the deck's search field, filtering its cards. */
     internal var deckFilter = ""
@@ -4960,7 +5033,11 @@ class MainActivity : AppCompatActivity() {
     // tab later, brings it back where it was, as in Chrome. Pop-ups closing
     // themselves are not remembered, and Night Owl tabs never are.
 
-    internal class ClosedTab(val url: String, val title: String, var state: Bundle?, val index: Int)
+    internal class ClosedTab(
+        val url: String, val title: String, var state: Bundle?, val index: Int,
+        // Its tab group, so it goes back into it - made again if it was the last.
+        val groupId: Long? = null, val groupName: String? = null, val groupColor: Int = 0
+    )
     internal val closedTabs = ArrayDeque<ClosedTab>()
 
     // ---------- Offline pages ----------
@@ -5159,10 +5236,7 @@ return {title:title,lang:(document.documentElement.lang||''),parts:parts};
             // it closes itself. openTab puts a real view back on screen.
             (fallback ?: tabs.tabs.lastOrNull())?.let { openTab(it) }
         }
-        if (deckVisible) renderDeckGroups()
-        tabAdapter.notifyDataSetChanged()
-        updateTabCount()
-        scheduleSessionSave()
+        deckChanged()
     }
 
     // ---------- History ----------
@@ -5223,7 +5297,6 @@ return {title:title,lang:(document.documentElement.lang||''),parts:parts};
             androidx.recyclerview.widget.LinearLayoutManager(this)
         binding.historyList.adapter = adapter
         binding.tabList.visibility = View.GONE
-        binding.deckGroups.visibility = View.GONE
         binding.bookmarkList.visibility = View.GONE
         if (entries.isEmpty()) {
             showDeckEmpty(R.drawable.menu_history, "No history yet", "Pages you visit will show up here.")
@@ -5234,6 +5307,7 @@ return {title:title,lang:(document.documentElement.lang||''),parts:parts};
         }
         historyOpen = true
         bookmarksOpen = false
+        renderDeckHeader()
     }
 
     internal var bookmarksOpen = false
@@ -5249,7 +5323,6 @@ return {title:title,lang:(document.documentElement.lang||''),parts:parts};
             androidx.recyclerview.widget.LinearLayoutManager(this)
         binding.bookmarkList.adapter = adapter
         binding.tabList.visibility = View.GONE
-        binding.deckGroups.visibility = View.GONE
         binding.historyList.visibility = View.GONE
         if (entries.isEmpty()) {
             showDeckEmpty(R.drawable.menu_bookmarks, "No bookmarks yet", "Tap the star on any page to save it here.")
@@ -5260,6 +5333,7 @@ return {title:title,lang:(document.documentElement.lang||''),parts:parts};
         }
         bookmarksOpen = true
         historyOpen = false
+        renderDeckHeader()
     }
 
     // ---------- Owl tap (context-aware) ----------

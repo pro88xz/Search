@@ -119,12 +119,13 @@ internal fun MainActivity.addBackgroundTab(url: String) {
     val target = resolveInput(url)
     val tab = tabs.createTab(target)
     tab.title = siteNameOf(target).ifBlank { "New tab" }
-    // Just after the tab it came from, as Chrome places it.
+    // Just after the tab it came from, as Chrome places it, and in its group.
     val from = tabs.tabs.indexOf(tabs.activeTab)
     if (from >= 0) {
         tabs.tabs.remove(tab)
         tabs.tabs.add((from + 1).coerceAtMost(tabs.tabs.size), tab)
     }
+    tabs.group(tabs.activeTab?.groupId)?.let { tabs.addToGroup(tab, it) }
     updateTabCount()
     scheduleSessionSave()
     Haptics.tick(binding.webContainer)

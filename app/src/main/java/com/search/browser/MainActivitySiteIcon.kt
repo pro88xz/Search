@@ -281,9 +281,11 @@ internal fun MainActivity.snapshotTabs() {
             signIn = t.signIn,
             isPrivate = t.isPrivate,
             diskKey = t.diskKey,
-            diskStateHash = t.diskStateHash
+            diskStateHash = t.diskStateHash,
+            group = tabs.groups.indexOfFirst { it.id == t.groupId }
         )
     }
+    tabStore.groups = tabs.groups.map { SessionStore.Group(it.name, it.color) }
     tabStore.activeIndex = list.indexOf(tabs.activeTab).coerceAtLeast(0)
 }
 
@@ -314,6 +316,7 @@ internal fun MainActivity.restoreTabs(saved: Bundle?): Boolean {
                 tabs.tabs[i].openerId = tabs.tabs.getOrNull(s.openerIndex)?.id
             }
         }
+        restoreGroups(tabStore.groups, snaps.map { it.group })
         openTab(tabs.tabs.getOrNull(tabStore.activeIndex) ?: tabs.tabs.first())
         return true
     }
@@ -326,6 +329,10 @@ internal fun MainActivity.restoreTabs(saved: Bundle?): Boolean {
     urls.forEachIndexed { i, u ->
         tabs.createTab(u).title = titles.getOrNull(i) ?: "New Tab"
     }
+    val names = saved.getStringArrayList("group_names") ?: ArrayList()
+    val colors = saved.getIntArray("group_colors") ?: IntArray(0)
+    restoreGroups(names.mapIndexed { i, n -> SessionStore.Group(n, colors.getOrElse(i) { 0 }) },
+        (saved.getIntArray("tab_groups") ?: IntArray(0)).toList())
     openTab(tabs.tabs.getOrNull(saved.getInt("tab_active", 0)) ?: tabs.tabs.first())
     return true
 }

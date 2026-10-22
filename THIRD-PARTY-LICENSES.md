@@ -34,7 +34,7 @@ package with path data copied unchanged. So are the menu's `menu_share.xml`
 (`share-network`), `menu_translate.xml` (`translate`), `menu_reader.xml`
 (`book-open`), `menu_add_home.xml` (`plus-square`) and `menu_reopen.xml`
 (`arrow-counter-clockwise`), Settings' `set_default.xml` (`browser`), `set_widget.xml`
-(`squares-four`) and `set_mode.xml` (`layout`), and the tab deck's `deck_more.xml` (`dots-three-vertical`),
+(`squares-four`, also the tab deck's Groups switch) and `set_mode.xml` (`layout`), and the tab deck's `deck_more.xml` (`dots-three-vertical`),
 all Bold. Page tools' `menu_video_download.xml` (`video`) and `menu_offline.xml`
 (`cloud-arrow-down`), and the Library's `menu_offline_pages.xml`
 (`tray-arrow-down`), are Bold too, as are Listen's `menu_listen.xml`

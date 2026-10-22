@@ -46,10 +46,25 @@ internal fun MainActivity.restoreSessionFromDisk(): Boolean {
             tabs.tabs[i].openerId = tabs.tabs.getOrNull(s.openerIndex)?.id
         }
     }
+    restoreGroups(session.groups, session.tabs.map { it.group })
     openTab(tabs.tabs.getOrNull(session.active) ?: tabs.tabs.first())
     // Settled once the app is up; onPause settles it sooner.
     uiHandler.postDelayed({ SessionStore.restoreSettled(this) }, 8000L)
     return true
+}
+
+/**
+ * Rebuilds the tab groups saved alongside the tabs just restored, which are
+ * all of [tabs] in order: [memberOf] gives each tab's group as a position in
+ * [saved], -1 for none.
+ */
+internal fun MainActivity.restoreGroups(saved: List<SessionStore.Group>, memberOf: List<Int>) {
+    if (saved.isEmpty()) return
+    val made = saved.map { g -> tabs.newGroup(g.name, g.color) }
+    tabs.tabs.forEachIndexed { i, t ->
+        t.groupId = made.getOrNull(memberOf.getOrElse(i) { -1 })?.id
+    }
+    tabs.pruneGroups()
 }
 
 // ---------- History ----------
@@ -74,10 +89,10 @@ internal fun MainActivity.showDownloads() {
         binding.downloadList.adapter = downloadsAdapter
     }
     binding.tabList.visibility = View.GONE
-    binding.deckGroups.visibility = View.GONE
     binding.historyList.visibility = View.GONE
     binding.bookmarkList.visibility = View.GONE
     downloadsOpen = true
+    renderDeckHeader()
     historyOpen = false
     bookmarksOpen = false
     // First pass on the main thread so the list is populated in the same
