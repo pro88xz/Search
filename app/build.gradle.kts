@@ -33,8 +33,8 @@ android {
         applicationId = "com.devbangs.search"
         minSdk = 24
         targetSdk = 36
-        versionCode = 54
-        versionName = "2.2.7"
+        versionCode = 55
+        versionName = "2.2.8"
 
         buildConfigField("String", "YOUTUBE_API_KEY", "\"" + youtubeApiKey + "\"")
     }
@@ -98,6 +98,9 @@ dependencies {
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.recyclerview:recyclerview:1.3.2")
     implementation("androidx.activity:activity-ktx:1.10.1")
+    // Already in the app through Google Mobile Ads; named here because
+    // ad blocking calls it directly (WebViewCompat.addDocumentStartJavaScript).
+    implementation("androidx.webkit:webkit:1.12.1")
     implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
     implementation("com.google.android.gms:play-services-ads:25.4.0")
     // Google's consent SDK: the AdMob privacy messages, and the privacy

@@ -196,10 +196,13 @@ class SectionActivity : AppCompatActivity() {
         group()
         addToggle(
             "Block ads and trackers",
-            "Blocks common ad networks and trackers for faster, cleaner browsing.",
+            "Blocks ads, trackers and the empty boxes ads leave behind, for faster, cleaner browsing.",
             Settings.ADBLOCK_ENABLED, false
         )
         addNote("Reload open pages after changing this for it to take full effect.")
+        addNote("Powered by Brave's open-source ad blocking engine with the EasyList and EasyPrivacy " +
+            "filter lists, which update every few days while blocking is on. Credits are in " +
+            "Settings > Open-source licences.")
         val week = PrivacyStats.week(this)
         val all = PrivacyStats.total(this)
         if (all > 0) {

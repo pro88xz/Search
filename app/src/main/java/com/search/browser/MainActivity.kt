@@ -1366,9 +1366,11 @@ class MainActivity : AppCompatActivity() {
      *
      * The blob callbacks are deliberately not gated on it. They are meant to
      * run on real pages, and they carry a one-shot token instead, which is the
-     * right control for them.
+     * right control for them. Nor are ad blocking's adCosmetic and adHide,
+     * which exist for websites and hand a page nothing but CSS from the
+     * public filter lists.
      */
-    inner class SearchAppBridge {
+    inner class SearchAppBridge(private val owner: BrowserWebView) {
         // Volatile: bridge calls arrive on a WebView thread, not the main one.
         @Volatile var privileged: Boolean = false
         /**
@@ -1798,6 +1800,20 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread { onExtraSlotReported(from, k, top, left, width, height) }
         }
 
+        /**
+         * Ad blocking's element hiding for the document at [url], asked for by
+         * AdBlocker.COSMETIC_JS as it starts - judged by the site of the tab's
+         * page, which may not be the document's own (an ad's frame).
+         */
+        @JavascriptInterface
+        fun adCosmetic(url: String?): String =
+            AdBlocker.cosmetic(this@MainActivity, url, owner.pageHost)
+
+        /** The filter lists' rules for these classes and ids, as CSS (AdBlocker.hidden). */
+        @JavascriptInterface
+        fun adHide(classes: String?, ids: String?, exceptions: String?): String =
+            AdBlocker.hidden(this@MainActivity, classes, ids, exceptions)
+
         @JavascriptInterface
         fun getFeed(requestId: Int) {
             if (!privileged) return
@@ -2083,9 +2099,21 @@ class MainActivity : AppCompatActivity() {
 
         // One bridge per WebView, kept on the view itself so the page
         // callbacks can tell it whether the document now loading is ours.
-        val bridge = SearchAppBridge()
+        val bridge = SearchAppBridge(web)
         web.tag = bridge
         web.addJavascriptInterface(bridge, "SearchApp")
+        // Ad blocking's element hiding, from the moment each document starts
+        // (where this WebView can), so the ad boxes are never seen. It asks
+        // the bridge first and does nothing on a page that is not to be
+        // touched, so it is added whether blocking is on or not.
+        if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
+            try {
+                androidx.webkit.WebViewCompat.addDocumentStartJavaScript(web, AdBlocker.COSMETIC_JS, setOf("*"))
+                web.cosmeticAtStart = true
+            } catch (e: Exception) {
+                // An older WebView that says it can and cannot: the page-finished route below.
+            }
+        }
 
         web.webViewClient = object : WebViewClient() {
             /**
@@ -2414,13 +2442,14 @@ class MainActivity : AppCompatActivity() {
                 // Media detection: report HTML5 playback to the app for the
                 // media-control notification (skipped in Night Owl).
                 if (!nightOwl) view?.evaluateJavascript(MediaDetect.js(), null)
-                // Cosmetic ad-hiding: hide common ad containers when blocking is
-                // on - and not on a site the user has allowed ads on.
+                // Ad blocking's element hiding, on a WebView that could not run
+                // it as the page started. The script asks whether this page is
+                // one to touch (AdBlocker.cosmetic).
                 val shownHost = try { android.net.Uri.parse(shown ?: "").host } catch (e: Exception) { null }
-                if (AdBlocker.isEnabled(this@MainActivity) && !AdBlocker.isOwnSite(shownHost) &&
-                    !AdBlockSites.isAllowed(this@MainActivity, shownHost)
+                if ((view as? BrowserWebView)?.cosmeticAtStart == false && AdBlocker.isEnabled(this@MainActivity) &&
+                    !AdBlocker.isOwnSite(shownHost) && !AdBlockSites.isAllowed(this@MainActivity, shownHost)
                 ) {
-                    view?.evaluateJavascript(AdBlocker.hideCss(), null)
+                    view.evaluateJavascript(AdBlocker.COSMETIC_JS, null)
                 }
                 if (Settings.getBool(this@MainActivity, Settings.A11Y_FORCE_ZOOM, false) &&
                     shownHost != null) view?.evaluateJavascript(FORCE_ZOOM_JS, null)

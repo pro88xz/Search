@@ -150,6 +150,8 @@
                     android:visibility="gone" />
                 <TextView android:id="@+id/rowTerms" style="@style/SettingsRow"
                     android:text="Terms of Use" android:drawableStart="@drawable/set_terms" />
+                <TextView android:id="@+id/rowLicenses" style="@style/SettingsRow"
+                    android:text="Open-source licences" android:drawableStart="@drawable/set_terms" />
             </LinearLayout>
 
         </LinearLayout>

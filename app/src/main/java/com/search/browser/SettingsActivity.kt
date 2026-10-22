@@ -293,6 +293,8 @@ class SettingsActivity : AppCompatActivity() {
             }
         findViewById<android.widget.TextView>(R.id.rowTerms)
             .setOnClickListener { openPage("file:///android_asset/terms.html") }
+        findViewById<android.widget.TextView>(R.id.rowLicenses)
+            .setOnClickListener { openPage("file:///android_asset/licenses.html") }
 
         // Google's form to change or withdraw ad consent, or to opt out of the
         // sale or sharing of personal information. Offered only to users UMP

@@ -44,6 +44,9 @@ class BrowserWebView(context: Context) : WebView(context) {
      */
     @Volatile var pageHost: String? = null
 
+    /** Whether ad blocking's element hiding runs as each document starts here (MainActivity), rather than once it has loaded. */
+    var cosmeticAtStart = false
+
     /**
      * Settings > Block autoplay, as the user set it.
      *
