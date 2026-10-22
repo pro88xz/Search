@@ -20,7 +20,8 @@
   [hidden] { display:none !important; }
   body { font:19px/1.7 Georgia,"Noto Serif",serif; padding:20px 22px 120px; max-width:680px; margin:0 auto;
     -webkit-text-size-adjust:100%; overflow-wrap:break-word; }
-  .badge { display:inline-flex; align-items:center; gap:6px; font:600 12.5px/1 Roboto,sans-serif;
+  .badge > * + * { margin-left:6px; }
+  .badge { display:inline-flex; align-items:center; font:600 12.5px/1 Roboto,sans-serif;
     color:var(--accent); background:var(--chip); border-radius:999px; padding:7px 11px; margin:0 0 18px; }
   .badge svg { width:14px; height:14px; }
   h1.t { font:700 28px/1.25 Roboto,"Google Sans",sans-serif; margin:0 0 8px; }
