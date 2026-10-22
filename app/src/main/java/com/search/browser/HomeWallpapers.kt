@@ -31,7 +31,7 @@ object HomeWallpapers {
         Wallpaper("ocean_dusk", "Ocean Dusk", true, 0xFF1A1238.toInt(), 0xFF251C27.toInt()),
         Wallpaper("aurora", "Aurora", true, 0xFF040916.toInt(), 0xFF092723.toInt()),
         Wallpaper("bokeh", "City Lights", true, 0xFF0C081A.toInt(), 0xFF180E30.toInt()),
-        Wallpaper("nebula", "Nebula", true, 0xFF39234E.toInt(), 0xFF3A3069.toInt())
+        Wallpaper("nebula", "Nebula", true, 0xFF020205.toInt(), 0xFF403372.toInt())
     )
 
     fun byId(id: String?): Wallpaper? = ALL.firstOrNull { it.id == id }
