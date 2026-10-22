@@ -29,7 +29,7 @@
     --press:rgba(22,20,40,0.05);
     --shadow-card:0 0 0 1px rgba(22,20,40,0.06), 0 1px 3px rgba(22,20,40,0.05), 0 10px 26px -14px rgba(22,20,40,0.16);
     --card-r:24px;
-    --shadow-tile:0 1px 2px rgba(22,20,40,0.05), 0 6px 14px -6px rgba(22,20,40,0.16);
+    --shadow-tile:0 1px 2px rgba(22,20,40,0.06);
     --shadow-hero:0 2px 4px rgba(22,20,40,0.06), 0 18px 36px -14px rgba(22,20,40,0.42);
     --ease-out:cubic-bezier(.2,.8,.2,1);
     --ease-spring:cubic-bezier(.34,1.5,.64,1);
@@ -144,12 +144,15 @@
      as circles, squares and silhouettes, so the frame is imposed here and the
      icon fills it - one that is already a full square takes the frame over and
      reads as its own app icon, one that is a circle sits in it with its
-     corners showing. 48px: five across a 360dp phone leaves 65 to a cell,
-     which is room for the icon, its shadow and a 17px gutter. */
+     corners showing. Part of the page, not on top of it - as Samsung
+     Internet's quick access is: a 44px plate (two thirds of a 65px cell on
+     a 360dp phone, so the gutters are wider than before), edged with a
+     hairline and the faintest shadow rather than lifted off the page, and
+     rows that breathe. */
   .shortcuts {
     width:100%; max-width:400px;
     display:grid; grid-template-columns:repeat(5,1fr);
-    row-gap:16px; margin-top:24px;
+    row-gap:20px; margin-top:24px;
   }
   .shortcuts.hidden { display:none; }
   .tile {
@@ -161,9 +164,9 @@
     -webkit-touch-callout:none; -webkit-user-select:none; user-select:none;
   }
   .tile .fav {
-    position:relative; width:48px; height:48px; border-radius:15px;
+    position:relative; width:44px; height:44px; border-radius:14px;
     background:var(--surface);
-    box-shadow:0 0 0 1px var(--hair), var(--shadow-tile);
+    box-shadow:0 0 0 0.5px var(--hair), var(--shadow-tile);
     display:flex; align-items:center; justify-content:center;
     font-size:18px; font-weight:700; color:var(--accent-text);
     overflow:hidden;
@@ -179,7 +182,7 @@
     background:#000; opacity:0; transition:opacity .25s ease; pointer-events:none;
   }
   .tile .lbl {
-    margin-top:8px; font-size:11.5px; line-height:14px; font-weight:500; letter-spacing:0.005em;
+    margin-top:7px; font-size:12px; line-height:15px; font-weight:500; letter-spacing:0.005em;
     max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
   /* Press dips the icon; holding keeps sinking it, so a long press visibly
@@ -188,13 +191,12 @@
   .tile.is-pressed .fav::after { opacity:0.06; }
   .tile.is-holding .fav { transform:scale(0.82); transition:transform .38s var(--ease-out); }
   .tile.is-holding .fav::after { opacity:0.1; }
-  /* The add tile reads as an empty slot rather than as another site. */
-  .tile.add .fav {
-    background:rgba(var(--accent-rgb),0.06); box-shadow:none;
-    border:1.5px dashed rgba(var(--accent-rgb),0.42); color:var(--accent-text);
-  }
+  /* The add tile reads as an empty slot rather than as another site: a
+     quiet well, a step below the page, and no word under the plus (TalkBack
+     has its label, "Add shortcut"). */
+  .tile.add .fav { background:var(--press); box-shadow:none; color:var(--muted); }
   .tile.add .fav svg { width:20px; height:20px; }
-  .tile.add .lbl { color:var(--muted); }
+  .tile.add .lbl { visibility:hidden; }
 
   /* Entrance: the top of the page settles in once, on load. */
   @keyframes rise { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:none; } }
@@ -513,106 +515,155 @@
   @keyframes modeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
 
   /* ---------- Focus and Zen: the wash, in the accent ----------
-     html.wash (Focus or Zen, never Night Owl, which keeps its own sky): the
-     accent picked in Settings > Customize with a companion colour that
-     flatters it - Purple with the owl's amber, Blue with aqua, Green with
-     lime, Amber with rose, Rose with lavender, Ink with steel - light and
-     dark. The colours come from the app (HomeWash, through getConfig's
-     "wash" and __setAccent) and are written onto :root as --wash-* and
-     --glow-* (applyWashVars); the ones below are Purple's, for a page that
-     has not been told.
-     The top edge is a plain left-to-right accent tint, blend, companion -
+     html.wash (Focus or Zen, never Night Owl, which keeps its own sky): a
+     sky in the accent picked in Settings > Customize, light and dark. The
+     colours are a system, not a table (HomeWash): roles in OKLCH on one
+     short hue arc from the accent toward the owl's amber, so neighbours mix
+     cleanly and nothing passes through grey or brown. They come from the
+     app (getConfig's "wash", __setAccent) and are written onto :root as
+     --wash-* and --glow-* (applyWashVars); the ones below are Purple's, for
+     a page that has not been told.
+     The top edge is a plain left-to-right accent, arc middle, companion -
      the same three colours the app paints into the top bar, at the same
      places - so bar and page meet with no seam. Nothing else may touch that
-     edge: every glow stops at least 9vh below it, wherever it drifts.
-     Focus: the wash, with one soft bloom of the accent behind the search,
-     still. Zen goes all the way: three glows - the accent, its companion and
-     a deeper accent - drifting on their own clocks, a frosted search box,
-     and a halo round it that slowly breathes. */
+     edge: every light stops at least 9vh below it, wherever it drifts.
+     Focus: the sky, with the accent blooming behind the search and the
+     companion's warmer light beside it, still. Zen goes all the way: three
+     lights - the accent, its companion and a deeper accent - drifting on
+     their own clocks, a frosted search box, and a halo round it that slowly
+     breathes. */
   :root {
-    --wash-v:#D4C2F7; --wash-v-rgb:212,194,247;
-    --wash-m:#E8DBF7; --wash-m-rgb:232,219,247;
-    --wash-a:#FBE2C6; --wash-a-rgb:251,226,198;
-    --wash-b:#E1DAFB; --wash-b-rgb:225,218,251;
-    --glow-1-rgb:184,150,246; --glow-2-rgb:252,206,158; --glow-3-rgb:155,123,232;
+    --wash-v:#DBD2FF; --wash-v-rgb:219,210,255;
+    --wash-m:#F6D7FA; --wash-m-rgb:246,215,250;
+    --wash-a:#FED9E9; --wash-a-rgb:254,217,233;
+    --wash-f:#F7E3F9; --wash-f-rgb:247,227,249;
+    --wash-b:#E1DAFD; --wash-b-rgb:225,218,253;
+    --glow-1-rgb:194,176,254; --glow-2-rgb:253,192,220; --glow-3-rgb:156,151,249;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --wash-v:#2B1A5C; --wash-v-rgb:43,26,92;
-      --wash-m:#271B4A; --wash-m-rgb:39,27,74;
-      --wash-a:#3B2034; --wash-a-rgb:59,32,52;
-      --wash-b:#150F33; --wash-b-rgb:21,15,51;
-      --glow-1-rgb:74,40,150; --glow-2-rgb:128,74,34; --glow-3-rgb:58,42,140;
+      --wash-v:#281E40; --wash-v-rgb:40,30,64;
+      --wash-m:#2B1B36; --wash-m-rgb:43,27,54;
+      --wash-a:#331935; --wash-a-rgb:51,25,53;
+      --wash-f:#22152C; --wash-f-rgb:34,21,44;
+      --wash-b:#130E1F; --wash-b-rgb:19,14,31;
+      --glow-1-rgb:108,74,180; --glow-2-rgb:154,87,159; --glow-3-rgb:59,48,128;
     }
   }
+  /* How strongly Focus's lights show: on night they are the light in the room. */
+  html.wash { --bloom-a:0.42; --light-a:0.58; }
+  @media (prefers-color-scheme: dark) { html.wash { --bloom-a:0.52; --light-a:0.5; } }
   html.wash { background:var(--wash-b); }
   html.wash body { background:transparent; }
+  /* The sky, back to front. The top edge: v, m, a across, the bars' own
+     three colours at the bars' own places. The field (f) rises over it
+     within the first third of the screen on an eased curve - no line where
+     the edge ends - and deepens to the base (b, the bottom bar's colour)
+     toward the bottom. Then Focus's two lights, both well clear of the top
+     edge: the accent blooming behind the search box, and the companion's
+     warmer light up to the right. */
   html.wash::before {
     content:""; position:fixed; left:0; top:0; right:0; bottom:0; z-index:-1; pointer-events:none;
     background:
-      radial-gradient(72vw 26vh at 50% 40%, rgba(var(--glow-1-rgb),0.42), rgba(var(--glow-1-rgb),0) 70%),
-      linear-gradient(180deg, rgba(var(--wash-b-rgb),0) 0%, rgba(var(--wash-b-rgb),0) 26%,
-        rgba(var(--wash-b-rgb),0.72) 62%, var(--wash-b) 90%),
+      radial-gradient(84vw 30vh at 50% 42%, rgba(var(--glow-1-rgb),var(--bloom-a)), rgba(var(--glow-1-rgb),0) 72%),
+      radial-gradient(70vw 24vh at 90% 33%, rgba(var(--glow-2-rgb),var(--light-a)), rgba(var(--glow-2-rgb),0) 72%),
+      linear-gradient(180deg, rgba(var(--wash-f-rgb),0) 0%, rgba(var(--wash-f-rgb),0) 3%,
+        rgba(var(--wash-f-rgb),0.3) 10%, rgba(var(--wash-f-rgb),0.66) 18%, rgba(var(--wash-f-rgb),0.9) 26%,
+        var(--wash-f) 34%, var(--wash-f) 48%, var(--wash-b) 90%),
       linear-gradient(90deg, var(--wash-v) 16.667%, var(--wash-m) 50%, var(--wash-a) 83.333%);
   }
+  /* Zen: the same sky without Focus's still lights; its own three move. */
   html.wash.mode-zen::before {
     background:
-      radial-gradient(96vw 30vh at 52% 54%, rgba(var(--wash-m-rgb),0.6), rgba(var(--wash-m-rgb),0) 70%),
-      linear-gradient(180deg, rgba(var(--wash-b-rgb),0) 0%, rgba(var(--wash-b-rgb),0) 30%,
-        rgba(var(--wash-b-rgb),0.6) 60%, var(--wash-b) 86%),
+      linear-gradient(180deg, rgba(var(--wash-f-rgb),0) 0%, rgba(var(--wash-f-rgb),0) 3%,
+        rgba(var(--wash-f-rgb),0.3) 10%, rgba(var(--wash-f-rgb),0.66) 18%, rgba(var(--wash-f-rgb),0.9) 26%,
+        var(--wash-f) 34%, var(--wash-f) 48%, var(--wash-b) 90%),
       linear-gradient(90deg, var(--wash-v) 16.667%, var(--wash-m) 50%, var(--wash-a) 83.333%);
     animation:washIn .7s var(--ease-out);
   }
   @keyframes washIn { from { opacity:0; } to { opacity:1; } }
-  /* Zen's glows drift: the accent slowly down and to the right, its
-     companion down and to the left, the deeper accent along the bottom, on
-     clocks of 24, 31 and 37 seconds so the wash never repeats the same way
-     twice, breathing a little as they go. Each is its own layer moved by
-     transform and opacity only, so the drift is the compositor's work -
-     nothing is repainted and the page's script is never woken. Still (at
-     its first frame) with reduced motion, and in Battery Saver (html.still,
-     from the app's config). */
+  /* Zen's lights: the accent, its companion and a deeper accent, each a
+     soft round light (a Gaussian-like falloff, so no light has a rim or a
+     bright point at its centre) floating on its own path. Each axis has its
+     own clock - across on transform, up and down on translate, swelling on
+     scale - with periods that share no rhythm, so a light is never at rest
+     (when one axis turns, the others are moving) and the page never
+     repeats. Every axis eases like a sine: nothing starts, stops or bounces.
+     The phases are chosen so the turning points never bunch up, and the
+     delays are negative, so Zen opens mid-motion, never from rest. Speeds
+     stay near 2% of the screen per second.
+     Opacity belongs to washIn alone: a second opacity animation on the same
+     layer sends every animation on it to the main thread (a style recalc
+     every frame), so the lights do not fade in and out - scale does that
+     work. Transform, translate and scale only: all compositor work, no
+     repaint, no script. Every light stays >= 9vh below the top and clear of
+     the bottom bar at its highest, lowest and largest. Still - at the
+     composition below - with reduced motion and in Battery Saver. */
   html.wash.mode-zen body::before, html.wash.mode-zen body::after, html.wash.mode-zen::after {
     content:""; position:fixed; z-index:-1; pointer-events:none; will-change:transform, opacity;
   }
+  /* The accent: behind the search box, wandering either side of it. */
   html.wash.mode-zen body::before {
-    left:-36.8vw; top:14vh; width:89.6vw; height:56vh;
-    background:radial-gradient(closest-side, rgba(var(--glow-1-rgb),0.78), rgba(var(--glow-1-rgb),0));
-    animation:washIn .7s var(--ease-out), zenDrift1 24s ease-in-out .7s infinite alternate;
+    left:-16vw; top:20vh; width:96vw; height:48vh;
+    background:radial-gradient(closest-side, rgba(var(--glow-1-rgb),0.9) 0%, rgba(var(--glow-1-rgb),0.81) 18%, rgba(var(--glow-1-rgb),0.558) 40%, rgba(var(--glow-1-rgb),0.27) 62%, rgba(var(--glow-1-rgb),0.09) 80%, rgba(var(--glow-1-rgb),0) 100%);
+    animation:washIn .7s var(--ease-out),
+      zenAx 15s cubic-bezier(.37,0,.63,1) -3s infinite alternate,
+      zenAy 11.5s cubic-bezier(.37,0,.63,1) -12s infinite alternate,
+      zenAs 9s cubic-bezier(.37,0,.63,1) -17s infinite alternate;
   }
+  /* Its companion: lower and to the right, crossing under the box and back. */
   html.wash.mode-zen body::after {
-    left:53.4vw; top:8.8vh; width:81.2vw; height:50.4vh;
-    background:radial-gradient(closest-side, rgba(var(--glow-2-rgb),0.7), rgba(var(--glow-2-rgb),0));
-    animation:washIn .7s var(--ease-out), zenDrift2 31s ease-in-out .7s infinite alternate;
+    left:22vw; top:35vh; width:92vw; height:46vh;
+    background:radial-gradient(closest-side, rgba(var(--glow-2-rgb),0.95) 0%, rgba(var(--glow-2-rgb),0.855) 18%, rgba(var(--glow-2-rgb),0.589) 40%, rgba(var(--glow-2-rgb),0.285) 62%, rgba(var(--glow-2-rgb),0.095) 80%, rgba(var(--glow-2-rgb),0) 100%);
+    animation:washIn .7s var(--ease-out),
+      zenBx 18s cubic-bezier(.37,0,.63,1) -31.5s infinite alternate,
+      zenBy 13s cubic-bezier(.37,0,.63,1) -4s infinite alternate,
+      zenBs 10.5s cubic-bezier(.37,0,.63,1) -8.5s infinite alternate;
   }
+  /* The deeper accent: a wide low light that never reaches the bottom bar. */
   html.wash.mode-zen::after {
-    left:-10vw; top:52vh; width:120vw; height:52vh;
-    background:radial-gradient(closest-side, rgba(var(--glow-3-rgb),0.5), rgba(var(--glow-3-rgb),0));
-    animation:washIn .7s var(--ease-out), zenDrift3 37s ease-in-out .7s infinite alternate;
+    left:-22vw; top:53vh; width:124vw; height:38vh;
+    background:radial-gradient(closest-side, rgba(var(--glow-3-rgb),0.62) 0%, rgba(var(--glow-3-rgb),0.558) 18%, rgba(var(--glow-3-rgb),0.384) 40%, rgba(var(--glow-3-rgb),0.186) 62%, rgba(var(--glow-3-rgb),0.062) 80%, rgba(var(--glow-3-rgb),0) 100%);
+    animation:washIn .7s var(--ease-out),
+      zenCx 21s cubic-bezier(.37,0,.63,1) -23.5s infinite alternate,
+      zenCy 16s cubic-bezier(.37,0,.63,1) -20.5s infinite alternate,
+      zenCs 12.5s cubic-bezier(.37,0,.63,1) -1s infinite alternate;
   }
-  @keyframes zenDrift1 {
-    from { transform:translate3d(0,0,0) scale(1); opacity:1; }
-    to { transform:translate3d(24vw,11vh,0) scale(1.16); opacity:0.8; }
+  @media (prefers-color-scheme: dark) {
+    html.wash.mode-zen body::before { background:radial-gradient(closest-side, rgba(var(--glow-1-rgb),0.9) 0%, rgba(var(--glow-1-rgb),0.81) 18%, rgba(var(--glow-1-rgb),0.558) 40%, rgba(var(--glow-1-rgb),0.27) 62%, rgba(var(--glow-1-rgb),0.09) 80%, rgba(var(--glow-1-rgb),0) 100%); }
+    html.wash.mode-zen body::after { background:radial-gradient(closest-side, rgba(var(--glow-2-rgb),0.9) 0%, rgba(var(--glow-2-rgb),0.81) 18%, rgba(var(--glow-2-rgb),0.558) 40%, rgba(var(--glow-2-rgb),0.27) 62%, rgba(var(--glow-2-rgb),0.09) 80%, rgba(var(--glow-2-rgb),0) 100%); }
+    html.wash.mode-zen::after { background:radial-gradient(closest-side, rgba(var(--glow-3-rgb),0.72) 0%, rgba(var(--glow-3-rgb),0.648) 18%, rgba(var(--glow-3-rgb),0.446) 40%, rgba(var(--glow-3-rgb),0.216) 62%, rgba(var(--glow-3-rgb),0.072) 80%, rgba(var(--glow-3-rgb),0) 100%); }
   }
-  @keyframes zenDrift2 {
-    from { transform:translate3d(0,2vh,0) scale(1.04); opacity:1; }
-    to { transform:translate3d(-26vw,11vh,0) scale(0.94); opacity:0.72; }
-  }
-  @keyframes zenDrift3 {
-    from { transform:translate3d(-8vw,0,0) scale(1); opacity:1; }
-    to { transform:translate3d(14vw,-8vh,0) scale(1.12); opacity:0.62; }
-  }
+  @keyframes zenAx { from { transform:translateX(-17vw); } to { transform:translateX(17vw); } }
+  @keyframes zenAy { from { translate:0 -5vh; } to { translate:0 5vh; } }
+  @keyframes zenAs { from { scale:0.9; } to { scale:1.08; } }
+  @keyframes zenBx { from { transform:translateX(18vw); } to { transform:translateX(-18vw); } }
+  @keyframes zenBy { from { translate:0 6vh; } to { translate:0 -6vh; } }
+  @keyframes zenBs { from { scale:1.08; } to { scale:0.9; } }
+  @keyframes zenCx { from { transform:translateX(-16vw); } to { transform:translateX(16vw); } }
+  @keyframes zenCy { from { translate:0 2vh; } to { translate:0 -5vh; } }
+  @keyframes zenCs { from { scale:0.92; } to { scale:1.06; } }
   html.wash.mode-zen.still body::before, html.wash.mode-zen.still body::after,
   html.wash.mode-zen.still::after { animation:none; }
-  /* Zen's halo: a glow of the accent round the search box that slowly
-     comes and goes. Opacity only; the box itself never moves. */
+  /* Zen's halo: the search box breathes - five seconds in, five out, the
+     calm-breathing rate - a soft light of the accent swelling a little and
+     brightening, then settling. No outline pulses: the box's own edge stays
+     put. Opacity and transform only; the box itself never moves. On dark,
+     the lifted accent (an inky accent would glow black). */
   html.wash.mode-zen .field::after {
-    content:""; position:absolute; left:-2px; top:-2px; right:-2px; bottom:-2px; border-radius:34px;
-    pointer-events:none; will-change:opacity;
-    box-shadow:0 0 0 1px rgba(var(--accent-rgb),0.2), 0 0 28px 4px rgba(var(--accent-rgb),0.4);
-    opacity:0.35; animation:zenHalo 5.5s ease-in-out 1s infinite alternate;
+    content:""; position:absolute; left:0; top:0; right:0; bottom:0; border-radius:32px;
+    pointer-events:none; will-change:transform, opacity;
+    box-shadow:0 0 18px 1px rgba(var(--glow-1-rgb),0.85), 0 0 44px 8px rgba(var(--glow-1-rgb),0.4);
+    opacity:0.6; animation:zenHalo 5s cubic-bezier(.37,0,.63,1) -1.5s infinite alternate;
   }
-  @keyframes zenHalo { from { opacity:0.35; } to { opacity:1; } }
+  @media (prefers-color-scheme: dark) {
+    html.wash.mode-zen .field::after {
+      box-shadow:0 0 18px 1px rgba(var(--accent-rgb),0.45), 0 0 44px 8px rgba(var(--accent-rgb),0.2);
+      box-shadow:0 0 18px 1px color-mix(in srgb, var(--accent-dd) 45%, transparent),
+        0 0 44px 8px color-mix(in srgb, var(--accent-dd) 20%, transparent);
+    }
+  }
+  @keyframes zenHalo { from { opacity:0.3; transform:scale(0.994); } to { opacity:1; transform:scale(1.012); } }
   html.wash.mode-zen.still .field::after { animation:none; opacity:0.6; }
   /* On the wash the light end of the wordmark's gradient fades out; it
      keeps to the deeper half of the accent there. */
@@ -749,7 +800,7 @@
     var w = (darkQuery && darkQuery.matches) ? washSets.dark : washSets.light;
     if (!w) return;
     var st = root.style;
-    [['v', '--wash-v'], ['m', '--wash-m'], ['a', '--wash-a'], ['b', '--wash-b']].forEach(function(k){
+    [['v', '--wash-v'], ['m', '--wash-m'], ['a', '--wash-a'], ['f', '--wash-f'], ['b', '--wash-b']].forEach(function(k){
       var c = parseHex(w[k[0]]);
       if (!c) return;
       st.setProperty(k[1], toHex(c));
