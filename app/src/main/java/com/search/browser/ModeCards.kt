@@ -222,21 +222,23 @@ class ModeCards(
         }
         private var canvas: Canvas? = null
 
-        /** home.html's wash in miniature, in the accent: its tint, blend and companion across the top, its base rising from below. */
+        /** home.html's wash in miniature, in the accent: its three colours across the top, the field rising over them and deepening to the base. */
         private fun wash(w: Float, h: Float) {
             val c = canvas ?: return
             val rad = 12f * d
             r.set(d, d, w - d, h - d)
             val palette = HomeWash.palette(Settings.getHomeAccent(context), night)
             val across = palette.top
-            val blue = palette.bottom
+            val field = palette.field
             p.style = Paint.Style.FILL
             p.shader = android.graphics.LinearGradient(r.left, 0f, r.right, 0f, across,
                 floatArrayOf(1f / 6f, 0.5f, 5f / 6f), android.graphics.Shader.TileMode.CLAMP)
             c.drawRoundRect(r, rad, rad, p)
+            // The same curve as the page's field (home.html, html.wash::before).
             p.shader = android.graphics.LinearGradient(0f, r.top, 0f, r.bottom,
-                intArrayOf(tint(blue, 0f), tint(blue, 0f), tint(blue, 0.72f), blue),
-                floatArrayOf(0f, 0.26f, 0.62f, 0.9f), android.graphics.Shader.TileMode.CLAMP)
+                intArrayOf(tint(field, 0f), tint(field, 0f), tint(field, 0.3f), tint(field, 0.66f),
+                    tint(field, 0.9f), field, field, palette.bottom),
+                floatArrayOf(0f, 0.03f, 0.1f, 0.18f, 0.26f, 0.34f, 0.48f, 0.9f), android.graphics.Shader.TileMode.CLAMP)
             c.drawRoundRect(r, rad, rad, p)
             p.shader = null
             p.style = Paint.Style.STROKE; p.strokeWidth = d * 0.8f; p.color = hair
