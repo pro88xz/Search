@@ -70,9 +70,12 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+    // Lint stops the build on an error: every release build runs its fatal
+    // checks (lintVitalRelease), and CI runs the full set (lintRelease) on
+    // every push. Warnings are reported, not fatal.
     lint {
-        abortOnError = false
-        checkReleaseBuilds = false
+        abortOnError = true
+        checkReleaseBuilds = true
     }
 
     buildFeatures {

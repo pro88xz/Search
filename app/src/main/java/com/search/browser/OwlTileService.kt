@@ -12,6 +12,8 @@ import android.service.quicksettings.TileService
  */
 class OwlTileService : TileService() {
 
+    // The Intent form is only used below API 34, where it is not deprecated.
+    @android.annotation.SuppressLint("StartActivityAndCollapseDeprecated")
     override fun onClick() {
         super.onClick()
         val open = Intent(this, MainActivity::class.java)
