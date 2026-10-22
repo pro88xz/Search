@@ -1754,8 +1754,10 @@ class MainActivity : AppCompatActivity() {
             } catch (e: Exception) { false }
             // Focus and Zen's colours in this accent, light and dark (HomeWash).
             val wash = HomeWash.json(accent).toString()
+            // The wallpaper chosen in Customize, if any (HomeWallpapers).
+            val wallpaper = HomeWallpapers.json(HomeWallpapers.current(this@MainActivity))
             return "{\"background\":\"$bg\",\"accent\":\"$accent\",\"tiles\":$tiles,\"nightOwl\":$nightOwl," +
-                "\"mode\":\"$mode\",\"zenTiles\":$zen,\"powerSave\":$powerSave,\"wash\":$wash}"
+                "\"mode\":\"$mode\",\"zenTiles\":$zen,\"powerSave\":$powerSave,\"wash\":$wash,\"wallpaper\":$wallpaper}"
         }
         /** home.html: the stories and publishers the reader hid (FeedHidden). */
         @JavascriptInterface

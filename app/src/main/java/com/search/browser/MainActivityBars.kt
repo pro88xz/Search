@@ -421,6 +421,8 @@ internal fun MainActivity.fieldPane(bar: Int, onDark: Boolean): Int =
  */
 internal fun MainActivity.homeWash(url: String?): Array<IntArray?>? {
     if (nightOwl || url == null || url != homePage) return null
+    // A wallpaper's top and bottom rows are flat colours made for this (HomeWallpapers).
+    HomeWallpapers.current(this)?.let { w -> return arrayOf(IntArray(3) { w.top }, IntArray(3) { w.bottom }) }
     // What the page on screen says it shows; until it has said, the mode
     // it was asked for. They differ only for a moment - home takes up the
     // app's mode whenever it comes into view - but in that moment the

@@ -145,6 +145,7 @@ object Settings {
     const val HIDE_BARS_ON_SCROLL = "hide_bars_on_scroll" // default true
     const val TINT_BARS = "tint_bars"                  // default false: bars keep the app's surface; on, they take the site's colour
     const val HOME_ACCENT = "home_accent"              // hex string
+    const val HOME_WALLPAPER = "home_wallpaper"        // a HomeWallpapers id, or "none" (the default)
     const val HOME_SHOW_TILES = "home_show_tiles"      // default true
     const val HOME_AFTER_AWAY = "home_after_away"      // default true: open on home after 4 hours away
     const val LEFT_AT = "left_at"                      // wall clock when the browser was last left
@@ -154,6 +155,10 @@ object Settings {
     fun getHomeBackground(c: Context): String =
         prefs(c).getString(HOME_BACKGROUND, "clean") ?: "clean"
     fun setHomeBackground(c: Context, v: String) { prefs(c).edit().putString(HOME_BACKGROUND, v).apply() }
+
+    fun getHomeWallpaper(c: Context): String =
+        prefs(c).getString(HOME_WALLPAPER, "none") ?: "none"
+    fun setHomeWallpaper(c: Context, id: String) { prefs(c).edit().putString(HOME_WALLPAPER, id).apply() }
 
     fun getHomeAccent(c: Context): String =
         prefs(c).getString(HOME_ACCENT, "#8B6BD8") ?: "#8B6BD8"

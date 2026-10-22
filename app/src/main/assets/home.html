@@ -656,21 +656,21 @@
      brightening, then settling. No outline pulses: the box's own edge stays
      put. Opacity and transform only; the box itself never moves. On dark,
      the lifted accent (an inky accent would glow black). */
-  html.wash.mode-zen .field::after {
+  html.wash.mode-zen .field::after, html.wp.mode-zen .field::after {
     content:""; position:absolute; left:0; top:0; right:0; bottom:0; border-radius:32px;
     pointer-events:none; will-change:transform, opacity;
     box-shadow:0 0 18px 1px rgba(var(--glow-1-rgb),0.85), 0 0 44px 8px rgba(var(--glow-1-rgb),0.4);
     opacity:0.6; animation:zenHalo 5s cubic-bezier(.37,0,.63,1) -1.5s infinite alternate;
   }
   @media (prefers-color-scheme: dark) {
-    html.wash.mode-zen .field::after {
+    html.wash.mode-zen .field::after, html.wp.mode-zen .field::after {
       box-shadow:0 0 18px 1px rgba(var(--accent-rgb),0.45), 0 0 44px 8px rgba(var(--accent-rgb),0.2);
       box-shadow:0 0 18px 1px color-mix(in srgb, var(--accent-dd) 45%, transparent),
         0 0 44px 8px color-mix(in srgb, var(--accent-dd) 20%, transparent);
     }
   }
   @keyframes zenHalo { from { opacity:0.3; transform:scale(0.994); } to { opacity:1; transform:scale(1.012); } }
-  html.wash.mode-zen.still .field::after { animation:none; opacity:0.6; }
+  html.wash.mode-zen.still .field::after, html.wp.mode-zen.still .field::after { animation:none; opacity:0.6; }
   /* On the wash the light end of the wordmark's gradient fades out; it
      keeps to the deeper half of the accent there. */
   html.wash .wordmark {
@@ -687,18 +687,70 @@
     html.wash .tile .fav:not(.has-icon) { background:rgba(255,255,255,0.08); }
   }
   /* Zen's frosted search box: the wash shows through it, softened. */
-  html.wash.mode-zen .field {
+  html.wash.mode-zen .field, html.wp.mode-zen .field {
     background:rgba(255,255,255,0.74);
     -webkit-backdrop-filter:blur(18px) saturate(1.15); backdrop-filter:blur(18px) saturate(1.15);
     box-shadow:inset 0 0 0 1px rgba(255,255,255,0.7), 0 2px 6px rgba(22,20,40,0.04),
       0 18px 36px -16px rgba(var(--accent-rgb),0.38);
   }
   @media (prefers-color-scheme: dark) {
-    html.wash.mode-zen .field {
+    html.wash.mode-zen .field, html.wp.mode-zen .field {
       background:rgba(var(--wash-b-rgb),0.62);
       box-shadow:inset 0 0 0 1px rgba(255,255,255,0.08), 0 18px 36px -16px rgba(0,0,0,0.6);
     }
   }
+
+  /* ---------- Wallpaper ----------
+     html.wp: a scene chosen in Customize (HomeWallpapers), fixed behind the
+     page so the page scrolls over it, in every mode but Night Owl, which
+     keeps its own sky. Its top and bottom rows are flat colours (--wp-top,
+     --wp-bottom) that the bars take too, so bar and page meet with no seam;
+     it is anchored to the top so that row stays the top however a screen
+     crops it. Words that sit on it follow the wallpaper's tone (wp-dark,
+     wp-light), not the phone's theme, with a soft shadow for busy scenes. */
+  html.wp { background:var(--wp-bottom); }
+  html.wp body { background:transparent; }
+  html.wp::before {
+    content:""; position:fixed; left:0; top:0; right:0; bottom:0; z-index:-1; pointer-events:none;
+    background:var(--wp-top) var(--wp-img) center top / cover no-repeat;
+    animation:washIn .5s var(--ease-out);
+  }
+  html.wp-dark .wordmark {
+    background:linear-gradient(100deg, var(--accent-dd) 0%, #FFFFFF 130%);
+    -webkit-background-clip:text; background-clip:text;
+  }
+  html.wp-light .wordmark {
+    background:linear-gradient(100deg, var(--accent-l) 0%, var(--accent-deep) 80%);
+    -webkit-background-clip:text; background-clip:text;
+  }
+  html.wp-dark .tile .lbl, html.wp-dark .shield, html.wp-dark .feed-end {
+    color:rgba(255,255,255,0.88); text-shadow:0 1px 2px rgba(0,0,0,0.55);
+  }
+  html.wp-light .tile .lbl, html.wp-light .shield, html.wp-light .feed-end {
+    color:#2C2838; text-shadow:0 1px 2px rgba(255,255,255,0.6);
+  }
+  html.wp-dark .shield b, html.wp-dark .sec-title h2 { color:#FFFFFF; }
+  html.wp-light .shield b, html.wp-light .sec-title h2 { color:#16151B; }
+  html.wp-dark .sec-title h2 { text-shadow:0 1px 3px rgba(0,0,0,0.5); }
+  html.wp-dark .see-all { color:rgba(255,255,255,0.92); }
+  html.wp-light .see-all { color:var(--ink-l); }
+  html.wp-dark .tile .fav:not(.has-icon) { background:rgba(255,255,255,0.14); color:#FFFFFF; }
+  html.wp-light .tile .fav:not(.has-icon) { background:rgba(255,255,255,0.6); }
+  html.wp-dark .tile.add .fav { background:rgba(255,255,255,0.14); color:rgba(255,255,255,0.85); }
+  html.wp-light .tile.add .fav { background:rgba(255,255,255,0.5); color:#5A5566; }
+  /* Zen's frosted box on a wallpaper follows the wallpaper, not the phone's
+     theme: light glass on a light scene, dark glass on a dark one. */
+  html.wp-light.mode-zen .field {
+    background:rgba(255,255,255,0.74);
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,0.7), 0 2px 6px rgba(22,20,40,0.04),
+      0 18px 36px -16px rgba(var(--accent-rgb),0.38);
+  }
+  html.wp-light.mode-zen .field .fhint { color:#6B6578; }
+  html.wp-dark.mode-zen .field {
+    background:rgba(12,10,24,0.55);
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,0.10), 0 18px 36px -16px rgba(0,0,0,0.6);
+  }
+  html.wp-dark.mode-zen .field .fhint { color:rgba(255,255,255,0.72); }
 
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
@@ -801,6 +853,22 @@
   // Focus and Zen's colours in the accent, light and dark (HomeWash), and
   // the accent they are for - which the app is told back (modeClasses).
   var washSets = null, shownAccent = '#8B6BD8';
+
+  // The wallpaper chosen in Customize (HomeWallpapers), or null. The smaller
+  // file is used when the screen is no taller than it in device pixels - a
+  // low-end phone decodes 15 MB instead of 33 - and the 4K one otherwise.
+  var wallpaper = null;
+  function applyWallpaper(w){
+    var ok = !!w && /^[a-z_]+$/.test(String(w.id || '')) && !!parseHex(w.top) && !!parseHex(w.bottom);
+    wallpaper = ok ? w : null;
+    var st = root.style;
+    if (!wallpaper) { st.removeProperty('--wp-img'); return; }
+    var px = Math.max(screen.width || 0, screen.height || 0) * (window.devicePixelRatio || 1);
+    var file = 'wallpapers/' + wallpaper.id + (px <= 2816 ? '-1440' : '') + '.webp';
+    st.setProperty('--wp-img', 'url("' + file + '")');
+    st.setProperty('--wp-top', toHex(parseHex(wallpaper.top)));
+    st.setProperty('--wp-bottom', toHex(parseHex(wallpaper.bottom)));
+  }
   function applyWashVars(){
     if (!washSets) return;
     var w = (darkQuery && darkQuery.matches) ? washSets.dark : washSets.light;
@@ -829,6 +897,7 @@
       var cfg = JSON.parse(A.getConfig());
       if (cfg.accent) applyAccent(cfg.accent);
       if (cfg.wash && cfg.wash.light) { washSets = cfg.wash; shownAccent = cfg.wash.accent || shownAccent; }
+      applyWallpaper(cfg.wallpaper || null);
       showTiles = (cfg.tiles !== false);
       nightOwl = (cfg.nightOwl === true);
       if (cfg.mode === 'focus' || cfg.mode === 'zen') mode = cfg.mode;
@@ -842,8 +911,13 @@
     root.classList.remove('mode-explore', 'mode-focus', 'mode-zen');
     root.classList.add('mode-' + mode);
     root.classList.toggle('zen-tiles', zenTiles);
-    // Focus and Zen sit on the owl's wash; Night Owl keeps its own sky.
-    root.classList.toggle('wash', !nightOwl && mode !== 'explore');
+    // A wallpaper, in every mode; else Focus and Zen sit on the owl's wash.
+    // Night Owl keeps its own sky either way.
+    var wp = !!wallpaper && !nightOwl;
+    root.classList.toggle('wp', wp);
+    root.classList.toggle('wp-dark', wp && wallpaper.dark === true);
+    root.classList.toggle('wp-light', wp && wallpaper.dark !== true);
+    root.classList.toggle('wash', !nightOwl && mode !== 'explore' && !wp);
     // The app colours its bars by what this page shows, so it is told -
     // the mode and whether the page is drawn dark.
     try {
@@ -2215,6 +2289,7 @@
         if (c.accent) applyAccent(c.accent);
         washSets = c.wash; shownAccent = c.wash.accent;
       }
+      applyWallpaper(c.wallpaper || null);
       var m = (c.mode === 'focus' || c.mode === 'zen') ? c.mode : 'explore';
       var zt = (c.zenTiles === true);
       if (m !== mode || zt !== zenTiles) window.__setMode(m, zt);
@@ -2228,6 +2303,9 @@
     else if (darkQuery && darkQuery.addListener) darkQuery.addListener(modeClasses);
   } catch (e) {}
   window.addEventListener('pageshow', function(e){ if (e.persisted) syncMode(); });
+
+  // A wallpaper chosen in Settings while this page is open (MainActivity, on resume).
+  window.__setWallpaper = function(w){ applyWallpaper(w); modeClasses(); };
 
   window.__setMode = function(m, zt){
     var next = (m === 'focus' || m === 'zen') ? m : 'explore';
