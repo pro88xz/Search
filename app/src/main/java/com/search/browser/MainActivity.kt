@@ -3,7 +3,6 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 
-
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
@@ -55,7 +54,7 @@ class MainActivity : AppCompatActivity() {
          * asleep behind it is the "native lock contention" ANR Play reports.
          * One thread, so the calls still run in the order they were made.
          */
-        private val cookieIo = java.util.concurrent.Executors.newSingleThreadExecutor()
+        internal val cookieIo = java.util.concurrent.Executors.newSingleThreadExecutor()
 
         // History is rewritten whole on every page load; one thread keeps
         // those writes in order and off the main thread.
@@ -67,24 +66,24 @@ class MainActivity : AppCompatActivity() {
          * requests in flight at once, most of them for queries already typed
          * past. A query superseded before its turn is skipped.
          */
-        private val suggestIo = java.util.concurrent.Executors.newSingleThreadExecutor()
+        internal val suggestIo = java.util.concurrent.Executors.newSingleThreadExecutor()
 
         /**
          * How long a sign-in pop-up may sit on the site's own page, back from
          * the provider and showing nothing, before it is taken to have
          * stalled. A callback page that works closes itself well inside this.
          */
-        private const val POPUP_STALL_MS = 3500L
+        internal const val POPUP_STALL_MS = 3500L
 
         /** The second look at a returned pop-up, before it is judged stalled. */
-        private const val POPUP_RECHECK_MS = 4000L
+        internal const val POPUP_RECHECK_MS = 4000L
 
         /**
          * How long the page behind a returned sign-in gets to show something
          * before it is reloaded. Longer than the pop-up's allowance: a heavy
          * site can spend a few seconds drawing nothing while it starts up.
          */
-        private const val OPENER_STALL_MS = 6000L
+        internal const val OPENER_STALL_MS = 6000L
 
         // Launcher shortcuts (res/xml/shortcuts.xml), the search widget
         // (SearchWidget) and the Night Owl tile (OwlTileService).
@@ -97,30 +96,30 @@ class MainActivity : AppCompatActivity() {
 
     // Posts to the main thread, attached or not. View.post on a WebView that
     // is not on screen waits until it is, which is no use for a background tab.
-    private val uiHandler = Handler(Looper.getMainLooper())
+    internal val uiHandler = Handler(Looper.getMainLooper())
 
     // ---- Native search-page mode ----
-    private var searchMode = false
+    internal var searchMode = false
     // True when the home page is scrolled past its in-page search pill, so the
     // native top bar shows the pill instead of the icon row.
-    private var homeCompact = false
+    internal var homeCompact = false
     private var lastFailedUrl: String? = null
 
     // Tracks the site-settings signature last applied, so we only reload when it changed.
     private var lastSiteSig: String = ""
 
     // True while the window is the small floating PiP one.
-    private var inPip = false
+    internal var inPip = false
 
     // ---- HTML5 fullscreen video ----
-    private var fullscreenView: View? = null
-    private var fullscreenCallback: WebChromeClient.CustomViewCallback? = null
-    private var fullscreenContainer: android.widget.FrameLayout? = null
-    private var savedOrientation =
+    internal var fullscreenView: View? = null
+    internal var fullscreenCallback: WebChromeClient.CustomViewCallback? = null
+    internal var fullscreenContainer: android.widget.FrameLayout? = null
+    internal var savedOrientation =
         android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
 
     // Voice search launcher (RecognizerIntent -> go()).
-    private val voiceLauncher = registerForActivityResult(
+    internal val voiceLauncher = registerForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == android.app.Activity.RESULT_OK) {
@@ -137,7 +136,7 @@ class MainActivity : AppCompatActivity() {
         androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
     ) { /* granted or not; media notification simply won't show if denied */ }
     private var askedNotifPerm = false
-    private fun ensureNotifPermission() {
+    internal fun ensureNotifPermission() {
         if (android.os.Build.VERSION.SDK_INT < 33) return
         if (askedNotifPerm) return
         val granted = androidx.core.content.ContextCompat.checkSelfPermission(
@@ -150,30 +149,30 @@ class MainActivity : AppCompatActivity() {
     }
     // Storage permission for downloads on Android 9 and below (API <= 28).
     // Holds the pending download so it can resume after the user grants it.
-    private data class PendingDownload(
+    internal data class PendingDownload(
         val url: String,
         val userAgent: String?,
         val contentDisposition: String?,
         val mimeType: String?
     )
-    private var pendingDownload: PendingDownload? = null
+    internal var pendingDownload: PendingDownload? = null
     // Same deal for a long-pressed image on API <= 28.
-    private var pendingImageSave: String? = null
+    internal var pendingImageSave: String? = null
     // One-shot ticket for a blob: save. Minted when the user taps Save and
     // spent on first use - the bridge is on every page, so without this any
     // site could write to the gallery unprompted.
-    @Volatile private var blobSaveToken: String? = null
+    @Volatile internal var blobSaveToken: String? = null
     // Same one-shot idea for a blob: download, one ticket per file being
     // saved. The bridge is reachable from every page, so without a ticket any
     // site could drop a file into the user's Downloads folder unprompted.
-    private class BlobSave(val name: String, val mime: String?) {
+    internal class BlobSave(val name: String, val mime: String?) {
         @Volatile var sink: DownloadSink? = null
         @Volatile var total = -1L
         @Volatile var progress: SaveProgress? = null
         @Volatile var checkedAt = 0L
     }
-    private val blobSaves = java.util.concurrent.ConcurrentHashMap<String, BlobSave>()
-    private val storagePermLauncher = registerForActivityResult(
+    internal val blobSaves = java.util.concurrent.ConcurrentHashMap<String, BlobSave>()
+    internal val storagePermLauncher = registerForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
     ) { granted ->
         val pd = pendingDownload
@@ -339,7 +338,7 @@ class MainActivity : AppCompatActivity() {
         return i
     }
 
-    private fun hasNetwork(): Boolean {
+    internal fun hasNetwork(): Boolean {
         val cm = getSystemService(android.content.Context.CONNECTIVITY_SERVICE)
             as android.net.ConnectivityManager
         val net = cm.activeNetwork ?: return false
@@ -427,46 +426,20 @@ class MainActivity : AppCompatActivity() {
     // offers Retry, and the page reloads by itself when the network is back.
     // Only the tab on screen is watched.
 
-    private var loadWatchTab: Tab? = null
-    private var loadWatchHost = ""
-    private var loadStartedAt = 0L
-    private var loadCommitted = false
-    private var loadInterrupted = false
+    internal var loadWatchTab: Tab? = null
+    internal var loadWatchHost = ""
+    internal var loadStartedAt = 0L
+    internal var loadCommitted = false
+    internal var loadInterrupted = false
     private val loadStatusTick = Runnable { updateLoadStatus() }
 
     /** The address a load broken by a network change was last retried at. */
     private var networkRetryUrl: String? = null
 
     /** When a renderer was last lost; one loss reaches every tab it served. */
-    private var lastRendererLoss = 0L
+    internal var lastRendererLoss = 0L
 
-    private fun beginLoadWatch(tab: Tab, url: String?) {
-        loadInterrupted = false
-        loadCommitted = false
-        loadStartedAt = android.os.SystemClock.uptimeMillis()
-        val web = url != null && (url.startsWith("http://") || url.startsWith("https://"))
-        loadWatchTab = if (web) tab else null
-        loadWatchHost = if (web) {
-            try { android.net.Uri.parse(url).host?.removePrefix("www.") } catch (e: Exception) { null }
-                ?: ""
-        } else ""
-        updateLoadStatus()
-    }
-
-    private fun commitLoadWatch(tab: Tab?) {
-        if (tab == null || tab !== loadWatchTab || loadCommitted) return
-        loadCommitted = true
-        updateLoadStatus()
-    }
-
-    /** The load is over. An interruption stays on show until it is retried. */
-    private fun endLoadWatch(tab: Tab?) {
-        if (tab == null || tab !== loadWatchTab || loadInterrupted) return
-        loadWatchTab = null
-        updateLoadStatus()
-    }
-
-    private fun updateLoadStatus() {
+    internal fun updateLoadStatus() {
         if (!::binding.isInitialized) return
         uiHandler.removeCallbacks(loadStatusTick)
         val pill = binding.loadStatus
@@ -543,47 +516,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * The host of the website on screen, for the menu's per-site ad blocking
-     * row - or null when ad blocking is off or no website is showing.
-     */
-    private fun siteForAds(): String? {
-        if (!AdBlocker.isEnabled(this)) return null
-        val url = tabs.activeTab?.url ?: return null
-        if (!url.startsWith("http://") && !url.startsWith("https://")) return null
-        return try { android.net.Uri.parse(url).host?.ifBlank { null } } catch (e: Exception) { null }
-    }
-
-    /** Whether the page on screen is still loading. */
-    private fun pageLoading(): Boolean = (activeWeb()?.progress ?: 100) in 1..99
-
-    private fun retryInterruptedLoad() {
-        loadInterrupted = false
-        val tab = loadWatchTab
-        loadWatchTab = null
-        updateLoadStatus()
-        val web = activeWeb() ?: return
-        if (tab === tabs.activeTab) web.reload()
-    }
-
-    private fun isErrorPage(url: String?): Boolean =
-        url != null && (url.startsWith("file:///android_asset/offline.html") ||
-            url.startsWith("file:///android_asset/error.html")) &&
-            // A page stopped for not responding is not a failure to retry by
-            // itself: it would only stop everything again (stoppedPage).
-            !url.contains("stopped=1")
-
-    /**
-     * The page shown in place of one the user ended for not responding: what
-     * happened, and a Try again that goes back to [url] only when tapped.
-     */
-    private fun stoppedPage(url: String, crashed: Boolean = false): String {
-        val base = "file:///android_asset/error.html?stopped=1" + (if (crashed) "&crashed=1" else "")
-        return try {
-            base + "&u=" + java.net.URLEncoder.encode(url, "UTF-8")
-        } catch (e: Exception) { base }
-    }
-
-    /**
      * Back online: the tab on screen tries again if it is showing the offline
      * or "can't reach" page in place of a page, or had a load cut short.
      */
@@ -600,255 +532,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     /** What lastSiteSig last applied for pictures; Save data on mobile data changes it between networks. */
-    private var lastImagesBlocked: Boolean? = null
+    internal var lastImagesBlocked: Boolean? = null
 
-    /**
-     * Pictures off: Data saver on, or Save data on mobile data while the
-     * phone is on a metered network (mobile data, a hotspot).
-     */
-    private fun imagesBlocked(): Boolean {
-        if (Settings.getBool(this, Settings.SITE_BLOCK_IMAGES, false)) return true
-        if (!Settings.getBool(this, Settings.DATA_SAVER_MOBILE, false)) return false
-        return try {
-            (getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager).isActiveNetworkMetered
-        } catch (e: Exception) { false }
-    }
-
-    /** On a change of network: every tab's pictures on or off to match, at once. Turning them on loads them. */
-    private fun applyDataSaverNow() {
-        val b = imagesBlocked()
-        if (b == lastImagesBlocked) return
-        lastImagesBlocked = b
-        tabs.tabs.forEach { t -> try { t.webView?.settings?.blockNetworkImage = b } catch (e: Exception) {} }
-    }
-
-    private fun cleanLinksOn() = Settings.getBool(this, Settings.CLEAN_LINKS, true)
-
-    /** [url] as it is copied or shared: without its tracking tags, while that is on (LinkCleaner). */
-    private fun shareable(url: String): String = if (cleanLinksOn()) LinkCleaner.clean(url) ?: url else url
-
-    private fun siteSettingsSignature(): String {
-        return listOf(
-            Settings.getBool(this, Settings.SITE_JAVASCRIPT, true),
-            imagesBlocked(),
-            Settings.getBool(this, Settings.SITE_BLOCK_AUTOPLAY, true),
-            // Both of these were read once, when a tab's WebView was built, and
-            // never looked at again. Toggling either did nothing to any tab
-            // already open - and unlike ad blocking, which is consulted per
-            // request, a reload did not help: they are properties of the
-            // WebView, not of the page in it.
-            Settings.getBool(this, Settings.SEC_SAFE_BROWSING, true),
-            Settings.getBool(this, Settings.SEC_BLOCK_3P_COOKIES, false),
-            Settings.getTextScale(this),
-            SiteZoom.signature(this),
-            Settings.getBool(this, Settings.DARK_WEB, false)
-        ).joinToString("|")
-    }
-    private var suggestAdapter: SuggestAdapter? = null
-    @Volatile private var suggestSeq = 0
+    internal var suggestAdapter: SuggestAdapter? = null
+    @Volatile internal var suggestSeq = 0
 
     // The suggestion backdrop's own bottom padding from the layout, kept so
     // the keyboard inset can be added on top of it rather than replacing it.
     // Each overlay's own bottom padding, before reachUnderNavBar adds to it.
-    private val navPadBase = HashMap<View, Int>()
+    internal val navPadBase = HashMap<View, Int>()
 
-    /**
-     * Stretches [v] down over the strip under the navigation bar, which the
-     * root leaves as padding, so its background runs to the bottom of the
-     * screen as the bottom bar's does. The strip is added to its bottom
-     * padding, so nothing in it is laid out behind Android's buttons.
-     * [padding] is the bottom padding it would have without the strip.
-     */
-    private fun reachUnderNavBar(v: View, strip: Int,
-                                 padding: Int = navPadBase.getOrPut(v) { v.paddingBottom }) {
-        val lp = v.layoutParams as? ViewGroup.MarginLayoutParams ?: return
-        if (lp.bottomMargin != -strip) {
-            lp.bottomMargin = -strip
-            v.layoutParams = lp
-        }
-        if (v.paddingBottom != padding + strip) {
-            v.setPadding(v.paddingLeft, v.paddingTop, v.paddingRight, padding + strip)
-        }
-    }
-
-    private var suggestBasePad = -1
-
-    private fun setupSuggestOverlay() {
-        if (suggestBasePad < 0) suggestBasePad = binding.suggestBackdrop.paddingBottom
-        suggestAdapter = SuggestAdapter(emptyList(), { item ->
-            if (suggestListMoving()) return@SuggestAdapter
-            val kind = item.optString("kind")
-            val title = item.optString("title")
-            val url = item.optString("url")
-            when (kind) {
-                // An open tab: go to it rather than loading the page again.
-                "tab" -> {
-                    exitSearchMode()
-                    val id = item.optLong("tabId", -1L)
-                    tabs.tabs.firstOrNull { it.id == id }?.let { openTab(it) }
-                }
-                // The copied link, read now if it was not read to offer it.
-                "clip" -> {
-                    val link = url.ifBlank { readClipboardText() ?: "" }
-                    exitSearchMode()
-                    if (link.isNotBlank()) go(link)
-                }
-                else -> {
-                    exitSearchMode()
-                    if (kind == "web" || url.isBlank()) go(title) else loadInto(activeWeb(), url)
-                }
-            }
-        }, { item ->
-            // The arrow loads a suggestion into the box instead of running it, so
-            // a near-miss can be edited rather than retyped. The box's own text
-            // watcher refreshes the list, so nothing is fetched twice here.
-            if (suggestListMoving()) return@SuggestAdapter
-            val fill = if (item.optString("kind") == "clip" && item.optString("url").isBlank()) {
-                readClipboardText() ?: ""
-            } else {
-                item.optString("fill")
-                    .ifBlank { item.optString("url") }
-                    .ifBlank { item.optString("title") }
-            }
-            binding.urlBar.setText(fill)
-            binding.urlBar.setSelection(fill.length)
-        })
-        // Rows are clipped to the card's rounded corners. Set here rather
-        // than in XML: android:clipToOutline is API 31+, and this app runs
-        // from 24, where it would be ignored and the corner would square off
-        // under a ripple.
-        binding.suggestCard.clipToOutline = true
-        // The card starts hidden and stays hidden whenever it is empty.
-        //
-        // It is wrap_content with 8dp of padding above and below, so with no
-        // rows it still measures 16dp and paints every one of them white: a
-        // thin strip under the search box that looks like a rendering fault.
-        // This did not show before the card, because the list was the page
-        // and an empty page is just a page.
-        //
-        // An adapter observer rather than a check after each fetch, so it
-        // holds for every route to empty - the clear at the end of
-        // animateSearchOut, a query with no results, and the gap between
-        // search opening and the first suggestion arriving.
-        binding.suggestCard.visibility = View.GONE
-        suggestAdapter?.registerAdapterDataObserver(
-            object : androidx.recyclerview.widget.RecyclerView.AdapterDataObserver() {
-                private fun sync() {
-                    // The whole card, heading included. Hiding only the list
-                    // would leave a white box with a heading and nothing
-                    // under it, which is worse than the strip this replaced.
-                    binding.suggestCard.visibility =
-                        if ((suggestAdapter?.itemCount ?: 0) > 0) View.VISIBLE
-                        else View.GONE
-                }
-                override fun onChanged() = sync()
-                override fun onItemRangeInserted(start: Int, count: Int) = sync()
-                override fun onItemRangeRemoved(start: Int, count: Int) = sync()
-            })
-        binding.suggestOverlay.layoutManager =
-            androidx.recyclerview.widget.LinearLayoutManager(this)
-        binding.suggestOverlay.adapter = suggestAdapter
-        binding.suggestOverlay.addOnScrollListener(
-            object : androidx.recyclerview.widget.RecyclerView.OnScrollListener() {
-                override fun onScrolled(
-                    rv: androidx.recyclerview.widget.RecyclerView, dx: Int, dy: Int
-                ) {
-                    if (dy != 0) lastSuggestScroll = android.os.SystemClock.uptimeMillis()
-                }
-            })
-    }
-
-    private fun fetchSuggests(query: String) {
-        val id = ++suggestSeq
-        val q = query.trim()
-        // Gathered here, on the main thread, where the tab list and the
-        // clipboard live: the link just copied, then open tabs that match.
-        val first = mutableListOf<JSONObject>()
-        copiedLinkSuggestion(q)?.let { first += it }
-        first += openTabSuggestions(q)
-        val firstUrls = first.map { it.optString("url") }.filter { it.isNotBlank() }.toSet()
-        try {
-            suggestIo.execute {
-                if (id != suggestSeq) return@execute
-                // On this executor's thread an uncaught throw ends the app;
-                // a suggestion list that cannot be built is just the first part.
-                val more = try { buildSuggestions(q) } catch (t: Throwable) { emptyList() }
-                val items = first + more.filter { it.optString("url") !in firstUrls }
-                runOnUiThread {
-                    if (id == suggestSeq && searchMode) suggestAdapter?.submit(items, q)
-                }
-            }
-        } catch (e: java.util.concurrent.RejectedExecutionException) { /* closing down */ }
-    }
-
-    /**
-     * Open tabs matching what is typed, offered as "Switch to tab" - so typing
-     * the name of a site already open goes to it instead of opening it twice.
-     * Night Owl's tabs and the others are never offered across the line.
-     */
-    private fun openTabSuggestions(q: String): List<JSONObject> {
-        if (q.length < 2) return emptyList()
-        val active = tabs.activeTab
-        return tabs.tabs.asSequence()
-            .filter { it !== active && it.isPrivate == nightOwl }
-            .filter { it.url.startsWith("http://") || it.url.startsWith("https://") }
-            .filter { matchesQuery(it.title, it.url, q) }
-            .take(2)
-            .map { t ->
-                JSONObject()
-                    .put("kind", "tab")
-                    .put("title", PageLabel.title(t.title, t.url).ifBlank { siteNameOf(t.url) })
-                    .put("url", t.url)
-                    .put("sub", "Switch to tab \u00B7 " + siteNameOf(t.url))
-                    .put("tabId", t.id)
-            }
-            .toList()
-    }
-
-    /**
-     * A link copied in the last ten minutes, offered when the box is empty.
-     *
-     * From Android 12 reading the clipboard shows a "pasted from your
-     * clipboard" notice, so there it is not read just to make the offer: the
-     * system's own description says whether it holds a link, and the link is
-     * only read when the suggestion is picked. Before Android 12 there is no
-     * notice, and the link itself is shown.
-     */
-    private fun copiedLinkSuggestion(q: String): JSONObject? {
-        if (q.isNotEmpty()) return null
-        return try {
-            val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
-            val desc = cm.primaryClipDescription ?: return null
-            if (!desc.hasMimeType("text/*")) return null
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                val age = System.currentTimeMillis() - desc.timestamp
-                if (age < 0 || age > 10 * 60 * 1000L) return null
-            }
-            val offer = JSONObject().put("kind", "clip").put("title", "Link you copied")
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                val isLink = desc.classificationStatus ==
-                    android.content.ClipDescription.CLASSIFICATION_COMPLETE &&
-                    desc.getConfidenceScore(android.view.textclassifier.TextClassifier.TYPE_URL) >= 0.5f
-                if (!isLink) return null
-                offer.put("url", "").put("sub", "Tap to open it")
-            } else {
-                val text = readClipboardText() ?: return null
-                if (!looksLikeLink(text)) return null
-                offer.put("url", text).put("sub", PageLabel.siteOf(text).ifEmpty { text })
-            }
-        } catch (e: Exception) { null }
-    }
-
-    /** The clipboard's text, or null. */
-    private fun readClipboardText(): String? = try {
-        val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
-        cm.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)
-            ?.coerceToText(this)?.toString()?.trim()?.takeIf { it.isNotEmpty() && it.length < 2048 }
-    } catch (e: Exception) { null }
-
-    private fun looksLikeLink(text: String): Boolean =
-        !text.contains(' ') && !text.contains('\n') &&
-            android.util.Patterns.WEB_URL.matcher(text).matches()
+    internal var suggestBasePad = -1
 
     /**
      * While searching, the field becomes a card sitting above a stack of cards
@@ -864,31 +558,31 @@ class MainActivity : AppCompatActivity() {
     // One control at three sizes: grey address bar while browsing, and the same
     // white pill as the home field when collapsed or searching. Previously the
     // collapsed state kept the browsing style, so it was the odd one of three.
-    private val FIELD_NORMAL = 0
-    private val FIELD_COMPACT = 1
-    private val FIELD_SEARCH = 2
+    internal val FIELD_NORMAL = 0
+    internal val FIELD_COMPACT = 1
+    internal val FIELD_SEARCH = 2
 
     // The pill's height in each state, in dp. Named rather than written into
     // the when below, because the collapse animation has to travel between two
     // of them instead of jumping.
-    private val FIELD_H_NORMAL = 48f
+    internal val FIELD_H_NORMAL = 48f
     // Pinned to the top of the home page, and searching: 44 in the 58dp bar,
     // so the box sits centred with 7dp of air above and below, as Chrome's
     // does, rather than filling the bar and crowding the status bar and any
     // camera cutout above it. The buttons inside stay centred.
-    private val FIELD_H_COMPACT = 44f
+    internal val FIELD_H_COMPACT = 44f
 
     /**
      * How far the search pill travels as it slides up into the bar, in dp.
      * Small on purpose: this is a dock, not an entrance.
      */
-    private val SLIDE_DP = 12f
+    internal val SLIDE_DP = 12f
     private val FIELD_H_SEARCH = 44f
 
     /** The style styleUrlBar last gave the field. */
-    private var fieldMode = FIELD_NORMAL
+    internal var fieldMode = FIELD_NORMAL
 
-    private fun styleUrlBar(mode: Int) {
+    internal fun styleUrlBar(mode: Int) {
         val d = resources.displayMetrics.density
         val pill = mode != FIELD_NORMAL
         val top = binding.urlBar.paddingTop
@@ -957,98 +651,10 @@ class MainActivity : AppCompatActivity() {
         if (fieldPaneFor != null || topOnDark) paintTopForeground()
     }
 
-    private fun styleUrlBarForSearch(searching: Boolean) {
-        styleUrlBar(
-            when {
-                searching -> FIELD_SEARCH
-                homeCompact -> FIELD_COMPACT
-                else -> FIELD_NORMAL
-            })
-    }
-
-    /**
-     * The trailing controls swap on content: mic and scan while the box is
-     * empty, one clear button once there is something to clear. Three controls
-     * in a 50dp pill is too crowded, and the end inset has to move with them or
-     * long text runs underneath whichever pair is showing.
-     */
-    private fun updateSearchFieldActions(
-        top: Int = binding.urlBar.paddingTop,
-        bottom: Int = binding.urlBar.paddingBottom
-    ) {
-        val d = resources.displayMetrics.density
-        val empty = binding.urlBar.text.isNullOrEmpty()
-        binding.searchActions.visibility = if (empty) View.VISIBLE else View.GONE
-        binding.clearBtn.visibility = if (empty) View.GONE else View.VISIBLE
-        // Empty: mic 48 + 9dp divider + scan 48 + 8dp margin, plus breathing
-        // room. Otherwise: clear 48 + its 7dp margin, same. Both grew with the
-        // controls; left as they were, a long address would run under them.
-        // The site's icon, when it shows, sits in front of the text.
-        val start = if (binding.siteIcon.visibility == View.VISIBLE) 50 else 26
-        binding.urlBar.setPaddingRelative(
-            (start * d).toInt(), top, ((if (empty) 120 else 60) * d).toInt(), bottom)
-    }
-
     // ---------- The site's icon in the search field ----------
 
-    /**
-     * The site's crisp icon at the start of the address box: there as soon as
-     * the page has loaded, and kept while a search is typed from it. Nothing
-     * on the home page or on pages that are not websites. [fetch]: the page
-     * has loaded, so its declared icons can be asked for; before that only an
-     * icon already known for the site is shown, never the last site's.
-     */
-    private fun showSiteIcon(url: String?, fetch: Boolean = true) {
-        val key = SiteIcons.keyOf(url)
-        val web = activeWeb()
-        if (url == null || key == null || web == null || url == homePage || isErrorPage(url)) {
-            hideSiteIcon(); return
-        }
-        val ready = SiteIcons.cached(url)
-        if (ready != null) { setSiteIcon(ready); return }
-        if (!fetch) { hideSiteIcon(); return }
-        // WebView's own small icon while the crisp one is fetched, copied
-        // because WebView may recycle the one it holds.
-        web.favicon?.let { f ->
-            try { setSiteIcon(f.copy(f.config ?: Bitmap.Config.ARGB_8888, false)) } catch (e: Exception) { }
-        }
-        SiteIcons.load(this, web, url, nightOwl) { icon ->
-            if (SiteIcons.keyOf(tabs.activeTab?.url) == key) setSiteIcon(icon)
-        }
-    }
-
-    private fun setSiteIcon(icon: Bitmap) {
-        val v = binding.siteIcon
-        if (v.outlineProvider !is SiteIconOutline) {
-            v.outlineProvider = SiteIconOutline
-            v.clipToOutline = true
-        }
-        v.setImageBitmap(icon)
-        if (v.visibility != View.VISIBLE) {
-            v.visibility = View.VISIBLE
-            padFieldForIcon()
-        }
-    }
-
-    private fun hideSiteIcon() {
-        val v = binding.siteIcon
-        if (v.visibility == View.GONE) return
-        v.visibility = View.GONE
-        v.setImageDrawable(null)
-        padFieldForIcon()
-    }
-
-    /** Moves the field's text clear of the icon, or back, for whichever look the field has. */
-    private fun padFieldForIcon() {
-        if (fieldMode != FIELD_NORMAL) { updateSearchFieldActions(); return }
-        val d = resources.displayMetrics.density
-        val start = if (binding.siteIcon.visibility == View.VISIBLE) 48 else 14
-        binding.urlBar.setPaddingRelative((start * d).toInt(), binding.urlBar.paddingTop,
-            (56 * d).toInt(), binding.urlBar.paddingBottom)
-    }
-
     /** Rounded corners, as a launcher draws a site's icon. */
-    private object SiteIconOutline : android.view.ViewOutlineProvider() {
+    internal object SiteIconOutline : android.view.ViewOutlineProvider() {
         override fun getOutline(view: View, outline: android.graphics.Outline) {
             // Inside the padding: the view is a 40dp touch target around a 24dp icon.
             val w = view.width - view.paddingLeft - view.paddingRight
@@ -1062,185 +668,7 @@ class MainActivity : AppCompatActivity() {
      * things that move this chrome, and they were never going to read as one
      * app while they used different easing.
      */
-    private val searchEase = android.view.animation.PathInterpolator(0.2f, 0f, 0f, 1f)
-
-    /**
-     * The field rises, and the sheet follows it up.
-     *
-     * The stagger is the whole effect: 40ms behind and travelling further, the
-     * suggestions read as being pulled up BY the field rather than the two
-     * appearing together. Without it they arrive as one block and it looks
-     * like a screen being swapped rather than a bar being opened.
-     *
-     * [fieldWasShowing] is why this does not blink on a web page. There the
-     * bar is already on screen with the address in it, so fading it from zero
-     * would flash it out and back. Only the home page, where the field is not
-     * there at rest, gets the rise.
-     */
-    private fun animateSearchIn(fieldWasShowing: Boolean) {
-        val d = resources.displayMetrics.density
-        val bar = binding.urlBarContainer
-        val sheet = binding.suggestBackdrop
-
-        bar.animate().cancel()
-        sheet.animate().cancel()
-
-        if (!fieldWasShowing) {
-            bar.alpha = 0f
-            bar.translationY = 18 * d
-            bar.animate().alpha(1f).translationY(0f)
-                .setDuration(300L).setInterpolator(searchEase)
-                // The field must be visible when this lands, whatever else ran
-                // during it. A missing address bar in search mode is a dead end
-                // for the user, so it is worth stating outright rather than
-                // trusting every other writer to behave.
-                .withEndAction { bar.alpha = 1f; bar.translationY = 0f }
-                .start()
-        } else {
-            bar.alpha = 1f
-            bar.translationY = 0f
-        }
-
-        sheet.alpha = 0f
-        sheet.translationY = 44 * d
-        sheet.animate().alpha(1f).translationY(0f)
-            .setDuration(380L).setStartDelay(60L)
-            .setInterpolator(searchEase)
-            // The page now hides the owl: it stops drawing until search closes.
-            .withEndAction { if (searchMode) binding.navOwl.covered = true }
-            .start()
-    }
-
-    /**
-     * The reverse, and deliberately quicker - leaving should feel like getting
-     * out of the way, not like a second performance.
-     *
-     * The rows are cleared at the end rather than the start, or the sheet
-     * would empty itself and then fade an empty panel out.
-     */
-    private fun animateSearchOut() {
-        binding.navOwl.covered = false
-        val d = resources.displayMetrics.density
-        val sheet = binding.suggestBackdrop
-        sheet.animate().cancel()
-        sheet.animate().alpha(0f).translationY(28 * d)
-            .setDuration(210L).setInterpolator(searchEase)
-            .withEndAction {
-                // Search may have been re-entered while this was running, in
-                // which case the sheet is wanted and must not be hidden.
-                if (!searchMode) {
-                    sheet.visibility = View.GONE
-                    suggestAdapter?.submit(emptyList())
-                }
-                sheet.alpha = 1f
-                sheet.translationY = 0f
-            }.start()
-    }
-
-    private fun enterSearchMode() {
-        if (searchMode) return
-        showBars(animate = false)
-        searchMode = true
-        // The bar is non-focusable at rest; make it typable now that the user
-        // has deliberately entered search mode. This is the ONLY place focus is
-        // enabled, so system/incidental focus can never trigger search mode.
-        binding.urlBar.isFocusable = true
-        binding.urlBar.isFocusableInTouchMode = true
-        // The owl stays on the search page, so the field runs from the owl
-        // to the right edge rather than replacing it - the gear steps aside.
-        binding.starBtn.visibility = View.GONE
-        binding.settingsBtn.visibility = View.GONE
-        // The home bar's collapse animation writes urlBarContainer.alpha
-        // directly, from setHomeBarProgress, and it is a ValueAnimator - so the
-        // animate().cancel() in animateSearchIn does not reach it. Left running
-        // it keeps overwriting the entrance, and if it settles on the expanded
-        // state that value is 0: search opens with no field at all, and the
-        // only way out is Back. Rare, because the tap has to land inside the
-        // animation's 300ms.
-        //
-        // Cancelled here rather than in animateSearchIn so that searchMode is
-        // already true, which also stops applyHomeCompact starting a new one.
-        homeBarAnim?.cancel()
-        homeBarAnim = null
-        // The owl stays on the search page even when search starts from
-        // home's pinned box, which had sent it away.
-        homeRowWidths().getOrNull(0)?.let { w ->
-            val owl = binding.homeBtn
-            val lp = owl.layoutParams
-            lp.width = w
-            owl.layoutParams = lp
-            owl.alpha = 1f
-            owl.visibility = View.VISIBLE
-        }
-
-        // Captured before it is shown: on home the field is not on screen at
-        // rest, on a page it already is, and the two want different entrances.
-        val fieldWasShowing = binding.urlBarContainer.visibility == View.VISIBLE
-        binding.urlBarContainer.visibility = View.VISIBLE
-        styleUrlBarForSearch(true)
-        val current = tabs.activeTab?.url
-        val onHome = (current == null || current == homePage)
-        if (onHome) binding.urlBar.setText("") else {
-            binding.urlBar.setText(current); binding.urlBar.selectAll()
-        }
-        if (onHome) hideSiteIcon() else showSiteIcon(current)
-        binding.urlBar.requestFocus()
-        val imm = getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
-        imm.showSoftInput(binding.urlBar, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
-        binding.suggestBackdrop.visibility = View.VISIBLE
-        androidx.core.view.ViewCompat.requestApplyInsets(binding.root)
-        // The search page, as Chrome's: the field and the suggestions are
-        // two cards of the same colour on a background of their own, and the
-        // top bar goes flat in that background - no curve, shadow or line.
-        // Night Owl's wash for the background while Night Owl is on.
-        val pageBg = if (nightOwl) binding.topBar.surfaceColor else getColor(R.color.searchPageBg)
-        binding.topBar.flatColor = pageBg
-        binding.topBar.flat = true
-        applyBarForeground()
-        binding.suggestBackdrop.setBackgroundColor(pageBg)
-        animateSearchIn(fieldWasShowing)
-        fetchSuggests(binding.urlBar.text.toString())
-    }
-
-    private fun exitSearchMode() {
-        if (!searchMode) return
-        searchMode = false
-        styleUrlBarForSearch(false)
-        animateSearchOut()
-        // The bar's own look back.
-        binding.topBar.flat = false
-        applyBarForeground()
-        // Nothing transient left on the field: applyHomeCompact below may
-        // animate it, and it should start from rest rather than from whatever
-        // the entrance left behind.
-        binding.urlBarContainer.animate().cancel()
-        binding.urlBarContainer.alpha = 1f
-        binding.urlBarContainer.translationY = 0f
-        binding.homeBtn.visibility = View.VISIBLE
-        binding.starBtn.visibility = View.VISIBLE
-        binding.settingsBtn.visibility = View.VISIBLE
-        binding.urlBar.clearFocus()
-        // Return the bar to non-focusable at rest so nothing but an explicit
-        // tap (which re-enables focus via enterSearchMode) can re-open search.
-        binding.urlBar.isFocusable = false
-        binding.urlBar.isFocusableInTouchMode = false
-        val imm = getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
-        imm.hideSoftInputFromWindow(binding.urlBar.windowToken, 0)
-        val current = tabs.activeTab?.url
-        val onHome = (current == null || current == homePage)
-        if (onHome) {
-            binding.urlBarContainer.visibility = View.INVISIBLE
-            binding.urlBar.setText("")
-        } else {
-            binding.urlBarContainer.visibility = View.VISIBLE
-            binding.urlBar.setText(displayUrl(current))
-        }
-        // The page may still be scrolled past its pill; re-apply the compact bar.
-        if (onHome && homeCompact) applyHomeCompact(true)
-        if (onHome) hideSiteIcon() else showSiteIcon(current, fetch = false)
-        schedulePageTint(220L)
-        androidx.core.view.ViewCompat.requestApplyInsets(binding.root)
-    }
+    internal val searchEase = android.view.animation.PathInterpolator(0.2f, 0f, 0f, 1f)
 
     // ---- HTTPS-only ----
     //
@@ -1254,31 +682,15 @@ class MainActivity : AppCompatActivity() {
      * app only. A decision to give up encryption should not outlive the
      * session that made it, and should never be written to disk.
      */
-    private val httpAllowed = mutableSetOf<String>()
+    internal val httpAllowed = mutableSetOf<String>()
     /** https addresses produced here, mapped back to the http they came from. */
-    private val upgradedFrom = HashMap<String, String>()
+    internal val upgradedFrom = HashMap<String, String>()
     /** When each host was last upgraded, to break a redirect loop. */
-    private val upgradedAt = HashMap<String, Long>()
-    private var pendingInsecure: String? = null
-
-    private fun httpsOnly() = Settings.getBool(this, Settings.SEC_HTTPS_ONLY, true)
-
-    /**
-     * Shows the warning in place of the page, holding the address so
-     * "Continue anyway" has somewhere to go.
-     */
-    private fun showInsecureWarning(view: WebView?, httpUrl: String) {
-        pendingInsecure = httpUrl
-        val enc = try {
-            java.net.URLEncoder.encode(httpUrl, "UTF-8")
-        } catch (e: Exception) { "" }
-        // Both callers are WebView callbacks, so the load waits until they
-        // have returned. See loadAfterCallback.
-        loadAfterCallback(view, "file:///android_asset/insecure.html?u=" + enc)
-    }
+    internal val upgradedAt = HashMap<String, Long>()
+    internal var pendingInsecure: String? = null
 
     // Night Owl (private browsing) mode state.
-    private var nightOwl = false
+    internal var nightOwl = false
 
     override fun onResume() {
         super.onResume()
@@ -1473,72 +885,7 @@ class MainActivity : AppCompatActivity() {
         var activeIndex: Int = 0
     }
 
-    private val tabStore: TabStore by viewModels()
-
-    /** Freezes the current tab list into the store, without disturbing it. */
-    private fun snapshotTabs() {
-        val list = tabs.tabs
-        tabStore.snapshot = list.map { t ->
-            val state = t.webView?.let { w -> Bundle().also { b -> w.saveState(b) } }
-                ?: t.savedState
-            TabStore.Snap(
-                url = t.url,
-                title = t.title,
-                state = state,
-                openerIndex = list.indexOfFirst { it.id == t.openerId },
-                openerSite = t.openerSite,
-                leftOpenerSite = t.leftOpenerSite,
-                signIn = t.signIn,
-                isPrivate = t.isPrivate,
-                diskKey = t.diskKey,
-                diskStateHash = t.diskStateHash
-            )
-        }
-        tabStore.activeIndex = list.indexOf(tabs.activeTab).coerceAtLeast(0)
-    }
-
-    /**
-     * Rebuilds the tab list after a recreation. Returns false when there is
-     * nothing to restore and a fresh tab should be opened instead.
-     */
-    private fun restoreTabs(saved: Bundle?): Boolean {
-        val snaps = tabStore.snapshot
-        if (!snaps.isNullOrEmpty()) {
-            snaps.forEach { s ->
-                val t = tabs.createTab(s.url)
-                t.title = s.title
-                t.savedState = s.state
-                t.openerSite = s.openerSite
-                t.leftOpenerSite = s.leftOpenerSite
-                t.signIn = s.signIn
-                t.isPrivate = s.isPrivate
-                s.diskKey?.let { t.diskKey = it }
-                t.diskStateHash = s.diskStateHash
-                // The opener counts its own restore as a load, so whether it
-                // moves on afterwards can no longer be told by counting.
-                t.openerLoadsAtOpen = -1
-            }
-            // Re-link the pop-up relationships once every tab has its new id.
-            snaps.forEachIndexed { i, s ->
-                if (s.openerIndex >= 0) {
-                    tabs.tabs[i].openerId = tabs.tabs.getOrNull(s.openerIndex)?.id
-                }
-            }
-            openTab(tabs.tabs.getOrNull(tabStore.activeIndex) ?: tabs.tabs.first())
-            return true
-        }
-        // The process was killed: the store is gone, but the addresses survived
-        // in instance state. The pages reload rather than resuming, which is a
-        // far smaller loss than the whole session.
-        val urls = saved?.getStringArrayList("tab_urls") ?: return false
-        if (urls.isEmpty()) return false
-        val titles = saved.getStringArrayList("tab_titles") ?: ArrayList()
-        urls.forEachIndexed { i, u ->
-            tabs.createTab(u).title = titles.getOrNull(i) ?: "New Tab"
-        }
-        openTab(tabs.tabs.getOrNull(saved.getInt("tab_active", 0)) ?: tabs.tabs.first())
-        return true
-    }
+    internal val tabStore: TabStore by viewModels()
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
@@ -1559,13 +906,7 @@ class MainActivity : AppCompatActivity() {
     // tab change, and at once whenever the app is left, so a crash or a swipe
     // from Recents brings them back. Private tabs are never written.
 
-    private val sessionSave = Runnable { saveSession(full = false) }
-
-    /** A save a moment from now, so a burst of navigations is one write. */
-    private fun scheduleSessionSave() {
-        uiHandler.removeCallbacks(sessionSave)
-        uiHandler.postDelayed(sessionSave, 1500L)
-    }
+    internal val sessionSave = Runnable { saveSession(full = false) }
 
     /**
      * Collects the session on the main thread, which WebView.saveState needs,
@@ -1573,7 +914,7 @@ class MainActivity : AppCompatActivity() {
      * history - for when the app is being left. Otherwise only the tab on
      * screen, which is the one that moved, plus any tab with none on disk yet.
      */
-    private fun saveSession(full: Boolean) {
+    internal fun saveSession(full: Boolean) {
         uiHandler.removeCallbacks(sessionSave)
         if (!::binding.isInitialized) return
         val keep = tabs.tabs.filter { !it.isPrivate && it.url != "about:blank" }
@@ -1612,62 +953,24 @@ class MainActivity : AppCompatActivity() {
         SessionStore.save(this, entries, activeIndex.coerceAtLeast(0))
     }
 
-    /**
-     * Brings back the tabs saved on disk, for a launch with nothing in memory
-     * or instance state. The tab that was on screen opens; the others wait,
-     * frozen, with their history still on disk until they are opened.
-     */
-    private fun restoreSessionFromDisk(): Boolean {
-        val session = SessionStore.load(this) ?: return false
-        val failed = SessionStore.beginRestore(this)
-        if (failed >= 2) {
-            // Two launches in a row died restoring this session. Start fresh.
-            SessionStore.clear(this)
-            SessionStore.restoreSettled(this)
-            return false
-        }
-        // One did: bring back the addresses, but not the saved histories.
-        val useState = session.stateUsable && failed == 0
-        session.tabs.forEach { s ->
-            val t = tabs.createTab(s.url)
-            t.title = s.title
-            t.signIn = s.signIn
-            t.diskKey = s.key
-            if (useState && s.hasState) {
-                t.diskStateFile = SessionStore.stateFile(this, s.key)
-                t.diskStateHash = 1
-            }
-            t.openerLoadsAtOpen = -1
-        }
-        session.tabs.forEachIndexed { i, s ->
-            if (s.openerIndex >= 0) {
-                tabs.tabs[i].openerId = tabs.tabs.getOrNull(s.openerIndex)?.id
-            }
-        }
-        openTab(tabs.tabs.getOrNull(session.active) ?: tabs.tabs.first())
-        // Settled once the app is up; onPause settles it sooner.
-        uiHandler.postDelayed({ SessionStore.restoreSettled(this) }, 8000L)
-        return true
-    }
+    internal lateinit var binding: ActivityMainBinding
+    internal val homePage = "file:///android_asset/home.html"
+    internal val tabs = TabManager(maxLiveTabs = 3)
+    internal lateinit var tabAdapter: TabAdapter
 
-    private lateinit var binding: ActivityMainBinding
-    private val homePage = "file:///android_asset/home.html"
-    private val tabs = TabManager(maxLiveTabs = 3)
-    private lateinit var tabAdapter: TabAdapter
-
-    private val thumbWidthPx = 400
+    internal val thumbWidthPx = 400
     // Capture the deck thumbnail at reduced resolution to cut the
     // main-thread bitmap allocation (full-screen was ~5MB per open).
     // PixelCopy scales the source rect into this smaller dest bitmap.
-    private val thumbCaptureDivisor = 2
-    private var deckVisible = false
+    internal val thumbCaptureDivisor = 2
+    internal var deckVisible = false
     // Held true to keep the system splash on its final frame briefly so the
     // launch animation lands cleanly before the browser appears.
-    private var keepSplash = true
-    private val appUpdateManager by lazy {
+    internal var keepSplash = true
+    internal val appUpdateManager by lazy {
         com.google.android.play.core.appupdate.AppUpdateManagerFactory.create(this)
     }
-    private val updateLauncher = registerForActivityResult(
+    internal val updateLauncher = registerForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.StartIntentSenderForResult()
     ) { /* user accepted/dismissed the Play update UI */ }
 
@@ -1999,7 +1302,6 @@ class MainActivity : AppCompatActivity() {
     // delivers them here instead of a fresh onCreate). Opens the link in a
     // new tab via the normal go() path.
     // ---------- Launcher shortcuts (res/xml/shortcuts.xml) ----------
-
 
     /** Acts on a launcher shortcut's intent; false when [intent] is not one. */
     private fun handleShortcut(intent: android.content.Intent?): Boolean {
@@ -2551,7 +1853,7 @@ class MainActivity : AppCompatActivity() {
      * Now the domain has to start with what was typed, or some word in the
      * title does, so a row appears as the user closes in on it.
      */
-    private fun matchesQuery(title: String, url: String, query: String): Boolean {
+    internal fun matchesQuery(title: String, url: String, query: String): Boolean {
         if (query.isEmpty()) return true
         val q = query.lowercase()
         val host = try {
@@ -2597,7 +1899,7 @@ class MainActivity : AppCompatActivity() {
      * history or bookmark suggestion. It used to be the address with the scheme
      * filed off, which on any real page meant a wall of query string.
      */
-    private fun siteNameOf(url: String): String = try {
+    internal fun siteNameOf(url: String): String = try {
         val host = (android.net.Uri.parse(url).host ?: "").lowercase()
             .removePrefix("www.").removePrefix("mobile.").removePrefix("m.")
         val name = host.substringBefore('.')
@@ -2608,14 +1910,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun suggestSub(url: String): String = siteNameOf(url)
 
-    private var lastSuggestScroll = 0L
+    internal var lastSuggestScroll = 0L
 
     /**
      * True while the list is still settling. A tap that halts a fling would
      * otherwise also open whatever row happened to be under the thumb, which is
      * the one mistake in this list the user cannot undo.
      */
-    private fun suggestListMoving(): Boolean =
+    internal fun suggestListMoving(): Boolean =
         android.os.SystemClock.uptimeMillis() - lastSuggestScroll < 250L
 
     // Recognises a stored results page, so a past search can be offered as the
@@ -2623,7 +1925,7 @@ class MainActivity : AppCompatActivity() {
     // in Settings, not only the ones whose query is called "q" (PageLabel).
     private fun searchQueryOf(url: String): String? = PageLabel.searchOf(url)?.first
 
-    private fun buildSuggestions(query: String): List<JSONObject> {
+    internal fun buildSuggestions(query: String): List<JSONObject> {
         // On focus, offer recents. While typing, hold local matches back until
         // the query is specific enough to be worth pinning above the web
         // suggestions: on one or two letters they are noise at the top.
@@ -2681,7 +1983,7 @@ class MainActivity : AppCompatActivity() {
         "v.setAttribute('content',(n?n+',':'')+'user-scalable=yes,maximum-scale=10');})()"
 
     @SuppressLint("SetJavaScriptEnabled", "AddJavascriptInterface")
-    private fun newWebView(): WebView {
+    internal fun newWebView(): WebView {
         val web = BrowserWebView(this)
         web.blockAutoplay = Settings.getBool(this, Settings.SITE_BLOCK_AUTOPLAY, true)
         // The page never sits under a system bar - the root keeps them as
@@ -2965,6 +2267,8 @@ class MainActivity : AppCompatActivity() {
              * Called once per WebView the renderer was serving, which is
              * usually every tab at once.
              */
+            // Only ever called on API 26+, where the callback exists.
+            @androidx.annotation.RequiresApi(26)
             override fun onRenderProcessGone(
                 view: WebView?,
                 detail: android.webkit.RenderProcessGoneDetail?
@@ -3540,13 +2844,13 @@ class MainActivity : AppCompatActivity() {
     // bottom edge - the reason the bar stops the page at its straight edge
     // (applyBarOverlap).
 
-    private var barsHidden = false
+    internal var barsHidden = false
     // Read once per resume rather than on every scroll event (refreshScrollPrefs).
-    private var hideBarsPref = true
+    internal var hideBarsPref = true
     // Off unless chosen in Settings > Customize: the bars keep the app's own
     // surface on every site.
-    private var tintBarsPref = false
-    private var touchExploration = false
+    internal var tintBarsPref = false
+    internal var touchExploration = false
 
     private fun refreshScrollPrefs() {
         Haptics.refresh(this)
@@ -3566,208 +2870,18 @@ class MainActivity : AppCompatActivity() {
             android.view.accessibility.AccessibilityManager)?.isTouchExplorationEnabled == true
         if (!hideBarsPref || touchExploration) showBars(animate = false)
     }
-    private var barScrollAcc = 0
-    private var barsTopH = 0
+    internal var barScrollAcc = 0
+    internal var barsTopH = 0
     /** Whether the page runs under both bars (setPageUnderBars): while they are away or coming back. */
-    private var pageUnderBars = false
+    internal var pageUnderBars = false
     /** When the bars last started to move (uptime). */
-    private var barsMovedAt = 0L
-    private var pageTyping = false
-
-    private fun barsMayHide(web: View): Boolean =
-        web === activeWeb() && !searchMode && !findActive && !deckVisible &&
-            binding.menuScrim.visibility != View.VISIBLE && fullscreenView == null &&
-            pullRaw == 0f && !pullRefreshing && hideBarsPref &&
-            // Not while typing into the page: the keyboard owns the bottom,
-            // and the bars come straight back when it opens anyway.
-            !pageTyping &&
-            // With TalkBack the bars are found by touch; they stay put.
-            !touchExploration
-
-    private fun onPageScrollForBars(web: View, y: Int, oldY: Int) {
-        val dy = y - oldY
-        if (dy == 0 || web !== activeWeb()) return
-        // The page changing size moves it too: near the end of a page the
-        // scroll is pulled back by as much as it grew. That is not the reader
-        // scrolling up, and must not bring the bars straight back.
-        if (android.os.SystemClock.uptimeMillis() - barsMovedAt < 350L) { barScrollAcc = 0; return }
-        val density = resources.displayMetrics.density
-        if (y <= (8 * density).toInt()) {          // back at the top
-            barScrollAcc = 0
-            if (barsHidden) showBars()
-            return
-        }
-        if (!barsMayHide(web)) { barScrollAcc = 0; return }
-        // Only the user's own scrolling - a finger on the page, or the fling it
-        // left behind - not a page scrolling itself to an anchor.
-        val b = web as? BrowserWebView ?: return
-        if (!b.touching && android.os.SystemClock.uptimeMillis() - b.lastTouchUp > 1500L) return
-        if ((dy > 0) != (barScrollAcc > 0)) barScrollAcc = 0
-        barScrollAcc += dy
-        val threshold = (24 * density).toInt()
-        // Only on a page that still scrolls once it has the whole screen: on
-        // one that would then fit, there would be no scrolling up to bring
-        // the bars back.
-        val grow = binding.topBar.height + binding.bottomBar.height
-        // Nor near the page's end. Growing the page there pulls its scroll
-        // back by as much as it grew, so the end of the page - the home feed's
-        // ad card, a site's footer - jumps under the finger. Within the bars'
-        // height of the end they stay.
-        val left = b.scrollRange() - web.height - y
-        if (!barsHidden && barScrollAcc > threshold && y > binding.topBar.height &&
-            b.scrollRange() - web.height - grow > threshold * 2 && left > grow + threshold) hideBars()
-        else if (barsHidden && barScrollAcc < -threshold) showBars()
-    }
-
-    private fun hideBars() {
-        val top = binding.topBar
-        val bottom = binding.bottomBar
-        val area = binding.webArea
-        if (barsHidden || top.height <= 0 || top.visibility != View.VISIBLE) return
-        barsHidden = true
-        updateVideoFab()
-        barsMovedAt = android.os.SystemClock.uptimeMillis()
-        top.animate().cancel(); area.animate().cancel(); bottom.animate().cancel()
-        barsTopH = top.height
-        val h = barsTopH
-        // The page takes the whole screen at once, while both bars still cover
-        // its new edges - so the page has painted them by the time the bars
-        // have moved off. Its top goes up under the top bar, so it is offset
-        // by the bar's height in the same frame and nothing on it moves yet;
-        // then it rises with the bar. Bars that were on their way back are
-        // simply turned round: the page is still under them.
-        if (!pageUnderBars) {
-            setPageUnderBars(true)
-            area.translationY = area.translationY + h
-        }
-        showEdgeScrims()
-        val drop = (bottom.height + binding.navSheet.bottomInset).toFloat()
-        if (!animationsOn()) {
-            top.translationY = -h.toFloat(); area.translationY = 0f
-            bottom.translationY = drop
-            top.visibility = View.INVISIBLE; bottom.visibility = View.INVISIBLE
-            return
-        }
-        val ms = 220L
-        val ease = android.view.animation.PathInterpolator(0.3f, 0f, 0.2f, 1f)
-        top.animate().translationY(-h.toFloat()).setDuration(ms).setInterpolator(ease).start()
-        area.animate().translationY(0f).setDuration(ms).setInterpolator(ease).start()
-        bottom.animate().translationY(drop).setDuration(ms).setInterpolator(ease)
-            .withEndAction {
-                if (!barsHidden) return@withEndAction
-                // Off screen and under the strips: nothing to draw or animate
-                // (the owl button stops), and nothing for TalkBack to find.
-                top.visibility = View.INVISIBLE
-                bottom.visibility = View.INVISIBLE
-            }.start()
-    }
-
-    /**
-     * Lets the page run under both bars, or stops it at their edges again.
-     *
-     * Done with the bars' own margins, not the page's. A bar whose negative
-     * margin matches its height takes no room in the layout, and the page,
-     * which takes all the room the bars leave, grows by exactly that. A
-     * negative margin on the page itself does not work: LinearLayout never
-     * lets a child's margins shrink the room the others take, so the page
-     * only moved up, and a band the height of both bars stayed empty at the
-     * bottom of the screen for as long as they were away. The bars stay
-     * where they were laid out either way; only the page changes.
-     */
-    private fun setPageUnderBars(under: Boolean) {
-        pageUnderBars = under
-        val top = binding.topBar
-        (top.layoutParams as? android.widget.LinearLayout.LayoutParams)?.let { lp ->
-            val m = if (under) -top.height else 0
-            if (lp.bottomMargin != m) { lp.bottomMargin = m; top.layoutParams = lp }
-        }
-        val bottom = binding.bottomBar
-        (bottom.layoutParams as? android.widget.LinearLayout.LayoutParams)?.let { lp ->
-            val m = if (under) -bottom.height else -barRestOverlap
-            if (lp.topMargin != m) { lp.topMargin = m; bottom.layoutParams = lp }
-        }
-    }
+    internal var barsMovedAt = 0L
+    internal var pageTyping = false
 
     // The status bar and navigation bar strips, held in the bars' colours
     // while the bars are away (EdgeScrim). Made on first use.
-    private var statusScrim: EdgeScrim? = null
-    private var navScrim: EdgeScrim? = null
-
-    private fun showEdgeScrims() {
-        val root = binding.rootView
-        // Straight after the browser layer: over the bars, under every sheet
-        // and overlay that opens above them.
-        fun make(gravity: Int): EdgeScrim = EdgeScrim(this).also { v ->
-            v.elevation = 0f
-            root.addView(v, 1, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, gravity))
-        }
-        val status = statusScrim ?: make(android.view.Gravity.TOP).also { statusScrim = it }
-        val nav = navScrim ?: make(android.view.Gravity.BOTTOM).also { navScrim = it }
-        // The root keeps the system bars as padding; the strips sit in it.
-        val topH = root.paddingTop
-        val botH = root.paddingBottom
-        (status.layoutParams as FrameLayout.LayoutParams).let { if (it.height != topH) { it.height = topH; status.layoutParams = it } }
-        (nav.layoutParams as FrameLayout.LayoutParams).let { if (it.height != botH) { it.height = botH; nav.layoutParams = it } }
-        status.translationY = -topH.toFloat()
-        nav.translationY = botH.toFloat()
-        status.colours = binding.topBar.paintColours()
-        nav.colours = binding.navSheet.paintColours()
-        status.visibility = if (topH > 0) View.VISIBLE else View.GONE
-        nav.visibility = if (botH > 0) View.VISIBLE else View.GONE
-    }
-
-    private fun hideEdgeScrims() {
-        statusScrim?.visibility = View.GONE
-        navScrim?.visibility = View.GONE
-    }
-
-    /** Whether the phone runs animations (Remove animations / animator scale 0 says not). */
-    private fun animationsOn(): Boolean =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) android.animation.ValueAnimator.areAnimatorsEnabled()
-        else android.provider.Settings.Global.getFloat(contentResolver,
-            android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) != 0f
-
-    /** Brings the bars back; [animate] false puts them straight in place. */
-    private fun showBars(animate: Boolean = true) {
-        if (!barsHidden) return
-        barsHidden = false
-        updateVideoFab()
-        barScrollAcc = 0
-        barsMovedAt = android.os.SystemClock.uptimeMillis()
-        val top = binding.topBar
-        val bottom = binding.bottomBar
-        val area = binding.webArea
-        top.animate().cancel(); area.animate().cancel(); bottom.animate().cancel()
-        top.visibility = View.VISIBLE
-        bottom.visibility = if (pageTyping) View.GONE else View.VISIBLE
-        if (!animate || !animationsOn()) {
-            settleBars()
-            return
-        }
-        // The page keeps the whole screen while the bars come back and comes
-        // down with the top bar, and the bottom bar rises over its foot. Only
-        // once both are in place does it stop at their edges again - which
-        // takes away page the bars already cover, so nothing new has to be
-        // painted and no gap can open on the way.
-        showEdgeScrims()
-        val ms = 220L
-        val ease = android.view.animation.PathInterpolator(0.2f, 0f, 0f, 1f)
-        val areaTo = if (pageUnderBars) barsTopH.toFloat() else 0f
-        top.animate().translationY(0f).setDuration(ms).setInterpolator(ease).start()
-        area.animate().translationY(areaTo).setDuration(ms).setInterpolator(ease).start()
-        bottom.animate().translationY(0f).setDuration(ms).setInterpolator(ease)
-            .withEndAction { if (!barsHidden) settleBars() }.start()
-    }
-
-    /** The bars in place and the page stopped at their edges, in one frame. */
-    private fun settleBars() {
-        setPageUnderBars(false)
-        binding.topBar.translationY = 0f
-        binding.webArea.translationY = 0f
-        binding.bottomBar.translationY = 0f
-        hideEdgeScrims()
-        schedulePageTint(60L)
-    }
+    internal var statusScrim: EdgeScrim? = null
+    internal var navScrim: EdgeScrim? = null
 
     // ---------- The page's colours in the bars ----------
     //
@@ -3783,176 +2897,25 @@ class MainActivity : AppCompatActivity() {
     // colours), Night Owl, error pages or with Settings > Customize > Page
     // colours in the bars off.
 
-    private var topTint: IntArray? = null
-    private var bottomTint: IntArray? = null
-    private var tintAnim: android.animation.ValueAnimator? = null
-    private val tintSample = Runnable { samplePageTint() }
+    internal var topTint: IntArray? = null
+    internal var bottomTint: IntArray? = null
+    internal var tintAnim: android.animation.ValueAnimator? = null
+    internal val tintSample = Runnable { samplePageTint() }
     /** A second look a moment after a page finishes: hero pictures and dark sections paint late. */
     private val tintLate = Runnable { samplePageTint() }
     /** Tries while something is briefly in the way (the menu, a bar moving), so a page is never left untinted. */
-    private var tintRetries = 0
+    internal var tintRetries = 0
     /** The page the bars' colour was taken from; it holds until the page changes or is back at its top. */
-    private var tintedUrl: String? = null
-
-    private fun tintAllowed(url: String?): Boolean =
-        !nightOwl && url != null && url != homePage && !isErrorPage(url) &&
-            (url.startsWith("https://") || url.startsWith("http://")) && tintBarsPref
-
-    private fun schedulePageTint(delay: Long = 300L) {
-        tintRetries = 0
-        uiHandler.removeCallbacks(tintSample)
-        uiHandler.postDelayed(tintSample, delay)
-    }
-
-    private fun samplePageTint() {
-        val web = activeWeb() ?: return
-        if (!tintAllowed(tabs.activeTab?.url)) { plainBars(tabs.activeTab?.url, animate = true); return }
-        // A tab switched to from Focus or Zen's home: not the wash while its own colours are found.
-        if (binding.topBar.seamless) plainBars(tabs.activeTab?.url, animate = false)
-        // Only a settled page with nothing over it: the strips must be the page.
-        // (The loading pill sits lower than the top strip, so it does not count.)
-        if (barsHidden || searchMode || deckVisible || fullscreenView != null ||
-            binding.menuScrim.visibility == View.VISIBLE ||
-            binding.webContainer.translationX != 0f || !web.isAttachedToWindow ||
-            binding.topBar.translationY != 0f || binding.bottomBar.visibility != View.VISIBLE
-        ) {
-            // Something is in the way for a moment; look again shortly rather
-            // than leave the page untinted until the next scroll. Not while
-            // the bars are away: bringing them back looks again.
-            if (!barsHidden && tintRetries++ < 20) uiHandler.postDelayed(tintSample, 700L)
-            return
-        }
-        tintRetries = 0
-        val url = tabs.activeTab?.url
-        // Steady: once this page has its colour, scrolling never changes it.
-        // Only back at the top - where the header that set it is - is it
-        // looked at again, for a header that paints late.
-        if (url != null && url == tintedUrl && web.scrollY > (48 * resources.displayMetrics.density)) return
-        themeColour(web) { theme ->
-            if (web !== activeWeb() || !tintAllowed(tabs.activeTab?.url)) return@themeColour
-            if (theme != null) { applyPageTint(IntArray(3) { theme }, url); return@themeColour }
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-                jsPageColours(web) { t, _ -> if (web === activeWeb()) applyPageTint(t, url) }
-                return@themeColour
-            }
-            val d = resources.displayMetrics.density
-            val area = IntArray(2).also { binding.webArea.getLocationInWindow(it) }
-            val w = binding.webArea.width
-            // Just under the top bar, clear of the shadow it casts on the page.
-            val top = android.graphics.Rect(area[0], area[1] + (2 * d).toInt(), area[0] + w, area[1] + (9 * d).toInt())
-            captureStrip(top) { t ->
-                if (web !== activeWeb() || !tintAllowed(tabs.activeTab?.url)) return@captureStrip
-                if (t != null) { applyPageTint(t, url); return@captureStrip }
-                // The screen could not be read here (some phones refuse a
-                // window copy now and then): ask the page for its colours.
-                jsPageColours(web) { jt, _ -> if (web === activeWeb()) applyPageTint(jt, url) }
-            }
-        }
-    }
-
-    /**
-     * The colour the page names for the browser's toolbar - <meta
-     * name="theme-color">, the one for the current light or dark scheme when
-     * it gives both - or null when it names none. Read through a canvas,
-     * which turns any CSS colour into #rrggbb without touching the page.
-     */
-    private fun themeColour(web: WebView, done: (Int?) -> Unit) {
-        val js = "(function(){try{var ms=document.querySelectorAll('meta[name=\"theme-color\"]');" +
-            "for(var i=0;i<ms.length;i++){var m=ms[i],q=m.getAttribute('media');" +
-            "if(q&&!matchMedia(q).matches)continue;var v=(m.getAttribute('content')||'').trim();if(!v)continue;" +
-            "var x=document.createElement('canvas').getContext('2d');x.fillStyle='#010203';x.fillStyle=v;" +
-            "var f=x.fillStyle;if(/^#[0-9a-f]{6}$/i.test(f)&&f!=='#010203')return f;}}catch(e){}return '';})()"
-        try {
-            web.evaluateJavascript(js) { result ->
-                val hex = try { org.json.JSONTokener(result ?: "").nextValue() as? String } catch (e: Exception) { null }
-                done(try {
-                    if (hex.isNullOrEmpty()) null else android.graphics.Color.parseColor(hex)
-                } catch (e: Exception) { null })
-            }
-        } catch (e: Exception) {
-            done(null)
-        }
-    }
-
-    /**
-     * The page's own colours along its top and bottom edges, left, middle and
-     * right: the background of whatever sits at each point, walking up to the
-     * first element that paints one (a gradient counts by its first colour).
-     */
-    private fun jsPageColours(web: WebView, done: (IntArray?, IntArray?) -> Unit) {
-        val js = "(function(){function c(e){while(e&&e.nodeType===1){var s=getComputedStyle(e);" +
-            "var m=(s.backgroundColor||'').match(/rgba?\\(([^)]+)\\)/);" +
-            "if(m){var p=m[1].split(',').map(parseFloat);if(p.length<4||p[3]>0.5)return[p[0],p[1],p[2]];}" +
-            "var g=(s.backgroundImage||'').indexOf('gradient')>=0&&s.backgroundImage.match(/rgba?\\(([^)]+)\\)/);" +
-            "if(g){var q=g[1].split(',').map(parseFloat);return[q[0],q[1],q[2]];}e=e.parentElement;}" +
-            "return null;}var w=innerWidth,h=innerHeight,o=[];" +
-            "[[.17,4],[.5,4],[.83,4],[.17,h-30],[.5,h-30],[.83,h-30]].forEach(function(p){" +
-            "var e=document.elementFromPoint(w*p[0],p[1]);o.push(e?c(e):null);});" +
-            "var d=c(document.body)||c(document.documentElement)||[255,255,255];" +
-            "return JSON.stringify(o.map(function(x){return x||d;}));})()"
-        try {
-            web.evaluateJavascript(js) { result ->
-                val colours = try {
-                    val text = org.json.JSONTokener(result ?: "").nextValue() as? String
-                    val arr = org.json.JSONArray(text ?: "[]")
-                    IntArray(arr.length()) { i ->
-                        val c = arr.getJSONArray(i)
-                        android.graphics.Color.rgb(c.getDouble(0).toInt().coerceIn(0, 255),
-                            c.getDouble(1).toInt().coerceIn(0, 255), c.getDouble(2).toInt().coerceIn(0, 255))
-                    }
-                } catch (e: Exception) { null }
-                if (colours == null || colours.size < 6) done(null, null)
-                else done(colours.copyOfRange(0, 3), colours.copyOfRange(3, 6))
-            }
-        } catch (e: Exception) {
-            done(null, null)
-        }
-    }
-
-    /** The average colour of each third of [rect] on screen, or null. */
-    private fun captureStrip(rect: android.graphics.Rect, done: (IntArray?) -> Unit) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || rect.width() < 3 || rect.height() < 1) {
-            done(null); return
-        }
-        val sw = 48
-        val sh = 4
-        val bmp = try { Bitmap.createBitmap(sw, sh, Bitmap.Config.ARGB_8888) } catch (e: Throwable) { done(null); return }
-        try {
-            PixelCopy.request(window, rect, bmp, { result ->
-                val colours = if (result == PixelCopy.SUCCESS) {
-                    val px = IntArray(sw * sh)
-                    bmp.getPixels(px, 0, sw, 0, 0, sw, sh)
-                    PageTint.thirds(px, sw, sh)
-                } else null
-                bmp.recycle()
-                done(colours)
-            }, uiHandler)
-        } catch (e: Exception) {
-            bmp.recycle()
-            done(null)
-        }
-    }
-
-    /** Both bars in the colour of [edge], the top of the page at [url] (null: their plain surface). */
-    private fun applyPageTint(edge: IntArray?, url: String?) {
-        if (edge == null) return
-        tintedUrl = url
-        val bar = PageTint.barColours(edge, getColor(R.color.barSurface), isDarkTheme())
-        setBarTint(bar, bar, animate = true)
-    }
-
-    private fun isDarkTheme(): Boolean = (resources.configuration.uiMode and
-        android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
-        android.content.res.Configuration.UI_MODE_NIGHT_YES
+    internal var tintedUrl: String? = null
 
     // Text and icons on a bar the page has turned dark go light, as on
     // Chrome's toolbar: the address, its pill, the star, the gear and the
     // bottom bar's icons, and the status and navigation bar icons with them.
-    private var topOnDark = false
+    internal var topOnDark = false
     private var bottomOnDark = false
-    private var urlTextDefault: android.content.res.ColorStateList? = null
+    internal var urlTextDefault: android.content.res.ColorStateList? = null
 
-    private fun applyBarForeground() {
+    internal fun applyBarForeground() {
         if (!::binding.isInitialized) return
         val themeDark = isDarkTheme()
         val top = topTint.takeIf { !searchMode }
@@ -3972,220 +2935,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     /** The bar colour the address field's pane was last worked out for (null: the plain bar). */
-    private var fieldPaneFor: Int? = null
-
-    /**
-     * The address field on a bar the page has coloured: a solid pane worked
-     * out from the bar's own colour - a shade darker on a light bar, a few
-     * shades lighter on a dark one, as Chrome's omnibox does - with text and
-     * icons that read on it.
-     *
-     * The pane used to come from tinting the field's own see-through fill
-     * (7% black, or 13% white in dark mode) with 20% white. A tint keeps the
-     * fill's alpha and multiplies the tint's into it, so the pane came out at
-     * 1-3% white: on every dark site's bar the search box all but vanished.
-     * Now the tint replaces the colour outright (SRC), so the pane is exactly
-     * the colour asked for.
-     */
-    private fun paintTopForeground() {
-        val field = binding.urlBar
-        if (urlTextDefault == null) urlTextDefault = field.textColors
-        val bar = if (fieldMode == FIELD_NORMAL) fieldPaneFor else null
-        val light = topOnDark && bar != null
-        val white = android.content.res.ColorStateList.valueOf(android.graphics.Color.WHITE)
-        if (bar != null) {
-            field.backgroundTintMode = android.graphics.PorterDuff.Mode.SRC
-            field.backgroundTintList = android.content.res.ColorStateList.valueOf(fieldPane(bar, light))
-        } else {
-            field.backgroundTintList = null
-            field.backgroundTintMode = android.graphics.PorterDuff.Mode.SRC_IN
-        }
-        if (light) {
-            field.setTextColor(android.graphics.Color.WHITE)
-            field.setHintTextColor(0xB3FFFFFF.toInt())
-            binding.starBtn.imageTintList = white
-            binding.clearBtn.imageTintList = white
-        } else {
-            urlTextDefault?.let { field.setTextColor(it) }
-            // On a coloured light bar the plain grey hint can sink into the
-            // pane; a share of black keeps it readable on any of them.
-            field.setHintTextColor(if (bar != null) 0x99000000.toInt()
-                else androidx.core.content.ContextCompat.getColor(this, R.color.sugMuted))
-            binding.starBtn.imageTintList = null
-            binding.clearBtn.imageTintList = null
-        }
-        refreshNav()
-    }
-
-    /** The address field's pane on a bar of colour [bar]: a shade darker, or on a dark bar lighter. */
-    private fun fieldPane(bar: Int, onDark: Boolean): Int =
-        if (onDark) PageTint.mix(bar, android.graphics.Color.WHITE, 0.18f)
-        else PageTint.mix(bar, android.graphics.Color.BLACK, 0.075f)
-
-    /**
-     * The bars on the home page, top and bottom (null: the plain surface).
-     * Home has no white sheet across its top: the owl and the gear sit on
-     * the page itself, and the bar's sheet, line and shadow are for web
-     * pages and search. In Explore that is the page's grey (appBackground,
-     * home.html's --bg) with the bottom bar as it is; in Focus and Zen the
-     * wash in the accent - the top edge's three colours (HomeWash, which
-     * home.html is painted from too, at the same places) and the colour the
-     * page settles into for the bottom bar. Null anywhere but home, and in
-     * Night Owl, which keeps its own sky.
-     */
-    private fun homeWash(url: String?): Array<IntArray?>? {
-        if (nightOwl || url == null || url != homePage) return null
-        // What the page on screen says it shows; until it has said, the mode
-        // it was asked for. They differ only for a moment - home takes up the
-        // app's mode whenever it comes into view - but in that moment the
-        // bars must match the page, not the setting.
-        val shown = activeWeb()?.tag as? SearchAppBridge
-        val mode = shown?.shownMode ?: browsingMode
-        // Light or dark as the page is drawn, which is what the bar meets.
-        val dark = shown?.shownDark ?: isDarkTheme()
-        if (mode != BrowsingMode.FOCUS && mode != BrowsingMode.ZEN) {
-            // home.html's --bg, light and dark.
-            val page = if (dark) 0xFF0E0E10.toInt() else 0xFFF5F5F5.toInt()
-            return arrayOf(IntArray(3) { page }, null)
-        }
-        // In the accent the page is painted in (or will be).
-        val wash = HomeWash.palette(shown?.shownAccent ?: Settings.getHomeAccent(this), dark)
-        return arrayOf(wash.top.copyOf(), IntArray(3) { wash.bottom })
-    }
-
-    /** The bars for a page that does not lend them its colours: plain, or on home, the page's own (homeWash). */
-    private fun plainBars(url: String?, animate: Boolean) {
-        val w = homeWash(url)
-        binding.topBar.seamless = w != null
-        setBarTint(w?.get(0), w?.get(1), animate)
-    }
-
-    /** Eases both bars to [top] / [bottom] (null: their plain surface). */
-    private fun setBarTint(top: IntArray?, bottom: IntArray?, animate: Boolean) {
-        if (top?.contentEquals(topTint) ?: (topTint == null) &&
-            bottom?.contentEquals(bottomTint) ?: (bottomTint == null)) return
-        tintAnim?.cancel()
-        val plainTop = IntArray(3) { binding.topBar.surfaceColor }
-        val plainBottom = IntArray(3) { binding.navSheet.surfaceColor }
-        val fromTop = topTint ?: plainTop
-        val fromBottom = bottomTint ?: plainBottom
-        val toTop = top ?: plainTop
-        val toBottom = bottom ?: plainBottom
-        topTint = top
-        bottomTint = bottom
-        applyBarForeground()
-        if (!animate || !animationsOn()) {
-            binding.topBar.tint = top
-            binding.navSheet.tint = bottom
-            return
-        }
-        // The pane starts where the bar starts, not where it is going.
-        if (fieldPaneFor != null && fieldMode == FIELD_NORMAL && fromTop.size == 3) {
-            binding.urlBar.backgroundTintList =
-                android.content.res.ColorStateList.valueOf(fieldPane(fromTop[1], topOnDark))
-        }
-        tintAnim = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 340L
-            interpolator = android.view.animation.DecelerateInterpolator()
-            addUpdateListener { a ->
-                val f = a.animatedValue as Float
-                val nowTop = PageTint.mixAll(fromTop, toTop, f)
-                binding.topBar.tint = nowTop
-                binding.navSheet.tint = PageTint.mixAll(fromBottom, toBottom, f)
-                // The field's pane eases with the bar it sits on.
-                if (fieldPaneFor != null && fieldMode == FIELD_NORMAL && nowTop.size == 3) {
-                    binding.urlBar.backgroundTintList =
-                        android.content.res.ColorStateList.valueOf(fieldPane(nowTop[1], topOnDark))
-                }
-            }
-            addListener(object : android.animation.AnimatorListenerAdapter() {
-                override fun onAnimationEnd(animation: android.animation.Animator) {
-                    // Settled on the plain surface: drop the gradient entirely.
-                    if (topTint == null) binding.topBar.tint = null
-                    if (bottomTint == null) binding.navSheet.tint = null
-                }
-            })
-            start()
-        }
-    }
-
-    // ---------- HTML5 fullscreen video ----------
-
-    private fun enterFullscreen(view: View, cb: WebChromeClient.CustomViewCallback?) {
-        // Some players fire this twice. The second must be refused, or the first
-        // view is orphaned and the page can never come back out of fullscreen.
-        if (fullscreenView != null) { cb?.onCustomViewHidden(); return }
-
-        fullscreenView = view
-        fullscreenCallback = cb
-        savedOrientation = requestedOrientation
-
-        // Hosted in the activity content root, which is the PARENT of our app
-        // root - so it covers the inset padding, the top bar and the toolbar
-        // without any of them needing to know fullscreen exists. Clickable so
-        // player taps cannot fall through to the chrome underneath.
-        val root = findViewById<android.widget.FrameLayout>(android.R.id.content)
-        val holder = android.widget.FrameLayout(this).apply {
-            setBackgroundColor(android.graphics.Color.BLACK)
-            isClickable = true
-            isFocusable = true
-        }
-        holder.addView(
-            view,
-            android.widget.FrameLayout.LayoutParams(
-                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
-                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
-                android.view.Gravity.CENTER
-            )
-        )
-        root.addView(
-            holder,
-            android.widget.FrameLayout.LayoutParams(
-                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
-                android.widget.FrameLayout.LayoutParams.MATCH_PARENT
-            )
-        )
-        fullscreenContainer = holder
-
-        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        setSystemBarsVisible(false)
-        requestedOrientation =
-            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-        // A portrait video (a short, a phone-shot clip) is turned upright
-        // again rather than shown sideways in a landscape screen. The page
-        // knows the video's size; landscape stays when it does not say.
-        activeWeb()?.evaluateJavascript(
-            "(function(){var e=document.fullscreenElement||document.webkitFullscreenElement;" +
-                "var v=e&&(e.tagName==='VIDEO'?e:e.querySelector('video'));" +
-                "return v&&v.videoWidth?v.videoWidth+'x'+v.videoHeight:'';})()"
-        ) { r ->
-            val size = r?.trim('"')?.split('x')
-            val w = size?.getOrNull(0)?.toIntOrNull() ?: 0
-            val h = size?.getOrNull(1)?.toIntOrNull() ?: 0
-            if (fullscreenView === view && w > 0 && h > w) {
-                requestedOrientation =
-                    android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
-            }
-        }
-    }
-
-    private fun exitFullscreen() {
-        val holder = fullscreenContainer ?: return
-        val root = findViewById<android.widget.FrameLayout>(android.R.id.content)
-        holder.removeAllViews()
-        root.removeView(holder)
-        fullscreenContainer = null
-        fullscreenView = null
-
-        window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        setSystemBarsVisible(true)
-        requestedOrientation = savedOrientation
-
-        // Last, deliberately: the player tears its surface down here, and doing
-        // that before the view is detached leaves a black frame on some devices.
-        fullscreenCallback?.onCustomViewHidden()
-        fullscreenCallback = null
-    }
+    internal var fieldPaneFor: Int? = null
 
     // ---------- Picture in picture ----------
 
@@ -4200,29 +2950,6 @@ class MainActivity : AppCompatActivity() {
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         maybeEnterPip()
-    }
-
-    private fun maybeEnterPip() {
-        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) return
-        if (inPip) return
-        val v = fullscreenView ?: return
-        if (!packageManager.hasSystemFeature(
-                android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE)) return
-        val w = v.width
-        val h = v.height
-        if (w <= 0 || h <= 0) return
-        // The system rejects anything outside roughly 1:2.39 to 2.39:1 by
-        // throwing, so clamp rather than hand it something it will refuse.
-        val ratio = (w.toFloat() / h.toFloat()).coerceIn(0.42f, 2.38f)
-        try {
-            enterPictureInPictureMode(
-                android.app.PictureInPictureParams.Builder()
-                    .setAspectRatio(android.util.Rational((ratio * 1000).toInt(), 1000))
-                    .build()
-            )
-        } catch (e: Exception) {
-            // A device can refuse PiP for its own reasons; staying put is fine.
-        }
     }
 
     // Parameter named as the supertype names it. Renaming one in an override
@@ -4243,403 +2970,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun setSystemBarsVisible(show: Boolean) {
-        val c = androidx.core.view.WindowCompat
-            .getInsetsController(window, window.decorView)
-        if (show) {
-            c.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
-        } else {
-            c.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat
-                .BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            c.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
-        }
-    }
-
-    // ---------- Long-press context menu ----------
-
-    private fun setupLongPress(web: WebView) {
-        web.setOnLongClickListener {
-            val r = web.hitTestResult
-            when (r.type) {
-                WebView.HitTestResult.IMAGE_TYPE -> {
-                    val img = r.extra
-                    if (img.isNullOrBlank()) false else { showTargetMenu(img, null); true }
-                }
-                WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE -> {
-                    val img = r.extra
-                    // hitTestResult carries the image, never the anchor around
-                    // it; the href only arrives through this async hop, so the
-                    // menu is built there, once both halves are known.
-                    val h = object : android.os.Handler(android.os.Looper.getMainLooper()) {
-                        override fun handleMessage(m: android.os.Message) {
-                            if (!img.isNullOrBlank()) showTargetMenu(img, m.data?.getString("url"))
-                        }
-                    }
-                    web.requestFocusNodeHref(h.obtainMessage())
-                    !img.isNullOrBlank()
-                }
-                WebView.HitTestResult.SRC_ANCHOR_TYPE -> {
-                    val href = r.extra
-                    if (href.isNullOrBlank()) false else {
-                        // The link's own text comes back through the same
-                        // async hop as an image anchor's href, for Copy link text.
-                        val h = object : android.os.Handler(android.os.Looper.getMainLooper()) {
-                            override fun handleMessage(m: android.os.Message) {
-                                showTargetMenu(null, href, m.data?.getString("title"))
-                            }
-                        }
-                        try { web.requestFocusNodeHref(h.obtainMessage()) }
-                        catch (e: Exception) { showTargetMenu(null, href) }
-                        true
-                    }
-                }
-                // Plain text and input fields fall through to the system, or we
-                // would break text selection everywhere to add this menu.
-                else -> false
-            }
-        }
-    }
-
-    private fun showTargetMenu(image: String?, link: String?, linkText: String? = null) {
-        if (isFinishing || isDestroyed) return
-        val labels = ArrayList<String>()
-        val acts = ArrayList<() -> Unit>()
-        val webLink = link?.takeIf { it.startsWith("https://") || it.startsWith("http://") }
-
-        if (!link.isNullOrBlank()) {
-            // In the background, as Chrome does, so a list of results can be
-            // worked down without leaving it; "Switch" goes there.
-            labels.add("Open in new tab"); acts.add { addBackgroundTab(link) }
-            if (!nightOwl && webLink != null) {
-                labels.add("Open in Night Owl tab"); acts.add { enterNightOwl(webLink) }
-            }
-            labels.add("Copy link address"); acts.add { copyText("Link", shareable(link)) }
-            val text = linkText?.trim()?.takeIf { it.isNotEmpty() && it != link }
-            if (text != null) { labels.add("Copy link text"); acts.add { copyText("Link text", text) } }
-            labels.add("Share link"); acts.add { shareLink(link, "") }
-            if (webLink != null) {
-                labels.add("Download link"); acts.add {
-                    val name = webLink.substringBefore('?').substringAfterLast('/')
-                    val mime = try { java.net.URLConnection.guessContentTypeFromName(name) } catch (e: Exception) { null }
-                    startDownload(webLink, activeWeb()?.settings?.userAgentString, null, mime, -1L)
-                }
-            }
-        }
-        if (!image.isNullOrBlank()) {
-            labels.add("Save image"); acts.add { saveImage(image) }
-            labels.add("Open image in new tab"); acts.add { addBackgroundTab(image) }
-            // A data: or blob: address is meaningless outside this page, so it
-            // is not offered for copy or share - a link nobody can open is a
-            // worse answer than no menu entry.
-            if (image.startsWith("http")) {
-                labels.add("Search image with Google Lens"); acts.add {
-                    addBackgroundTab("https://lens.google.com/uploadbyurl?url=" + android.net.Uri.encode(image))
-                }
-                labels.add("Copy image address"); acts.add { copyText("Image", image) }
-                labels.add("Share image"); acts.add { shareLink(image, "") }
-            }
-        }
-        if (labels.isEmpty()) return
-
-        val head = image ?: link ?: ""
-        val title = if (head.startsWith("data:") || head.startsWith("blob:"))
-            "Image" else head.take(60)
-
-        com.google.android.material.dialog.MaterialAlertDialogBuilder(
-            this, R.style.Theme_Search_Dialog)
-            .setTitle(title)
-            .setItems(labels.toTypedArray()) { d, i -> d.dismiss(); acts[i]() }
-            .show()
-    }
-
-    /**
-     * A tab for [url] opened beside the one on screen without leaving it: it
-     * gets no page until it is first shown (openTab builds it then), so it
-     * costs nothing until wanted. "Switch" goes to it.
-     */
-    private fun addBackgroundTab(url: String) {
-        val target = resolveInput(url)
-        val tab = tabs.createTab(target)
-        tab.title = siteNameOf(target).ifBlank { "New tab" }
-        // Just after the tab it came from, as Chrome places it.
-        val from = tabs.tabs.indexOf(tabs.activeTab)
-        if (from >= 0) {
-            tabs.tabs.remove(tab)
-            tabs.tabs.add((from + 1).coerceAtMost(tabs.tabs.size), tab)
-        }
-        updateTabCount()
-        scheduleSessionSave()
-        Haptics.tick(binding.webContainer)
-        try {
-            com.google.android.material.snackbar.Snackbar
-                .make(binding.webArea, "Opened in a new tab", com.google.android.material.snackbar.Snackbar.LENGTH_LONG)
-                .setAction("Switch") { if (tabs.tabs.contains(tab)) { leaveTransientUi(); openTab(tab) } }
-                .setActionTextColor(currentAccent())
-                .show()
-        } catch (e: Exception) { /* no window to show it in */ }
-    }
-
-    private fun copyText(label: String, text: String) {
-        try {
-            val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
-            cm.setPrimaryClip(android.content.ClipData.newPlainText(label, text))
-            // Android 13+ raises its own copy confirmation; ours would double it.
-            if (android.os.Build.VERSION.SDK_INT < 33) {
-                android.widget.Toast.makeText(
-                    this, "Copied", android.widget.Toast.LENGTH_SHORT).show()
-            }
-        } catch (e: Exception) {
-            android.widget.Toast.makeText(
-                this, "Couldn't copy", android.widget.Toast.LENGTH_SHORT).show()
-        }
-    }
-
     // ---------- Saving images ----------
-
-    private fun saveImage(url: String) {
-        if (android.os.Build.VERSION.SDK_INT <= 28) {
-            val granted = androidx.core.content.ContextCompat.checkSelfPermission(
-                this, android.Manifest.permission.WRITE_EXTERNAL_STORAGE
-            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-            if (!granted) {
-                pendingImageSave = url
-                storagePermLauncher.launch(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                return
-            }
-        }
-        when {
-            url.startsWith("data:") -> {
-                toast("Saving image\u2026")
-                Thread { saveDataImage(url) }.start()
-            }
-            url.startsWith("http://") || url.startsWith("https://") -> {
-                toast("Saving image\u2026")
-                val ua = activeWeb()?.settings?.userAgentString
-                val referer = activeWeb()?.url
-                Thread { saveRemoteImage(url, ua, referer) }.start()
-            }
-            // Only the page can read a blob:, so we ask it to (see requestBlobSave).
-            url.startsWith("blob:") -> {
-                toast("Saving image\u2026")
-                requestBlobSave(url)
-            }
-            else -> toast("Can't save this image")
-        }
-    }
-
-    /**
-     * Fetched here rather than handed to DownloadManager for two reasons: the
-     * cookies and referer below are what separate a real image from a saved 403
-     * page, and writing through MediaStore ourselves is what makes the file
-     * actually appear in the gallery.
-     */
-    private fun saveRemoteImage(url: String, ua: String?, referer: String?) {
-        var conn: HttpURLConnection? = null
-        try {
-            val c = URL(url).openConnection() as HttpURLConnection
-            conn = c
-            c.connectTimeout = 15000
-            c.readTimeout = 20000
-            c.instanceFollowRedirects = true
-            ua?.let { c.setRequestProperty("User-Agent", it) }
-            android.webkit.CookieManager.getInstance().getCookie(url)?.let {
-                c.setRequestProperty("Cookie", it)
-            }
-            referer?.let { if (it.startsWith("http")) c.setRequestProperty("Referer", it) }
-            c.connect()
-            if (c.responseCode !in 200..299) { imageSaveFailed(); return }
-            val mime = c.contentType?.substringBefore(';')?.trim()
-            // An "image" can be anything a server says it is, and it is read
-            // whole into memory here: past 64MB it is refused rather than
-            // risking the app being killed for memory part-way through.
-            val max = 64L * 1024 * 1024
-            if (c.contentLengthLong > max) { imageSaveFailed(); return }
-            val bytes = c.inputStream.use { input ->
-                val out = java.io.ByteArrayOutputStream()
-                val buf = ByteArray(64 * 1024)
-                var total = 0L
-                while (true) {
-                    val n = input.read(buf)
-                    if (n < 0) break
-                    total += n
-                    if (total > max) { imageSaveFailed(); return }
-                    out.write(buf, 0, n)
-                }
-                out.toByteArray()
-            }
-            if (bytes.isEmpty()) { imageSaveFailed(); return }
-            writeImage(bytes, if (mime.isNullOrBlank()) "image/jpeg" else mime)
-        } catch (e: Throwable) {
-            // OutOfMemoryError included: a failed save, never a dead app.
-            imageSaveFailed()
-        } finally {
-            try { conn?.disconnect() } catch (e: Exception) {}
-        }
-    }
-
-    /**
-     * The page fetches its own blob, turns it into a data: URL and hands that
-     * back over the bridge. Capped at 16MB: base64 inflates by a third and the
-     * whole string crosses the bridge in one piece.
-     *
-     * A site with a strict connect-src CSP can refuse the fetch. That path ends
-     * in saveBlobFailed, so it reports rather than hanging.
-     */
-    private fun requestBlobSave(url: String) {
-        val web = activeWeb() ?: run { imageSaveFailed(); return }
-        val token = java.util.UUID.randomUUID().toString()
-        blobSaveToken = token
-        val js = "(function(u,t){try{" +
-            "fetch(u).then(function(r){if(!r.ok)throw 0;return r.blob();})" +
-            ".then(function(b){if(b.size>16777216)throw 0;" +
-            "var fr=new FileReader();" +
-            "fr.onloadend=function(){SearchApp.saveBlobImage(t,fr.result);};" +
-            "fr.onerror=function(){SearchApp.saveBlobFailed(t);};" +
-            "fr.readAsDataURL(b);})" +
-            ".catch(function(){SearchApp.saveBlobFailed(t);});" +
-            "}catch(e){SearchApp.saveBlobFailed(t);}})(" +
-            JSONObject.quote(url) + "," + JSONObject.quote(token) + ");"
-        web.evaluateJavascript(js, null)
-    }
-
-    private fun saveDataImage(url: String) {
-        try {
-            val comma = url.indexOf(',')
-            if (comma < 0) { imageSaveFailed(); return }
-            val header = url.substring(5, comma)
-            val mime = header.substringBefore(';').ifBlank { "image/png" }
-            val body = url.substring(comma + 1)
-            val bytes = if (header.contains("base64"))
-                android.util.Base64.decode(body, android.util.Base64.DEFAULT)
-            else java.net.URLDecoder.decode(body, "UTF-8").toByteArray()
-            if (bytes.isEmpty()) { imageSaveFailed(); return }
-            writeImage(bytes, mime)
-        } catch (e: Throwable) {
-            imageSaveFailed()
-        }
-    }
-
-    private fun writeImage(bytes: ByteArray, mime: String) {
-        val ext = when {
-            mime.contains("png") -> "png"
-            mime.contains("webp") -> "webp"
-            mime.contains("gif") -> "gif"
-            else -> "jpg"
-        }
-        val name = "IMG_" + System.currentTimeMillis() + "." + ext
-        try {
-            if (android.os.Build.VERSION.SDK_INT >= 29) {
-                val values = android.content.ContentValues().apply {
-                    put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, name)
-                    put(android.provider.MediaStore.Images.Media.MIME_TYPE, mime)
-                    put(
-                        android.provider.MediaStore.Images.Media.RELATIVE_PATH,
-                        android.os.Environment.DIRECTORY_PICTURES + "/Search"
-                    )
-                    put(android.provider.MediaStore.Images.Media.IS_PENDING, 1)
-                }
-                val uri = contentResolver.insert(
-                    android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values
-                ) ?: run { imageSaveFailed(); return }
-                contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
-                values.clear()
-                values.put(android.provider.MediaStore.Images.Media.IS_PENDING, 0)
-                contentResolver.update(uri, values, null, null)
-            } else {
-                val dir = java.io.File(
-                    android.os.Environment.getExternalStoragePublicDirectory(
-                        android.os.Environment.DIRECTORY_PICTURES
-                    ), "Search"
-                )
-                if (!dir.exists()) dir.mkdirs()
-                val f = java.io.File(dir, name)
-                java.io.FileOutputStream(f).use { it.write(bytes) }
-                // Without the scan the file is on disk but no gallery lists it,
-                // which reads to the user as another failed save.
-                android.media.MediaScannerConnection.scanFile(
-                    this, arrayOf(f.absolutePath), arrayOf(mime), null
-                )
-            }
-            runOnUiThread { toast("Image saved to Pictures/Search") }
-        } catch (e: Exception) {
-            imageSaveFailed()
-        }
-    }
-
-    private fun imageSaveFailed() {
-        runOnUiThread { toast("Couldn't save image") }
-    }
-
-    /**
-     * Print or save as PDF, through Android's print screen, which offers
-     * "Save as PDF" on every phone - as Chrome's Share > Print does. The page
-     * is laid out for paper by the page itself (its print stylesheet).
-     */
-    private fun printPage() {
-        val web = activeWeb() ?: return
-        val url = tabs.activeTab?.url
-        if (url == null || url == homePage || isErrorPage(url)) { toast("Open a page to print it"); return }
-        val pm = getSystemService(PRINT_SERVICE) as? android.print.PrintManager ?: return
-        val name = (web.title?.takeIf { it.isNotBlank() } ?: UrlHelper.siteOf(url) ?: "Page").take(80)
-        try {
-            pm.print(name, web.createPrintDocumentAdapter(name),
-                android.print.PrintAttributes.Builder().build())
-        } catch (e: Exception) {
-            toast("Couldn't print this page")
-        }
-    }
-
-    /**
-     * A site that asks for a user name and password itself (HTTP sign-in: a
-     * router's admin page, a NAS, an office intranet). WebView's default is
-     * to refuse without asking, which left these pages blank with no way in.
-     * The answer goes to exactly one of proceed or cancel.
-     */
-    private fun askHttpAuth(handler: android.webkit.HttpAuthHandler, host: String, realm: String) {
-        if (isFinishing || isDestroyed) { handler.cancel(); return }
-        val d = resources.displayMetrics.density
-        val pad = (20 * d).toInt()
-        val user = android.widget.EditText(this).apply {
-            hint = "User name"
-            isSingleLine = true
-            inputType = android.text.InputType.TYPE_CLASS_TEXT or
-                android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
-        }
-        val pass = android.widget.EditText(this).apply {
-            hint = "Password"
-            isSingleLine = true
-            inputType = android.text.InputType.TYPE_CLASS_TEXT or
-                android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
-        }
-        val box = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
-            setPadding(pad, (8 * d).toInt(), pad, 0)
-            addView(user); addView(pass)
-        }
-        var answered = false
-        fun answer(ok: Boolean) {
-            if (answered) return
-            answered = true
-            if (ok) handler.proceed(user.text.toString(), pass.text.toString()) else handler.cancel()
-        }
-        try {
-            com.google.android.material.dialog.MaterialAlertDialogBuilder(this, R.style.Theme_Search_Dialog)
-                .setTitle("Sign in to $host")
-                .setMessage(if (realm.isBlank()) "This site asks for a user name and password."
-                    else "The site says: \u201c" + realm.take(120) + "\u201d")
-                .setView(box)
-                .setPositiveButton("Sign in") { _, _ -> answer(true) }
-                .setNegativeButton("Cancel") { _, _ -> answer(false) }
-                .setOnDismissListener { answer(false) }
-                .show()
-        } catch (e: Exception) {
-            answer(false)
-        }
-    }
-
-    private fun toast(msg: String) {
-        android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_SHORT).show()
-    }
 
     /**
      * What the address bar shows. The app's own pages have no address worth
@@ -4655,195 +2986,7 @@ class MainActivity : AppCompatActivity() {
      * base64 of it are not free.
      */
     /** Whether a captured favicon (a PNG data: URL) is big enough to look sharp in a tile. */
-    private val sharpMemo = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
-    private fun capturedIsSharp(domain: String, dataUrl: String): Boolean {
-        val key = domain + ":" + dataUrl.length
-        sharpMemo[key]?.let { return it }
-        val sharp = try {
-            val bytes = android.util.Base64.decode(dataUrl.substringAfter(','), android.util.Base64.DEFAULT)
-            val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, o)
-            minOf(o.outWidth, o.outHeight) >= 96
-        } catch (e: Exception) { false }
-        sharpMemo[key] = sharp
-        return sharp
-    }
-
-    private fun storeFavicon(host: String, bmp: android.graphics.Bitmap) {
-        try {
-            val domain = host.removePrefix("www.")
-                .removePrefix("mobile.").removePrefix("m.")
-            if (domain.isBlank()) return
-            val bytes = java.io.ByteArrayOutputStream()
-            bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, bytes)
-            bmp.recycle()
-            val dataUrl = "data:image/png;base64," + android.util.Base64.encodeToString(
-                bytes.toByteArray(), android.util.Base64.NO_WRAP)
-            // A 64x64 PNG is a couple of kB; anything far past that is not an
-            // icon and is not worth carrying across the bridge.
-            // Room for a real 256px icon, which the 40k cap would have
-            // thrown away - the very icons worth keeping were the ones being
-            // rejected. Paired with a smaller cache below, since all of this
-            // is held in SharedPreferences and loaded into memory at once.
-            if (dataUrl.length > 60000) return
-            val prefs = getSharedPreferences("favicon_cache", Context.MODE_PRIVATE)
-            val order = (prefs.getString("__order", "") ?: "")
-                .split(",").filter { it.isNotBlank() && it != domain }
-                .toMutableList()
-            order.add(domain)
-            val edit = prefs.edit().putString(domain, dataUrl)
-            while (order.size > 40) {
-                edit.remove(order.removeAt(0))
-            }
-            edit.putString("__order", order.joinToString(",")).apply()
-        } catch (e: Exception) { /* an icon is not worth a crash */ }
-    }
-
-    /** Re-draws the home tiles in place, with no page reload and no flash. */
-    private fun refreshHomeTiles() {
-        activeWeb()?.evaluateJavascript(
-            "window.__renderTiles && window.__renderTiles()", null)
-    }
-
-    private fun showAddShortcutDialog() {
-        val d = resources.displayMetrics.density
-        val input = android.widget.EditText(this).apply {
-            hint = "example.com"
-            inputType = android.text.InputType.TYPE_CLASS_TEXT or
-                android.text.InputType.TYPE_TEXT_VARIATION_URI
-            setSingleLine()
-        }
-        val box = android.widget.FrameLayout(this).apply {
-            setPadding((24 * d).toInt(), (8 * d).toInt(), (24 * d).toInt(), 0)
-            addView(input)
-        }
-        com.google.android.material.dialog.MaterialAlertDialogBuilder(
-            this, R.style.Theme_Search_Dialog)
-            .setTitle("Add shortcut")
-            .setView(box)
-            .setPositiveButton("Add") { _, _ ->
-                val typed = input.text.toString().trim()
-                // A phrase is a search, not a site. Without this the tile
-                // would be a frozen search results page.
-                if (typed.isBlank() || typed.contains(' ')) return@setPositiveButton
-                val url = UrlHelper.toUrlOrSearch(typed, Settings.getEngineUrl(this))
-                val dom = Shortcuts.domainOf(url)
-                if (dom.isBlank()) return@setPositiveButton
-                val label = dom.substringBefore('.')
-                    .replaceFirstChar { it.uppercase() }
-                Shortcuts.addCustom(this, label, url)
-                refreshHomeTiles()
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-        input.requestFocus()
-    }
-
-    private fun showRemoveShortcutDialog(label: String, url: String) {
-        com.google.android.material.dialog.MaterialAlertDialogBuilder(
-            this, R.style.Theme_Search_Dialog)
-            .setTitle("Remove " + label.ifBlank { "this shortcut" } + "?")
-            .setMessage("It comes off the home page. Your history and bookmarks are not touched.")
-            .setPositiveButton("Remove") { _, _ ->
-                val dom = Shortcuts.keyOf(url)
-                // One the user added is simply forgotten. A built-in or a site
-                // from history is generated every render, so the only way to
-                // keep it gone is to remember that it was removed.
-                val wasCustom = Shortcuts.loadCustom(this)
-                    .any { Shortcuts.keyOf(it.url) == dom }
-                if (wasCustom) Shortcuts.removeCustom(this, url)
-                else Shortcuts.hide(this, dom)
-                refreshHomeTiles()
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-
-    /**
-     * What the address bar shows at rest: the site, not the address.
-     *
-     * "google.com" rather than "https://www.google.com/search?q=moviebox&oq=",
-     * which is what every other browser does and what makes the bar readable
-     * at a glance. Nothing is lost - enterSearchMode fills the bar with the
-     * full url and selects it as soon as it is focused, so copying and editing
-     * the real address are unchanged.
-     *
-     * http:// is kept on purpose. Hiding the scheme would make an insecure
-     * page look exactly like a secure one, and there is no lock in this bar to
-     * carry that distinction. HTTPS-only is on by default and plain http
-     * already shows an interstitial first, so arriving on one is deliberate -
-     * but the bar should not then imply otherwise. A non-standard port is kept
-     * for the same reason: it is part of what you are looking at.
-     *
-     * Anything that is not a web page is returned untouched. about:, intent:
-     * and custom schemes have no host to extract, and rewriting them would
-     * hide what the page really is.
-     */
-    private fun displayUrl(url: String?): String {
-        // A page kept for offline reading says so, and where it came from.
-        OfflinePages.idOf(url)?.let { id ->
-            return "Offline" + (OfflinePages.siteOf(id)?.takeIf { it.isNotBlank() }?.let { " \u00B7 $it" } ?: "")
-        }
-        if (url == null || url.startsWith("file:///android_asset/")) return ""
-        val uri = try {
-            android.net.Uri.parse(url)
-        } catch (e: Exception) {
-            return url
-        }
-        val scheme = uri.scheme?.lowercase()
-        if (scheme != "http" && scheme != "https") return url
-        val host = uri.host ?: return url
-        if (host.isEmpty()) return url
-        val shown = host.removePrefix("www.") +
-            (if (uri.port > 0) ":" + uri.port else "")
-        return if (scheme == "http") "http://" + shown else shown
-    }
-
-    private fun captureThumbnail(tab: Tab, onDone: (() -> Unit)? = null) {
-        val web = tab.webView
-        if (deckVisible || web == null || web.width <= 0 || web.height <= 0 ||
-            !web.isAttachedToWindow || binding.webContainer.translationX != 0f
-        ) { onDone?.invoke(); return }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            try {
-                // Allocate the destination at reduced resolution; PixelCopy
-                // scales the full-size source rect down into it. Clamp to >=1px
-                // so a tiny view never produces a zero-sized bitmap.
-                val dstW = (web.width / thumbCaptureDivisor).coerceAtLeast(1)
-                val dstH = (web.height / thumbCaptureDivisor).coerceAtLeast(1)
-                val source = Bitmap.createBitmap(dstW, dstH, Bitmap.Config.RGB_565)
-                val location = IntArray(2)
-                web.getLocationInWindow(location)
-                val rect = android.graphics.Rect(
-                    location[0], location[1],
-                    location[0] + web.width, location[1] + web.height
-                )
-                PixelCopy.request(
-                    window, rect, source,
-                    { result ->
-                        if (result == PixelCopy.SUCCESS && !deckVisible) storeScaled(tab, source)
-                        else source.recycle()
-                        onDone?.invoke()
-                    },
-                    Handler(Looper.getMainLooper())
-                )
-                return
-            } catch (e: Exception) { /* fall through */ }
-        }
-        onDone?.invoke()
-    }
-
-    private fun storeScaled(tab: Tab, full: Bitmap) {
-        try {
-            val ratio = full.height.toFloat() / full.width.toFloat()
-            val targetH = (thumbWidthPx * ratio).toInt().coerceAtLeast(1)
-            val scaled = Bitmap.createScaledBitmap(full, thumbWidthPx, targetH, true)
-            if (scaled != full) full.recycle()
-            tab.thumbnail?.recycle()
-            tab.thumbnail = scaled
-        } catch (e: Exception) { if (!full.isRecycled) full.recycle() }
-    }
-
+    internal val sharpMemo = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
     /**
      * Loads a url, settling the bridge's privilege before the page can ask.
      *
@@ -4858,7 +3001,7 @@ class MainActivity : AppCompatActivity() {
      * tab leaving home.html for a website drops it in the same instant rather
      * than whenever the callback happens to land.
      */
-    private fun loadInto(web: WebView?, url: String) {
+    internal fun loadInto(web: WebView?, url: String) {
         val target = web ?: return
         (target.tag as? SearchAppBridge)?.privileged =
             url.startsWith("file:///android_asset/")
@@ -4888,215 +3031,21 @@ class MainActivity : AppCompatActivity() {
      * returned. Posted, the load runs a moment later from a clean stack, and
      * only if the WebView is still one the app owns.
      */
-    private fun loadAfterCallback(web: WebView?, url: String) {
+    internal fun loadAfterCallback(web: WebView?, url: String) {
         val target = web ?: return
         uiHandler.post { if (isLiveWeb(target)) loadInto(target, url) }
     }
 
-    /** The tab a WebView belongs to - not necessarily the one on screen. */
-    private fun tabOf(web: WebView?): Tab? =
-        if (web == null) null else tabs.tabs.firstOrNull { it.webView === web }
-
     /** How long after a tap a pop-up still counts as the user's (Chrome's window is about this). */
     private val POPUP_TAP_GRACE_MS = 5_000L
 
-    /** scheme://host[:port] of [url], the key site settings are kept under; null for anything not a web page. */
-    private fun originOf(url: String?): String? {
-        val u = try { android.net.Uri.parse(url ?: return null) } catch (e: Exception) { return null }
-        val scheme = u.scheme?.lowercase()
-        if (scheme != "https" && scheme != "http") return null
-        val host = u.host?.lowercase() ?: return null
-        return scheme + "://" + host + (if (u.port > 0) ":" + u.port else "")
-    }
-
-    private var popupNoticeAt = 0L
-
-    /**
-     * A pop-up the blocker refused: said once in a while (a page that keeps
-     * trying is told once, not every time), with the way to let this site
-     * open them - as Chrome's "Pop-ups blocked" does. The window asked for
-     * cannot be brought back, so the site is asked to try again.
-     */
-    private fun offerPopupAllow(view: WebView?, origin: String?) {
-        if (origin == null || view == null) return
-        uiHandler.post {
-            if (isFinishing || isDestroyed || view !== activeWeb()) return@post
-            val now = android.os.SystemClock.uptimeMillis()
-            if (now - popupNoticeAt < 15_000L) return@post
-            popupNoticeAt = now
-            val host = try { android.net.Uri.parse(origin).host?.removePrefix("www.") } catch (e: Exception) { null } ?: return@post
-            try {
-                com.google.android.material.snackbar.Snackbar
-                    .make(binding.webArea, "Pop-up blocked", com.google.android.material.snackbar.Snackbar.LENGTH_LONG)
-                    .setAction("Allow on this site") {
-                        SitePermissions.set(this, origin, SitePermissions.POPUPS, SitePermissions.ALLOW)
-                        toast("Pop-ups allowed on " + host + ". Try again.")
-                    }
-                    .setActionTextColor(currentAccent())
-                    .show()
-            } catch (e: Exception) { /* no window to show it in */ }
-        }
-    }
-
-    /**
-     * Closes a tab a page opened, if nothing ever loaded in it. Run after the
-     * callback that decided its first navigation was not ours to load.
-     */
-    private fun closeIfNeverLoaded(web: WebView?) {
-        val target = web ?: return
-        uiHandler.post {
-            val tab = tabOf(target) ?: return@post
-            // about:blank is what onCreateWindow names the tab, and
-            // onPageStarted replaces it as soon as a page starts loading.
-            if (tab.openerId != null && tab.url == "about:blank") closeTabFromDeck(tab)
-        }
-    }
-
-    /**
-     * Throws away a WebView whose renderer has gone, and puts the tab's page
-     * back in a new one if it is the tab on screen. Background tabs are left
-     * frozen and reload when next opened, as any frozen tab does.
-     *
-     * The dead view is only removed and destroyed - WebView's own instruction,
-     * since anything else called on it may reach the renderer that is gone.
-     */
-    private fun replaceDeadWebView(dead: WebView) {
-        val tab = tabOf(dead)
-        if (tab != null && tab === tabs.activeTab && fullscreenView != null) {
-            // The player's callback belongs to the dead page. Dropped rather
-            // than called, then fullscreen is unwound as usual.
-            fullscreenCallback = null
-            exitFullscreen()
-        }
-        (dead.parent as? ViewGroup)?.removeView(dead)
-        dead.destroy()
-        if (tab == null) return
-        tab.webView = null
-        // State saved by an earlier freeze is older than the page that just
-        // died. The address onPageStarted last recorded is where the tab was.
-        tab.savedState = null
-        // Unless the user ended it for hanging, or it has now taken the
-        // renderer down twice in a row - a page too heavy for the phone,
-        // killed for memory each time it loads. Reloaded either way it would
-        // only do it again, taking every tab with it. It is rebuilt on a page
-        // that says so instead, and goes back only when Try again is tapped.
-        val now = android.os.SystemClock.uptimeMillis()
-        val crashLoop = now - tab.lastRendererLoss < 20_000L
-        tab.lastRendererLoss = now
-        val ended = tab.id == stoppedTabId
-        if (ended) stoppedTabId = null
-        if ((ended || crashLoop) &&
-            (tab.url.startsWith("http://") || tab.url.startsWith("https://"))
-        ) {
-            DebugLog.add { "tab#" + tab.id + (if (ended) " ended by the user" else
-                " lost its renderer twice in 20s") + "; not reloading it" }
-            tab.url = stoppedPage(tab.url, crashed = !ended)
-            tab.diskStateHash = 0
-        }
-        if (tab === tabs.activeTab) {
-            // Outside the callback, which WebView is still running for the
-            // other tabs this renderer served.
-            uiHandler.post {
-                if (!isFinishing && !isDestroyed && tab === tabs.activeTab &&
-                    tab.webView == null
-                ) {
-                    // Ended by the user: if the page put up in its place does
-                    // not start either, the hang was never in the renderer,
-                    // and the prompt comes back offering a restart. Longer
-                    // than for Home, as a new renderer has to start first.
-                    if (ended) expectPageStart(tab, 6000L)
-                    openTab(tab)
-                }
-            }
-        }
-    }
-
-    /**
-     * A pop-up that has been to another site and come back to its opener's is
-     * a sign-in that has returned: the provider is done, and the page now
-     * showing is the site's own callback. A working one hands the result to
-     * its opener and closes within a second. One that is still there a few
-     * seconds later, with nothing on it to use, has stalled - the opener
-     * could not be reached, or the close was refused - and that is the blank
-     * page the user was left on, signed in but stuck. It is folded back into
-     * the tab that opened it, as foldBackPopup describes.
-     *
-     * Only while the pop-up is the tab on screen, and only if the page really
-     * is empty: a site that carries on in the pop-up with a form or a page of
-     * its own is left alone.
-     */
-    private fun watchReturnedPopup(popup: Tab, url: String?) {
-        if (!popup.signIn || !popup.leftOpenerSite) return
-        val site = UrlHelper.siteOf(url) ?: return
-        if (site != popup.openerSite) return
-        val web = popup.webView ?: return
-        DebugLog.add { "pop-up tab#" + popup.id + " is back on " + site + "; watching for a stall" }
-        checkStalledPopup(popup, web, popup.loadToken, emptyLooks = 0, attempt = 0)
-    }
-
-    /**
-     * One look at a returned pop-up. It is folded back only after two looks,
-     * [POPUP_STALL_MS] and then [POPUP_RECHECK_MS] apart, both finding a page
-     * that has finished loading and has nothing on it: a callback that is
-     * still exchanging its code over a slow connection gets the second look's
-     * worth of time, and one that is still loading is never judged at all.
-     * Any new load in the pop-up, or leaving it, ends the watch; coming back
-     * to it starts a new one (openTab).
-     */
-    private fun checkStalledPopup(popup: Tab, web: WebView, token: Int, emptyLooks: Int, attempt: Int) {
-        val delay = if (emptyLooks == 0 && attempt == 0) POPUP_STALL_MS else POPUP_RECHECK_MS
-        uiHandler.postDelayed({
-            if (isFinishing || isDestroyed) return@postDelayed
-            if (popup.loadToken != token || popup.webView !== web) return@postDelayed
-            if (popup !== tabs.activeTab || !tabs.tabs.contains(popup)) return@postDelayed
-            if (web.progress < 100) {
-                if (attempt < 6) checkStalledPopup(popup, web, token, emptyLooks, attempt + 1)
-                return@postDelayed
-            }
-            web.evaluateJavascript(PAGE_EMPTINESS_JS) { result ->
-                if (popup.loadToken != token || popup.webView !== web ||
-                    !tabs.tabs.contains(popup)
-                ) return@evaluateJavascript
-                val empty = isEmptyPage(result)
-                DebugLog.add { "pop-up tab#" + popup.id + " look " + (emptyLooks + 1) + ": " +
-                    result + (if (empty) " - empty" else " - has content, left alone") }
-                if (!empty) return@evaluateJavascript
-                if (emptyLooks >= 1) foldBackPopup(popup, "stalled on its callback page")
-                else checkStalledPopup(popup, web, token, emptyLooks + 1, attempt + 1)
-            }
-        }, delay)
-    }
-
-    /**
-     * Records where a pop-up has been: whether it has left its opener's site
-     * (for the identity provider) and whether anything it loaded was part of
-     * a sign-in. Fed from shouldOverrideUrlLoading, which sees redirects, and
-     * from onPageStarted, which sees what committed.
-     */
-    private fun notePopupNavigation(view: WebView?, url: String?) {
-        val t = tabOf(view) ?: return
-        if (t.openerId == null || url == null) return
-        val site = UrlHelper.siteOf(url)
-        if (site != null && t.openerSite != null && site != t.openerSite) t.leftOpenerSite = true
-        if (!t.signIn && (UrlHelper.looksLikeSignIn(url) || UrlHelper.looksLikePayment(url))) {
-            // A payment (PayPal, a wallet, a card check) is the same hand-off
-            // as a sign-in: away to the provider and back to the shop, and
-            // it gets the same watch for a blank page on the way back.
-            t.signIn = true
-            DebugLog.add { "pop-up tab#" + t.id + " is a sign-in or payment (" + DebugLog.url(url) + ")" }
-        }
-    }
-
-    /** A sign-in pop-up that went to its provider and is back on the opener's site. */
-    private fun returnedFromSignIn(popup: Tab): Boolean =
-        popup.signIn && popup.leftOpenerSite && popup.openerSite != null &&
-            UrlHelper.siteOf(popup.url) == popup.openerSite
+    internal var popupNoticeAt = 0L
 
     /**
      * How much of a page there is to use: visible text, and visible controls
      * someone could press or type into. Read in one pass, as a JSON object.
      */
-    private val PAGE_EMPTINESS_JS = """
+    internal val PAGE_EMPTINESS_JS = """
         (function(){
           var b = document.body;
           if (!b) return {text: 0, controls: 0};
@@ -5109,75 +3058,6 @@ class MainActivity : AppCompatActivity() {
           return {text: (b.innerText || '').trim().length, controls: controls};
         })()
     """.trimIndent()
-
-    /** Nothing to press and next to nothing to read: "Signing you in..." at most. */
-    private fun isEmptyPage(json: String?): Boolean = try {
-        val o = JSONObject(json ?: "")
-        o.optInt("controls", 1) == 0 && o.optInt("text", 999) < 80
-    } catch (e: Exception) { false }
-
-    /**
-     * Closes a sign-in pop-up and puts the user back on the page that opened
-     * it - and, when the sign-in came back without that page ever hearing of
-     * it, reloads that page.
-     *
-     * The session a sign-in leaves behind is a cookie or local storage on the
-     * site, so a fresh load of the site is signed in. That is the "close it
-     * and open the site again" users were having to do by hand. The reload is
-     * skipped when the opener has already started a load of its own since the
-     * pop-up opened, because then it did hear, and is on its way.
-     */
-    private fun foldBackPopup(popup: Tab, why: String) {
-        if (!tabs.tabs.contains(popup)) return
-        val opener = tabs.tabs.firstOrNull { it.id == popup.openerId && it !== popup }
-        val returned = returnedFromSignIn(popup)
-        // Moved on: started a load of its own since the pop-up opened, or is
-        // part-way through one now - which a reload would cancel.
-        val openerBusy = (opener?.webView?.progress ?: 100) < 100
-        val openerMovedOn = opener != null && (openerBusy ||
-            (popup.openerLoadsAtOpen >= 0 && opener.loadsStarted != popup.openerLoadsAtOpen))
-        DebugLog.add { "folding pop-up tab#" + popup.id + " back into tab#" + opener?.id +
-            " (" + why + "); returned=" + returned + " openerMovedOn=" + openerMovedOn }
-        val openerWasLive = opener?.webView != null
-        closeTabFromDeck(popup)
-        if (opener == null || !returned) return
-        if (openerMovedOn) {
-            // It heard, and started loading. Make sure it got somewhere.
-            watchOpenerAfterSignIn(opener)
-            return
-        }
-        // A frozen opener needs nothing more: it loads afresh whenever it is
-        // next opened, which closeTabFromDeck has just done if the pop-up was
-        // the tab on screen.
-        if (!openerWasLive) return
-        val web = opener.webView ?: return
-        loadInto(web, web.url ?: opener.url)
-    }
-
-    /**
-     * After a sign-in pop-up has returned, the page that opened it should show
-     * the result - by loading a new page, or by redrawing itself. One that
-     * has done neither a few seconds later, and is showing nothing at all, is
-     * stuck on the way, and a fresh load of it is signed in. A page that
-     * moved on, or that has anything on it, is left exactly as it is.
-     */
-    private fun watchOpenerAfterSignIn(opener: Tab) {
-        val web = opener.webView ?: return
-        val token = opener.loadToken
-        DebugLog.add { "watching tab#" + opener.id + " after its sign-in pop-up returned" }
-        uiHandler.postDelayed({
-            if (isFinishing || isDestroyed) return@postDelayed
-            if (opener.webView !== web || !tabs.tabs.contains(opener)) return@postDelayed
-            web.evaluateJavascript(PAGE_EMPTINESS_JS) { result ->
-                val empty = isEmptyPage(result)
-                DebugLog.add { "tab#" + opener.id + " after sign-in: " + result +
-                    (if (empty) " - blank, reloading" else " - fine") }
-                if (empty && opener.webView === web && tabs.tabs.contains(opener) &&
-                    opener.loadToken == token && web.progress >= 100
-                ) loadInto(web, web.url ?: opener.url)
-            }
-        }, OPENER_STALL_MS)
-    }
 
     // ---------- A page that stops answering ----------
     //
@@ -5206,70 +3086,17 @@ class MainActivity : AppCompatActivity() {
     // soon after an end are offered a restart of Search instead, with the
     // tabs coming back from disk.
 
-    private var unresponsiveDialog: android.app.AlertDialog? = null
-    private var hangQuietUntil = 0L
+    internal var unresponsiveDialog: android.app.AlertDialog? = null
+    internal var hangQuietUntil = 0L
     /** The tab the user ended for not responding, until it is rebuilt. */
-    private var stoppedTabId: Long? = null
-    private val HANG_WAIT_MS = 10_000L
+    internal var stoppedTabId: Long? = null
+    internal val HANG_WAIT_MS = 10_000L
     /** When the user last ended the renderer for a hang (uptime), or 0. */
-    private var rendererEndedAt = 0L
+    internal var rendererEndedAt = 0L
     /** Pages stuck again this soon after an end are not stuck in the renderer. */
-    private val ENDED_RECENTLY_MS = 90_000L
+    internal val ENDED_RECENTLY_MS = 90_000L
 
-    @android.annotation.TargetApi(Build.VERSION_CODES.Q)
-    private fun onPageUnresponsive(view: WebView, renderer: android.webkit.WebViewRenderProcess?) {
-        DebugLog.add { "page not responding in tab#" + tabOf(view)?.id }
-        // Any tab, not only the one on screen: they all share the renderer.
-        showPagesStuck(view, renderer)
-    }
-
-    private fun onPageResponsive(view: WebView) {
-        DebugLog.add { "page responding again in tab#" + tabOf(view)?.id }
-        hangQuietUntil = 0L
-        unresponsiveDialog?.dismiss()
-        unresponsiveDialog = null
-    }
-
-    /**
-     * Offers the way out of a stuck page: wait, or end it. Ending it ends the
-     * renderer, so every page restarts - the stuck one included. On Android 9
-     * and below a renderer cannot be ended on its own, and pages still stuck
-     * just after one was ended are not held up by it, so in those two cases
-     * the offer is to restart Search, whose tabs come back from disk
-     * (SessionStore).
-     *
-     * [renderer] is the WebViewRenderProcess when Android reported the hang,
-     * typed loosely so this compiles into code that also runs before Android 10.
-     */
-    private fun showPagesStuck(view: WebView?, renderer: Any?) {
-        if (unresponsiveDialog != null || isFinishing || isDestroyed) return
-        val now = android.os.SystemClock.uptimeMillis()
-        if (now < hangQuietUntil) return
-        HealthStats.count(this, HealthStats.PAGE_UNRESPONSIVE)
-        val endedRecently = rendererEndedAt != 0L && now - rendererEndedAt < ENDED_RECENTLY_MS
-        val canEnd = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && !endedRecently
-        if (endedRecently) DebugLog.add { "pages still stuck after ending the page: offering a restart" }
-        unresponsiveDialog = android.app.AlertDialog.Builder(this)
-            .setTitle(if (endedRecently) "Pages still aren't loading" else "This page isn't responding")
-            .setMessage(when {
-                endedRecently -> "Ending the page didn't free them. Restart Search to clear " +
-                    "it - your tabs will come back."
-                canEnd -> "It's holding up every tab. Wait for it, or end it - " +
-                    "your tabs will reload."
-                else -> "It's holding up every tab. Wait for it, or restart Search - " +
-                    "your tabs will come back."
-            })
-            .setNegativeButton("Wait") { _, _ ->
-                hangQuietUntil = android.os.SystemClock.uptimeMillis() + HANG_WAIT_MS
-            }
-            .setPositiveButton(if (canEnd) "End it" else "Restart") { _, _ ->
-                endStuckPages(view, renderer, restart = !canEnd)
-            }
-            .setOnDismissListener { unresponsiveDialog = null }
-            .show()
-    }
-
-    private fun endStuckPages(view: WebView?, renderer: Any?, restart: Boolean) {
+    internal fun endStuckPages(view: WebView?, renderer: Any?, restart: Boolean) {
         // The tab that hung is not loaded straight back into the same hang:
         // it comes back as a "this page stopped" page with Try again.
         val stuck = tabOf(view) ?: tabs.activeTab
@@ -5290,70 +3117,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Ends this process and opens Search again in a new one (RestartActivity).
-     * The tabs are written to disk first and restored on the way back up.
-     */
-    private fun restartBrowser() {
-        tabs.tabs.firstOrNull { it.id == stoppedTabId }?.let { t ->
-            if (t.url.startsWith("http://") || t.url.startsWith("https://")) t.stoppedUrl = t.url
-        }
-        saveSession(full = true)
-        SessionStore.flush(1500L)
-        try {
-            // RestartActivity, in a process of its own, ends this one and
-            // opens the browser again.
-            RestartActivity.restart(this)
-        } catch (e: Exception) {
-            // Could not be started: close instead, and the tabs come back
-            // from disk when Search is next opened.
-            finishAffinity()
-            android.os.Process.killProcess(android.os.Process.myPid())
-        }
-    }
-
-    /**
-     * After asking [tab] for a local page - home, or the page standing in for
-     * one the user ended - checks [afterMs] later that it started. A local
-     * file starts in milliseconds; one that has not started means the pages
-     * are stuck.
-     */
-    private fun expectPageStart(tab: Tab, afterMs: Long = 4000L) {
-        val started = tab.loadsStarted
-        uiHandler.postDelayed({
-            if (isFinishing || isDestroyed || !tabs.tabs.contains(tab)) return@postDelayed
-            if (tab.loadsStarted != started) return@postDelayed
-            if (!lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) {
-                return@postDelayed
-            }
-            val web = tab.webView ?: return@postDelayed
-            DebugLog.add { "tab#" + tab.id + " did not start loading: pages stuck" }
-            showPagesStuck(web, null)
-        }, afterMs)
-    }
-
     // ---------- Memory ----------
-
-    /**
-     * How many tabs keep a live page, by how much memory the phone has. Every
-     * live tab's page sits in the same renderer process, and when Android
-     * needs memory back it kills that process - every page at once - so a
-     * small phone keeps fewer, and a big one keeps enough that switching tabs
-     * does not mean waiting for a reload.
-     */
-    private fun liveTabBudget(): Int {
-        val am = getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager
-        if (am.isLowRamDevice) return 2
-        val info = android.app.ActivityManager.MemoryInfo()
-        am.getMemoryInfo(info)
-        val gb = info.totalMem / (1024.0 * 1024.0 * 1024.0)
-        return when {
-            gb < 3.0 -> 2
-            gb < 5.0 -> 3
-            gb < 7.0 -> 4
-            else -> 5
-        }
-    }
 
     /**
      * When Android says memory is running short, background tabs are frozen
@@ -5386,130 +3150,21 @@ class MainActivity : AppCompatActivity() {
         closedTabs.forEach { it.state = null }
     }
 
-    private fun openTab(tab: Tab, loadUrl: String? = null) {
-        endPullRefresh(now = true)
-        showBars(animate = false)
-        schedulePageTint(350L)
-        setFoundVideos(emptyList(), null)
-        scheduleVideoScan(600L)
-        // The tab being left keeps a picture of itself for the deck, taken
-        // while it is still on screen. PixelCopy reads what the display already
-        // shows and asks the page for nothing. freezeTab used to draw the
-        // WebView into a software canvas instead, which makes Chromium render a
-        // frame on the main thread and wait for it - on a busy page, a wait of
-        // no fixed length, and an ANR. captureThumbnail skips anything not on
-        // screen, and nothing is taken while the deck is up, because the deck
-        // is what would be in the picture.
-        val leaving = tabs.activeTab
-        if (leaving != null && leaving !== tab &&
-            binding.menuScrim.visibility != View.VISIBLE
-        ) captureThumbnail(leaving)
-        // Already on screen - the current tab picked in the deck - so it stays
-        // attached. Taking a WebView off the window and putting it back makes
-        // it release its drawing resources and claim them again, each time in
-        // step with the render thread, and the main thread waits for that.
-        val shown = binding.webContainer.childCount == 1 &&
-            binding.webContainer.getChildAt(0) === tab.webView
-        if (!shown) binding.webContainer.removeAllViews()
-        if (tab.webView == null) {
-            // A tab restored from disk reads its history now, when first shown.
-            tab.diskStateFile?.let { f ->
-                if (tab.savedState == null) tab.savedState = SessionStore.readState(f)
-                tab.diskStateFile = null
-            }
-            val web = newWebView()
-            tab.webView = web
-            val restored = tab.savedState?.let { web.restoreState(it) != null } ?: false
-            // Spent. Kept, it would be restored again over newer pages the
-            // next time this tab is rebuilt - after a renderer loss, say.
-            tab.savedState = null
-            if (!restored) loadInto(web, loadUrl ?: tab.url)
-        } else if (loadUrl != null) {
-            loadInto(tab.webView, loadUrl)
-        }
-        if (!shown) binding.webContainer.addView(tab.webView)
-        // A tab switch eases in rather than cutting (not during a swipe,
-        // which carries its own movement, nor with animations off).
-        if (!shown && leaving != null && leaving !== tab && swipeNeighbor == null && animationsOn()) {
-            tab.webView?.let { w ->
-                w.animate().cancel()
-                w.alpha = 0.35f
-                w.animate().alpha(1f).setDuration(160L)
-                    .setInterpolator(android.view.animation.DecelerateInterpolator(1.6f))
-                    .withEndAction { w.alpha = 1f }
-                    .start()
-            }
-        }
-        tabs.setActive(tab)
-        tabs.markLive(tab)
-        // The loading ring shows this tab's load, not the one just left, and
-        // so does the connection pill.
-        binding.loadRing.jumpTo(tab.webView?.progress ?: 0)
-        binding.navOwl.setLoad(tab.webView?.progress ?: 0, jump = true)
-        updateLoadStatus()
-        // A tab left on the offline page tries again when opened, if the
-        // network has come back since.
-        val failed = tab.failedUrl
-        if (failed != null && loadUrl == null && isErrorPage(tab.webView?.url) && hasNetwork()) {
-            uiHandler.post { if (tabs.activeTab === tab) loadInto(tab.webView, failed) }
-        }
-        binding.urlBar.setText(displayUrl(tab.url))
-        updateTabCount()
-        refreshStar()
-        refreshOmniboxVisibility(tab.url)
-        // A sign-in pop-up that came back while another tab was showing is
-        // only judged while on screen, so the watch starts again here.
-        if (tab.openerId != null && returnedFromSignIn(tab)) watchReturnedPopup(tab, tab.url)
-        scheduleSessionSave()
-        if (tab.url == homePage) refreshResumeCard()
-    }
-
-    /**
-     * The home/new-tab page has its own search field under the wordmark,
-     * so the native address bar (and the star button riding along with it)
-     * is hidden while it's showing — that top-bar space just sits empty,
-     * the same way it does on any other page before you start typing.
-     * Everywhere else, the native bar behaves exactly as it always has.
-     */
-    /** Opens Android's native share sheet for a feed article. */
-    private fun shareLink(link: String, title: String) {
-        if (link.isBlank()) return
-        val url = shareable(link)
-        try {
-            val text = if (title.isBlank()) url else "$title\n$url"
-            val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                type = "text/plain"
-                putExtra(android.content.Intent.EXTRA_TEXT, text)
-                putExtra(android.content.Intent.EXTRA_SUBJECT, title)
-            }
-            startActivity(android.content.Intent.createChooser(send, "Share via"))
-        } catch (e: Exception) {
-            android.widget.Toast.makeText(this, "Couldn't share", android.widget.Toast.LENGTH_SHORT).show()
-        }
-    }
-
     // Swaps the native top bar between the icon row (home / reload / tabs /
     // settings) and a single full-width search pill. Nothing is resized and the
     // WebView is never re-laid-out; only child visibility inside the existing
     // 58dp bar changes, so the page cannot jump or reflow while scrolling.
-    private var homeBarAnim: android.animation.Animator? = null
-    private var homeBarSeq = 0
+    internal var homeBarAnim: android.animation.Animator? = null
+    internal var homeBarSeq = 0
     // Where the row actually is: 1f icons full, 0f fully collapsed. Kept here
     // because the row's width cannot answer it - snapHomeBar restores every
     // width to full and encodes the collapsed state in visibility instead.
-    private var homeBarProgress = 1f
-    private var homeRowWidths: List<Int>? = null
-
-    /**
-     * The views that give up their width and fade as the bar collapses: the
-     * owl and the gear. Once home's search box has scrolled away it takes the
-     * top on its own, as wide as it is on the page.
-     */
-    private fun homeBarRow(): List<View> = listOf(binding.homeBtn, binding.settingsBtn)
+    internal var homeBarProgress = 1f
+    internal var homeRowWidths: List<Int>? = null
 
     // Natural widths live in the layout params, which keep their fixed dp even
     // while the view is collapsed to zero, so they survive the transition.
-    private fun homeRowWidths(): List<Int> {
+    internal fun homeRowWidths(): List<Int> {
         var w = homeRowWidths
         if (w == null) {
             w = homeBarRow().map { it.layoutParams.width }
@@ -5518,169 +3173,7 @@ class MainActivity : AppCompatActivity() {
         return w
     }
 
-    /**
-     * One continuous position between the two bar states, where 1 is the full
-     * icon row and 0 is the bare pill. The icons give up their width as they
-     * fade, and because the pill is weighted it takes that space on the same
-     * frame - so the two states cross over rather than one replacing the other.
-     */
-    private fun setHomeBarProgress(t: Float) {
-        homeBarProgress = t
-        val widths = homeRowWidths()
-        homeBarRow().forEachIndexed { i, v ->
-            val lp = v.layoutParams
-            lp.width = (widths[i] * t).toInt()
-            v.layoutParams = lp
-            v.alpha = t
-        }
-        binding.urlBarContainer.alpha = 1f - t
-        // And the bar fades into the home page's background, its line and
-        // shadow with it, so the box sits on the page as it does further down.
-        binding.topBar.blend = 1f - t
-        // And it arrives rather than appearing. t is 1 for the icon row and 0
-        // for the pill, so the pill starts SLIDE_DP below its resting place and
-        // reaches it exactly as it reaches full opacity. The bar sets
-        // clipChildren="false" for this: the compact pill is 44dp inside a 58dp
-        // bar, leaving 7dp of room, so the travel would otherwise be sheared
-        // off at the bar's edge.
-        binding.urlBarContainer.translationY =
-            SLIDE_DP * t * resources.displayMetrics.density
-        // The pill's height rides the same curve as its opacity and the icons'
-        // width. It used to be set once, instantly, at the start of a collapse
-        // and at the end of an expand - so the size changed in a single frame
-        // while everything else moved over a quarter of a second, and it did it
-        // at opposite ends of the two directions. That mismatch is most of what
-        // reads as the bar snapping into place rather than arriving.
-        val lp = binding.urlBarContainer.layoutParams
-        lp.height = (((FIELD_H_COMPACT * (1f - t)) + (FIELD_H_NORMAL * t)) *
-            resources.displayMetrics.density).toInt()
-        binding.urlBarContainer.layoutParams = lp
-    }
-
-    private fun snapHomeBar(compact: Boolean) {
-        homeBarProgress = if (compact) 0f else 1f
-        val widths = homeRowWidths()
-        homeBarRow().forEachIndexed { i, v ->
-            val lp = v.layoutParams
-            lp.width = widths[i]
-            v.layoutParams = lp
-            v.alpha = 1f
-            v.translationY = 0f
-            v.visibility = if (compact) View.GONE else View.VISIBLE
-        }
-        binding.starBtn.visibility = View.GONE
-        binding.urlBarContainer.alpha = 1f
-        binding.urlBarContainer.translationY = 0f
-        binding.urlBarContainer.visibility = if (compact) View.VISIBLE else View.INVISIBLE
-        binding.topBar.blend = if (compact) 1f else 0f
-        styleUrlBar(if (compact) FIELD_COMPACT else FIELD_NORMAL)
-    }
-
-    /**
-     * The owl and the gear back in full and the bar its own colour: for any
-     * page but home, and for home before it says whether its search box has
-     * scrolled away. Not while searching, which keeps the gear away itself.
-     */
-    private fun resetHomeBarRow() {
-        if (searchMode) return
-        if (fieldMode == FIELD_COMPACT) styleUrlBar(FIELD_NORMAL)
-        if (homeBarProgress == 1f && binding.topBar.blend == 0f &&
-            homeBarRow().all { it.visibility == View.VISIBLE }
-        ) return
-        // Stops a collapse under way without letting it finish (homeBarSeq).
-        homeBarSeq++
-        homeBarAnim?.cancel()
-        homeBarAnim = null
-        homeBarProgress = 1f
-        val widths = homeRowWidths()
-        homeBarRow().forEachIndexed { i, v ->
-            val lp = v.layoutParams
-            lp.width = widths[i]
-            v.layoutParams = lp
-            v.alpha = 1f
-            v.translationY = 0f
-            v.visibility = View.VISIBLE
-        }
-        binding.urlBarContainer.alpha = 1f
-        binding.urlBarContainer.translationY = 0f
-        binding.topBar.blend = 0f
-    }
-
-    private fun applyHomeCompact(compact: Boolean, animate: Boolean = false) {
-        homeCompact = compact
-        if (searchMode || deckVisible) return
-        val url = tabs.activeTab?.url
-        if (!(url == null || url == homePage)) return
-        if (compact && binding.urlBar.text.isNotEmpty()) binding.urlBar.setText("")
-
-        homeBarAnim?.cancel()
-        homeBarAnim = null
-        val seq = ++homeBarSeq
-
-        // This read the owl's visibility, which told the truth only while the
-        // owl collapsed with the row. It does not any more. The pill's own
-        // visibility does: snapHomeBar sets it VISIBLE when compact and
-        // INVISIBLE when the icon row holds the bar.
-        val settled = binding.urlBarContainer.visibility ==
-            (if (compact) View.VISIBLE else View.INVISIBLE)
-        if (!animate || settled) { snapHomeBar(compact); return }
-
-        // Collapsing: the pill takes its final styling now - background, text
-        // size, hint - while it is still fully transparent, so none of that is
-        // seen changing. Its height is no longer set here; that is animated in
-        // setHomeBarProgress along with everything else.
-        if (compact) styleUrlBar(FIELD_COMPACT)
-
-        homeBarRow().forEach { it.visibility = View.VISIBLE; it.translationY = 0f }
-        binding.urlBarContainer.visibility = View.VISIBLE
-        binding.urlBarContainer.translationY = 0f
-
-        // Start from wherever a cancelled transition left the row, so reversing
-        // mid-way continues from the current position instead of jumping.
-        //
-        // This used to read the row's width as if it were progress. It is not:
-        // snapHomeBar sets every width back to full and hides the row with
-        // visibility, so after a completed collapse the width claimed 1.0 while
-        // the row sat at 0. Expanding then measured a span of 0 and ran for the
-        // 90ms floor instead of its 440ms - the abrupt snap back. Reversing
-        // mid-flight was equally wrong, despite what the line above promised.
-        val from = homeBarProgress
-        val to = if (compact) 0f else 1f
-        // Expanding is the slower half: things arriving on screen should settle,
-        // where things leaving can go quickly. Duration also scales with the
-        // distance left, so reversing part-way does not spend a full beat
-        // covering a sliver.
-        val span = kotlin.math.abs(to - from)
-        // One motion, whichever way it is going.
-        //
-        // Collapsing ran 240ms on a sharper curve and expanding 440ms on a
-        // softer one - nearly twice as long coming back as going away, on a
-        // different easing. The reasoning was that things arriving should
-        // settle while things leaving can go quickly, which is sound for two
-        // different elements and wrong for one element moving between two
-        // states: the eye reads the pair as the same control behaving
-        // inconsistently, not as considered asymmetry.
-        //
-        // 300ms on Material's standard easing, both directions. Still scaled by
-        // the distance left to cover, so reversing part-way through does not
-        // spend a full beat crossing a sliver.
-        val anim = android.animation.ValueAnimator.ofFloat(from, to).apply {
-            duration = (300 * span).toLong().coerceAtLeast(120L)
-            interpolator = android.view.animation.PathInterpolator(0.2f, 0f, 0f, 1f)
-            addUpdateListener { a -> setHomeBarProgress(a.animatedValue as Float) }
-            addListener(object : android.animation.AnimatorListenerAdapter() {
-                override fun onAnimationEnd(a: android.animation.Animator) {
-                    if (seq != homeBarSeq) return
-                    homeBarAnim = null
-                    snapHomeBar(compact)
-                }
-            })
-        }
-        homeBarAnim = anim
-        anim.start()
-    }
-
-    private fun refreshOmniboxVisibility(url: String?) {
+    internal fun refreshOmniboxVisibility(url: String?) {
         val isHome = url == null || url == homePage
         resetHomeBarRow()
         if (!isHome) {
@@ -5719,37 +3212,10 @@ class MainActivity : AppCompatActivity() {
     // ---------- How far the page runs under the bottom bar ----------
 
     /** The layout's own overlap (the home page's), read once. */
-    private var homeBarOverlap = -1
-    private var barOverlapHome: Boolean? = null
+    internal var homeBarOverlap = -1
+    internal var barOverlapHome: Boolean? = null
     /** How far the bottom bar overlaps the page while it is in place (setPageUnderBars). */
-    private var barRestOverlap = 0
-
-    /**
-     * On the home page the page runs the full overlap under the bottom bar:
-     * under the see-through strip where the arc rises and 28dp on under the
-     * bar itself, as it always has - the feed's ad card and the page's bottom
-     * padding are laid out for exactly that, so home is left as it was.
-     *
-     * On a website the page stops at the bar's straight edge, running only
-     * under the see-through strip. A site lays out what it pins to the bottom
-     * of its window - a toolbar, a cookie banner, a player's controls, a
-     * "Download our app" strip - against the bottom of the WebView, and with
-     * the page running under the bar's solid part that was hidden behind it.
-     */
-    private fun applyBarOverlap(onHome: Boolean) {
-        if (barOverlapHome == onHome) return
-        val lp = binding.bottomBar.layoutParams
-            as? android.widget.LinearLayout.LayoutParams ?: return
-        if (homeBarOverlap < 0) homeBarOverlap = barRestOverlap
-        barOverlapHome = onHome
-        barRestOverlap = if (onHome) homeBarOverlap else binding.navSheet.edgeTop.toInt()
-        // While the bars are away the page runs under all of the bar; it
-        // stops at the new edge when they come back (settleBars).
-        if (!pageUnderBars && lp.topMargin != -barRestOverlap) {
-            lp.topMargin = -barRestOverlap
-            binding.bottomBar.layoutParams = lp
-        }
-    }
+    internal var barRestOverlap = 0
 
     /**
      * Whether a tab may be frozen to stay under the live-tab cap.
@@ -5764,68 +3230,7 @@ class MainActivity : AppCompatActivity() {
      * through a sign-up is exactly that.
      */
     /** True only while a real memory shortage is being answered (onTrimMemory). */
-    private var memoryShort = false
-
-    private fun canFreezeTab(tab: Tab): Boolean {
-        // A cart or checkout in progress keeps its page - the basket, an
-        // address typed half-way, a payment step - under the live-tab cap and
-        // the gentle trims, so opening a few more tabs mid-purchase never
-        // reloads it. Only when memory is really short does it go like any
-        // other tab.
-        if (!memoryShort && UrlHelper.looksLikeCheckout(tab.url)) return false
-        // The opener side, while any pop-up it opened is still open.
-        if (tabs.tabs.any { it.openerId == tab.id }) return false
-        // The pop-up side, while its opener is still live. Only the newest
-        // pop-up from each opener is held: every target=_blank link is a
-        // pop-up too, and holding all of them would hold a whole news site's
-        // worth of articles in memory.
-        val openerId = tab.openerId ?: return true
-        if (tabs.tabs.none { it.id == openerId && it.isLive }) return true
-        return tabs.tabs.lastOrNull { it.openerId == openerId } !== tab
-    }
-
-    private fun freezeTab(tab: Tab) {
-        val web = tab.webView ?: return
-        // No picture is taken here. It used to be drawn now, through a
-        // software canvas, which blocks the main thread on the renderer. The
-        // tab already has the one openTab took when it was last left.
-        val state = Bundle()
-        web.saveState(state)
-        tab.savedState = state
-        (web.parent as? ViewGroup)?.removeView(web)
-        web.destroy()
-        tab.webView = null
-    }
-
-    private fun applyDesktopMode(on: Boolean) {
-        val web = tabs.activeTab?.webView ?: return
-        val desktopUA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 " +
-            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        web.settings.apply {
-            if (on) {
-                userAgentString = desktopUA
-                useWideViewPort = true
-                loadWithOverviewMode = true
-                // Force a desktop-width layout so responsive sites render desktop.
-                setSupportZoom(true)
-                builtInZoomControls = true
-                displayZoomControls = false
-            } else {
-                userAgentString = null
-                useWideViewPort = true
-                loadWithOverviewMode = true
-            }
-        }
-        // Scale the 980px desktop layout to fit the screen width (like Chrome).
-        if (on) {
-            val screenWidthDp = resources.displayMetrics.widthPixels
-            val scale = (screenWidthDp.toFloat() / 980f * 100f).toInt().coerceIn(20, 100)
-            web.setInitialScale(scale)
-        } else {
-            web.setInitialScale(0)
-        }
-        web.reload()
-    }
+    internal var memoryShort = false
 
     /**
      * Hosts visited while Night Owl was on, so leaving can clear those and
@@ -5834,7 +3239,7 @@ class MainActivity : AppCompatActivity() {
      */
     private val nightOwlHosts = linkedSetOf<String>()
 
-    private fun enterNightOwl(openUrl: String = homePage) {
+    internal fun enterNightOwl(openUrl: String = homePage) {
         nightOwl = true
         nightOwlHosts.clear()
         applyNightOwlSecure()
@@ -5874,7 +3279,7 @@ class MainActivity : AppCompatActivity() {
      * domain. Properly isolating a private session needs a separate WebView
      * data directory in its own process, which the app does not have.
      */
-    private fun exitNightOwl() {
+    internal fun exitNightOwl() {
         nightOwl = false
         nightOwlLocked = false
         hideNightOwlLock()
@@ -5941,110 +3346,12 @@ class MainActivity : AppCompatActivity() {
             "Night Owl off", android.widget.Toast.LENGTH_SHORT).show()
     }
 
-    private fun applyNightOwlChrome(on: Boolean) {
-        // Night Owl tabs always show the owl's night sky.
-        binding.navOwl.privateMode = on
-        // And keep the Night Owl wash: no page colours in its bars, nor
-        // Focus and Zen's pastel one (home brings that back on its reload).
-        binding.topBar.seamless = false
-        setBarTint(null, null, animate = false)
-        // By id, not by binding.homeBtn.parent. The owl now sits inside a
-        // FrameLayout so its tab badge can be positioned against it, and the
-        // old expression would quietly resolve to that 48dp wrapper - putting
-        // Night Owl's wash on a box behind the owl instead of on the bar.
-        val controller = androidx.core.view.WindowInsetsControllerCompat(window, window.decorView)
-
-        // Detect dark mode.
-        val isDark = (resources.configuration.uiMode and
-            android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
-            android.content.res.Configuration.UI_MODE_NIGHT_YES
-
-        if (on) {
-            // Subtle purple wash matched to the theme.
-            val tint = if (isDark) "#231A3A" else "#ECE7F5"
-            binding.topBar.surfaceColor = android.graphics.Color.parseColor(tint)
-            binding.navSheet.surfaceColor = android.graphics.Color.parseColor(tint)
-            binding.rootView.setBackgroundColor(android.graphics.Color.parseColor(tint))
-            // Icons: light icons on dark tint, dark icons on light tint.
-            controller.isAppearanceLightStatusBars = !isDark
-        } else {
-            binding.topBar.surfaceColor = getColor(R.color.barSurface)
-            val tv = android.util.TypedValue()
-            theme.resolveAttribute(android.R.attr.colorBackground, tv, true)
-            binding.rootView.setBackgroundColor(tv.data)
-            binding.navSheet.surfaceColor = getColor(R.color.barSurface)
-            controller.isAppearanceLightStatusBars = !isDark
-        }
-    }
-
     private fun openDownloads() {
         openDeck()
         showDownloads()
     }
 
-    private fun openMenu() {
-        showBars()
-        // The first row carries both of the jobs the owl's long press used to,
-        // and says which one it is about to do. On the home page there is
-        // nothing to go home to, so it offers the way out instead.
-        val menuUrl = tabs.activeTab?.url
-        val menuOnHome = (menuUrl == null || menuUrl == homePage)
-        (binding.menuHome.getChildAt(0) as? android.widget.ImageView)
-            ?.setImageResource(
-                if (menuOnHome) R.drawable.menu_close else R.drawable.menu_home)
-        (binding.menuHome.getChildAt(1) as? android.widget.TextView)?.text =
-            if (menuOnHome) "Close Search" else "Home"
-        // Reflect current Night Owl state in the menu label.
-        (binding.menuNightOwl.getChildAt(1) as? android.widget.TextView)?.text =
-            if (nightOwl) "Exit Night Owl" else "Night Owl"
-        // The last closed tab, while there is one (never in Night Owl).
-        binding.menuReopen.visibility =
-            if (closedTabs.isNotEmpty() && !nightOwl) View.VISIBLE else View.GONE
-        // A page Google Translate is showing offers the way back.
-        (binding.menuTranslate.getChildAt(1) as? android.widget.TextView)?.text =
-            if (PageTranslate.isTranslated(menuUrl)) "Show original" else "Translate"
-        // Ads on this site: only while ad blocking is on and a website is on
-        // screen, labelled with what tapping it will do.
-        val adsHost = siteForAds()
-        binding.menuSiteAds.visibility = if (adsHost != null) View.VISIBLE else View.GONE
-        if (adsHost != null) {
-            (binding.menuSiteAds.getChildAt(1) as? android.widget.TextView)?.text =
-                if (AdBlockSites.isAllowed(this, adsHost)) "Block ads here"
-                else "Allow ads here"
-        }
-        // While the page is still loading, Reload is Stop, so a slow page can
-        // always be called off.
-        val stop = pageLoading()
-        binding.menuRefresh.setImageResource(
-            if (stop) R.drawable.menu_close else R.drawable.menu_refresh)
-        binding.menuRefresh.contentDescription = if (stop) "Stop" else "Reload"
-        androidx.core.view.ViewCompat.setTooltipText(
-            binding.menuRefresh, binding.menuRefresh.contentDescription)
-        // Every group starts closed, so the menu opens at its short height.
-        showMenuGroup(null, animate = false)
-        menuDragSpring.cancel()
-        menuSpring.cancel()
-        val panel = binding.menuPanel
-        panel.translationY = 0f
-        binding.menuScrim.background?.mutate()?.alpha = 255
-        placeMenu(0f)
-        binding.menuScrim.visibility = View.VISIBLE
-        // Drawn once into a layer while it grows, so each frame only scales
-        // and fades that picture of the menu rather than redrawing its rows.
-        panel.setLayerType(View.LAYER_TYPE_HARDWARE, null)
-        // Once laid out, so it grows from the corner where the Menu button is.
-        // Before the first draw rather than on a post: a post can run ahead
-        // of the layout, when the panel has no size to take its corner from.
-        val seq = ++menuOpenSeq
-        androidx.core.view.OneShotPreDrawListener.add(panel) {
-            if (seq == menuOpenSeq && binding.menuScrim.visibility == View.VISIBLE) {
-                placeMenu(0f)
-                menuSpring.animate(0f, 1f) { endMenuLayer() }
-            }
-        }
-    }
-
-    private var menuOpenSeq = 0
+    internal var menuOpenSeq = 0
 
     // ---------- Menu groups ----------
     //
@@ -6053,67 +3360,13 @@ class MainActivity : AppCompatActivity() {
     // row opens a strip of its actions under it - swiped sideways when there
     // are more than fit - and closes any other.
 
-    private val menuGroups by lazy {
+    internal val menuGroups by lazy {
         listOf(
             binding.menuGroupTabs to binding.menuStripTabs,
             binding.menuGroupPage to binding.menuStripPage,
             binding.menuGroupLibrary to binding.menuStripLibrary,
             binding.menuGroupShare to binding.menuStripShare,
             binding.menuGroupMore to binding.menuStripMore)
-    }
-
-    private fun setupMenuGroups() {
-        menuGroups.forEach { (row, strip) ->
-            row.setOnClickListener {
-                Haptics.tap(it)
-                showMenuGroup(if (strip.visibility == View.VISIBLE) null else strip, animate = true)
-            }
-            // Read out as a button that says whether its group is open.
-            row.accessibilityDelegate = object : View.AccessibilityDelegate() {
-                override fun onInitializeAccessibilityNodeInfo(
-                    host: View, info: android.view.accessibility.AccessibilityNodeInfo
-                ) {
-                    super.onInitializeAccessibilityNodeInfo(host, info)
-                    info.className = android.widget.Button::class.java.name
-                    if (Build.VERSION.SDK_INT >= 30) {
-                        info.stateDescription = if (strip.visibility == View.VISIBLE) "Expanded" else "Collapsed"
-                    }
-                }
-            }
-        }
-    }
-
-    /** Opens [strip]'s group and closes the others; null closes them all. */
-    private fun showMenuGroup(strip: View?, animate: Boolean) {
-        val moving = animate && Motion.animationsOn() && binding.menuScrim.visibility == View.VISIBLE
-        if (moving) {
-            android.transition.TransitionManager.beginDelayedTransition(binding.menuScrim,
-                android.transition.AutoTransition().setDuration(200L)
-                    .setInterpolator(android.view.animation.DecelerateInterpolator()))
-        }
-        menuGroups.forEach { (row, s) ->
-            val open = s === strip
-            if (open && s.visibility != View.VISIBLE) s.scrollTo(0, 0)
-            s.visibility = if (open) View.VISIBLE else View.GONE
-            val chevron = row.findViewWithTag<View>("chevron")
-            val turn = if (open) 180f else 0f
-            if (chevron != null) {
-                if (moving) chevron.animate().rotation(turn).setDuration(200L).start()
-                else { chevron.animate().cancel(); chevron.rotation = turn }
-            }
-        }
-        // On a short screen the rows scroll: bring the opened strip into view.
-        if (strip != null) {
-            binding.menuScroll.postDelayed({
-                if (strip.visibility == View.VISIBLE) {
-                    strip.requestRectangleOnScreen(android.graphics.Rect(0, 0, strip.width, strip.height), !moving)
-                }
-            }, if (moving) 220L else 0L)
-        }
-    }
-
-    private fun endMenuLayer() {
-        binding.menuPanel.setLayerType(View.LAYER_TYPE_NONE, null)
     }
 
     // ---------- Menu motion ----------
@@ -6123,110 +3376,15 @@ class MainActivity : AppCompatActivity() {
     // panel follows the finger, the dimming lightens with it, and on release
     // it drops away or bounces back - by how far it went, or how fast.
 
-    private val menuSpring by lazy {
+    internal val menuSpring by lazy {
         Spring(stiffness = 460f, dampingRatio = 0.72f, precision = 0.002f) { placeMenu(it) }
     }
-    private val menuDragSpring by lazy {
+    internal val menuDragSpring by lazy {
         Spring(stiffness = 420f, dampingRatio = 0.86f, precision = 0.5f) { dragMenu(it) }
     }
 
-    private fun placeMenu(p: Float) {
-        val panel = binding.menuPanel
-        panel.pivotX = panel.width.toFloat()
-        panel.pivotY = panel.height.toFloat()
-        val scale = 0.86f + 0.14f * p
-        panel.scaleX = scale
-        panel.scaleY = scale
-        // The panel and the dimming fade separately. Fading the whole scrim
-        // made every frame redraw the screen-sized dimming with the menu in it
-        // off screen first; this way each is one cheap step.
-        val a = p.coerceIn(0f, 1f)
-        panel.alpha = a
-        binding.menuScrim.background?.alpha = (255f * a).toInt()
-    }
-
-    private fun dragMenu(y: Float) {
-        binding.menuPanel.translationY = y
-        val h = binding.menuPanel.height.toFloat().coerceAtLeast(1f)
-        // Only the dimming lightens; the panel itself stays solid.
-        binding.menuScrim.background?.alpha = (255f * (1f - y / (h * 1.3f)).coerceIn(0f, 1f)).toInt()
-    }
-
-    private fun setupMenuDrag() {
-        val panel = binding.menuPanel
-        panel.canDrag = { !binding.menuScroll.canScrollVertically(-1) && !menuSpring.isRunning }
-        panel.onDrag = { dy ->
-            menuDragSpring.cancel()
-            // Upward it only gives a little.
-            val give = 24f * resources.displayMetrics.density
-            dragMenu(if (dy >= 0f) dy else -give * (1f - kotlin.math.exp(dy / give)))
-        }
-        panel.onRelease = { dy, vy ->
-            val y = panel.translationY
-            val h = panel.height.toFloat()
-            val fast = 900f * resources.displayMetrics.density
-            if (dy > 0f && (y > h * 0.28f || vy > fast)) {
-                val away = h + 80f * resources.displayMetrics.density
-                menuDragSpring.animate(y, away, vy) { closeMenuNow() }
-            } else {
-                menuDragSpring.animate(y, 0f, vy)
-            }
-        }
-    }
-
-    private fun closeMenu() {
-        menuDragSpring.cancel()
-        // An open still waiting for its first frame must not start after this.
-        menuOpenSeq++
-        menuSpring.animate(menuSpring.value, 0f) { closeMenuNow() }
-    }
-
-    /** Instant close (no fade) for when a menu item's action follows immediately,
-     *  so the panel doesn't linger see-through over the page during the action. */
-    private fun closeMenuNow() {
-        menuSpring.cancel()
-        menuDragSpring.cancel()
-        menuOpenSeq++
-        endMenuLayer()
-        binding.menuScrim.visibility = View.GONE
-        binding.menuScrim.alpha = 1f
-        binding.menuScrim.background?.alpha = 255
-        binding.menuPanel.scaleX = 1f
-        binding.menuPanel.scaleY = 1f
-        binding.menuPanel.alpha = 1f
-        binding.menuPanel.translationY = 0f
-    }
-
-    private fun addNewTab(loadUrl: String = homePage) {
-        val tab = tabs.createTab(loadUrl)
-        openTab(tab, loadUrl)
-        if (loadUrl == homePage) expectPageStart(tab)
-    }
-
-    // ---------- Tab deck ----------
-
     // ---------- Find in page ----------
-    private var findActive = false
-
-    private fun openFindBar() {
-        val web = activeWeb() ?: return
-        showBars()
-        findActive = true
-        binding.findBar.visibility = View.VISIBLE
-        binding.findInput.text?.clear()
-        binding.findCount.text = ""
-        binding.findInput.requestFocus()
-        val imm = getSystemService(android.content.Context.INPUT_METHOD_SERVICE)
-            as android.view.inputmethod.InputMethodManager
-        imm.showSoftInput(binding.findInput, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
-    }
-
-    private fun closeFindBar() {
-        findActive = false
-        binding.findBar.visibility = View.GONE
-        activeWeb()?.clearMatches()
-        hideKeyboard()
-    }
+    internal var findActive = false
 
     // ---------- Native feed ad ----------
 
@@ -7189,10 +4347,10 @@ class MainActivity : AppCompatActivity() {
 
     // ---------- Browsing modes (BrowsingMode) ----------
 
-    @Volatile private var browsingMode = BrowsingMode.EXPLORE
+    @Volatile internal var browsingMode = BrowsingMode.EXPLORE
     @Volatile private var zenShortcuts = false
     private var launchedForTask = false
-    private var announcing = false
+    internal var announcing = false
 
     /**
      * A new mode for the home page: every home page open in a tab recomposes
@@ -7210,48 +4368,6 @@ class MainActivity : AppCompatActivity() {
         refreshAdSlot()
         if (mode == BrowsingMode.EXPLORE) loadFeedAd()
         plainBars(tabs.activeTab?.url, animate = true)
-    }
-
-
-    /**
-     * Once after the upgrade that brought the modes: "Search has 3 modes now".
-     * Only on home, once it is up, with nothing else in front - not while
-     * typing, searching, in the tab deck, during the consent message or an
-     * app open ad (the window has no focus then) or another dialog.
-     */
-    private fun maybeAnnounceModes() {
-        if (announcing || isFinishing || isDestroyed) return
-        if (!BrowsingMode.announcementDue(this)) return
-        if (keepSplash || searchMode || deckVisible || findActive || nightOwl) return
-        if (AdConsent.formShowing || !hasWindowFocus()) return
-        if (activeWeb()?.url != homePage) return
-        announcing = true
-        BrowsingMode.markAnnounced(this)
-        HealthStats.count(this, HealthStats.MODE_ANNOUNCED)
-        // The owl dialogs' own design (as Play Games' welcome): the owl, the
-        // accent, the pill buttons, the owl's entrance.
-        val view = layoutInflater.inflate(R.layout.dialog_modes_new, null)
-        applyOwlArtIn(view)
-        val dialog = android.app.AlertDialog.Builder(this).setView(view).create()
-        dialog.window?.setBackgroundDrawable(
-            android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
-        dialog.window?.attributes?.windowAnimations = R.style.OwlDialogAnim
-        view.findViewById<android.widget.TextView>(R.id.modesGotIt).setOnClickListener {
-            Haptics.tap(it)
-            dialog.dismiss()
-        }
-        view.findViewById<android.widget.TextView>(R.id.modesChoose).setOnClickListener {
-            Haptics.tap(it)
-            dialog.dismiss()
-            startActivity(android.content.Intent(this, SectionActivity::class.java)
-                .putExtra(SectionActivity.EXTRA_SECTION, SectionActivity.SEC_MODE))
-        }
-        dialog.setOnDismissListener { announcing = false }
-        dialog.show()
-        dialog.window?.let { w ->
-            val width = (resources.displayMetrics.widthPixels * 0.86f).toInt()
-            w.setLayout(width, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
-        }
     }
 
     // ---------- The app open ad's questions (AppOpenAds) ----------
@@ -7750,42 +4866,9 @@ class MainActivity : AppCompatActivity() {
     // ---------- Jump back in ----------
 
     /** What home's "Jump back in" card offers (getResume); written on the main thread only. */
-    @Volatile private var resumeJson = "{}"
+    @Volatile internal var resumeJson = "{}"
     /** The tab last seen showing a website, by id. */
-    private var resumeTabId: Long? = null
-
-    /**
-     * Notes the tab on screen if it is showing a website, and rebuilds the
-     * card's copy. Called as pages finish and tabs are switched; a Night Owl
-     * tab is never offered.
-     */
-    private fun noteResumable() {
-        val t = tabs.activeTab
-        if (t != null && !t.isPrivate && (t.url.startsWith("https://") || t.url.startsWith("http://"))) {
-            resumeTabId = t.id
-        }
-        val r = resumeTabId?.let { id -> tabs.tabs.firstOrNull { it.id == id } }
-        resumeJson = if (r == null || r.isPrivate || nightOwl ||
-            !(r.url.startsWith("https://") || r.url.startsWith("http://"))) "{}"
-        else try {
-            val site = siteNameOf(r.url)
-            JSONObject()
-                .put("id", r.id.toString())
-                .put("url", r.url)
-                .put("title", PageLabel.title(r.title, r.url).ifBlank { site })
-                .put("site", site)
-                .put("domain", (android.net.Uri.parse(r.url).host ?: "").removePrefix("www.")
-                    .removePrefix("mobile.").removePrefix("m."))
-                .toString()
-        } catch (e: Exception) { "{}" }
-    }
-
-    /** Home on screen: its card catches up with the tab last read. */
-    private fun refreshResumeCard() {
-        noteResumable()
-        val web = activeWeb() ?: return
-        if (web.url == homePage) web.evaluateJavascript("window.__refreshResume && window.__refreshResume()", null)
-    }
+    internal var resumeTabId: Long? = null
 
     // ---------- Home after a long break ----------
     //
@@ -7795,15 +4878,6 @@ class MainActivity : AppCompatActivity() {
     // one tap away. Settings > Customize > Open home after 4 hours away.
 
     private val AWAY_FOR_HOME_MS = 4L * 60L * 60_000L
-
-    private fun showHomeAfterAway() {
-        if (!Settings.getBool(this, Settings.HOME_AFTER_AWAY, true)) return
-        val current = tabs.activeTab
-        if (current == null || current.url == homePage) return
-        noteResumable()
-        val home = tabs.tabs.lastOrNull { it.url == homePage && it.isPrivate == nightOwl }
-        if (home != null) openTab(home) else addNewTab(homePage)
-    }
 
     // ---------- Smart tab groups ----------
     //
@@ -7815,185 +4889,16 @@ class MainActivity : AppCompatActivity() {
     // tabs as they are. Home and new tabs belong to no group.
 
     /** The site group the deck is showing, or null for every tab. */
-    private var deckGroup: String? = null
-
-    /** A tab's site, as its group knows it ("bbc.co.uk"), or null for home, a new tab or an app page. */
-    private fun tabGroupKey(t: Tab): String? {
-        val url = t.url
-        if (!url.startsWith("https://") && !url.startsWith("http://")) return null
-        return try {
-            android.net.Uri.parse(url).host?.lowercase()
-                ?.removePrefix("www.")?.removePrefix("m.")?.removePrefix("mobile.")
-                ?.ifBlank { null }
-        } catch (e: Exception) { null }
-    }
-
-    private fun renderDeckGroups() {
-        val row = binding.deckGroupRow
-        val counts = LinkedHashMap<String, Int>()
-        tabs.tabs.forEach { t -> tabGroupKey(t)?.let { counts[it] = (counts[it] ?: 0) + 1 } }
-        val groups = counts.entries.filter { it.value >= 2 }
-            .sortedByDescending { it.value }.take(8).map { it.key }
-        if (deckGroup != null && deckGroup !in groups) deckGroup = null
-        row.removeAllViews()
-        if (groups.isEmpty() || binding.tabList.visibility != View.VISIBLE) {
-            binding.deckGroups.visibility = View.GONE
-            return
-        }
-        binding.deckGroups.visibility = View.VISIBLE
-        row.addView(groupChip("All", tabs.count(), deckGroup == null, null))
-        groups.forEach { key ->
-            row.addView(groupChip(siteNameOf("https://$key/").ifBlank { key }, counts[key] ?: 0,
-                deckGroup == key, key))
-        }
-    }
-
-    private fun groupChip(label: String, n: Int, selected: Boolean, key: String?): View {
-        val d = resources.displayMetrics.density
-        val accent = currentAccent()
-        val chip = android.widget.TextView(this)
-        chip.text = label + "  " + n
-        chip.textSize = 13.5f
-        chip.setTypeface(chip.typeface, android.graphics.Typeface.BOLD)
-        chip.maxLines = 1
-        chip.gravity = android.view.Gravity.CENTER
-        chip.setPaddingRelative((14 * d).toInt(), 0, (14 * d).toInt(), 0)
-        chip.minHeight = (36 * d).toInt()
-        val bg = android.graphics.drawable.GradientDrawable()
-        bg.cornerRadius = 18f * d
-        if (selected) {
-            bg.setColor(accent)
-            chip.setTextColor(if (android.graphics.Color.luminance(accent) > 0.6f)
-                android.graphics.Color.BLACK else android.graphics.Color.WHITE)
-        } else {
-            bg.setColor(getColor(R.color.menuTileBg))
-            chip.setTextColor(getColor(R.color.feedFg))
-        }
-        chip.background = android.graphics.drawable.RippleDrawable(
-            android.content.res.ColorStateList.valueOf(0x22000000), bg, null)
-        chip.isSelected = selected
-        chip.contentDescription = (if (key == null) "All tabs, " else "$label tabs, ") + n +
-            if (selected) ", showing" else ""
-        val lp = android.widget.LinearLayout.LayoutParams(
-            android.view.ViewGroup.LayoutParams.WRAP_CONTENT, (36 * d).toInt())
-        lp.marginEnd = (8 * d).toInt()
-        chip.layoutParams = lp
-        chip.setOnClickListener { v ->
-            Haptics.tap(v)
-            deckGroup = key
-            renderDeckGroups()
-            tabAdapter.notifyDataSetChanged()
-        }
-        if (key != null) chip.setOnLongClickListener { v ->
-            Haptics.confirm(v)
-            confirmCloseGroup(key, label)
-            true
-        }
-        return chip
-    }
-
-    /** Closes every tab of the site group [key], asked first; each is remembered for Reopen closed tab. */
-    private fun confirmCloseGroup(key: String, label: String) {
-        val going = tabs.tabs.filter { tabGroupKey(it) == key }.sortedBy { it === tabs.activeTab }
-        if (going.isEmpty()) return
-        com.google.android.material.dialog.MaterialAlertDialogBuilder(this, R.style.Theme_Search_Dialog)
-            .setTitle("Close " + going.size + " " + label + " tabs?")
-            .setMessage("Menu > Reopen closed tab brings them back.")
-            .setPositiveButton("Close") { _, _ ->
-                Haptics.confirm(binding.tabList)
-                if (deckGroup == key) deckGroup = null
-                going.forEach { t ->
-                    if (!tabs.tabs.contains(t)) return@forEach
-                    rememberClosed(t)
-                    closeTabFromDeck(t)
-                }
-                if (deckVisible) renderDeckGroups()
-                tabAdapter.notifyDataSetChanged()
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
+    internal var deckGroup: String? = null
 
     /** What is typed in the deck's search field, filtering its cards. */
-    private var deckFilter = ""
-
-    /**
-     * The tabs the deck shows: all, or those of the site group picked
-     * ([deckGroup]), and of those the ones whose title or address has
-     * [deckFilter] in it.
-     */
-    private fun shownTabs(): List<Tab> {
-        val q = deckFilter
-        val g = deckGroup
-        val base = if (g == null) tabs.tabs else tabs.tabs.filter { tabGroupKey(it) == g }
-        if (q.isBlank()) return base
-        return base.filter { t ->
-            t.title.contains(q, ignoreCase = true) || t.url.contains(q, ignoreCase = true) ||
-                PageLabel.title(t.title, t.url).contains(q, ignoreCase = true)
-        }
-    }
-
-    /** The deck's overflow: close every tab, or every tab but the one on screen. */
-    private fun showDeckMenu(anchor: View) {
-        val menu = android.widget.PopupMenu(this, anchor)
-        menu.menu.add(0, 1, 0, "Close all tabs")
-        if (tabs.count() > 1) menu.menu.add(0, 2, 1, "Close other tabs")
-        if (closedTabs.isNotEmpty() && !nightOwl) menu.menu.add(0, 3, 2, "Reopen closed tab")
-        val dupes = duplicateTabs()
-        if (dupes.isNotEmpty()) menu.menu.add(0, 4, 3, "Close duplicate tabs (" + dupes.size + ")")
-        if (!nightOwl) menu.menu.add(0, 5, 4, "Delete last 15 minutes")
-        menu.setOnMenuItemClickListener { item ->
-            when (item.itemId) {
-                1 -> confirmCloseTabs(keepActive = false)
-                2 -> confirmCloseTabs(keepActive = true)
-                3 -> reopenClosedTab(inDeck = true)
-                4 -> closeTabsQuietly(duplicateTabs())
-                5 -> {
-                    val n = BrowsingData.deleteRecent(this)
-                    Haptics.confirm(anchor)
-                    toast(if (n == 0) "Nothing from the last 15 minutes"
-                        else "Deleted " + n + (if (n == 1) " page" else " pages") + " from history")
-                }
-            }
-            true
-        }
-        menu.show()
-    }
-
-    /**
-     * Tabs showing the same page as another, ignoring the #part: all but one
-     * of each set, keeping the one on screen if it is among them, otherwise
-     * the first. Home tabs count too; empty new tabs do not.
-     */
-    private fun duplicateTabs(): List<Tab> {
-        val groups = tabs.tabs.filter { it.url.isNotBlank() && !it.isPrivate }
-            .groupBy { it.url.substringBefore('#') }
-        return groups.values.filter { it.size > 1 }.flatMap { same ->
-            val keep = same.firstOrNull { it === tabs.activeTab } ?: same.first()
-            same.filter { it !== keep }
-        }
-    }
-
-    /**
-     * Closes [going] with no question: each is remembered, so Reopen closed
-     * tab brings them back. For duplicates, where nothing unique is lost.
-     */
-    private fun closeTabsQuietly(going: List<Tab>) {
-        if (going.isEmpty()) return
-        Haptics.confirm(binding.tabList)
-        going.sortedBy { it === tabs.activeTab }.forEach { t ->
-            if (!tabs.tabs.contains(t)) return@forEach
-            rememberClosed(t)
-            closeTabFromDeck(t)
-        }
-        toast("Closed " + going.size + (if (going.size == 1) " duplicate tab" else " duplicate tabs"))
-    }
+    internal var deckFilter = ""
 
     /**
      * Closes every tab (or every other one), each remembered so Reopen closed
      * tab can bring them back one by one; asked first, since it is many at once.
      */
-    private fun confirmCloseTabs(keepActive: Boolean) {
+    internal fun confirmCloseTabs(keepActive: Boolean) {
         val keep = if (keepActive) tabs.activeTab else null
         // The tab on screen last: closing it first would bring each next tab
         // to life (a new page) only to close it a moment later.
@@ -8024,302 +4929,8 @@ class MainActivity : AppCompatActivity() {
     // tab later, brings it back where it was, as in Chrome. Pop-ups closing
     // themselves are not remembered, and Night Owl tabs never are.
 
-    private class ClosedTab(val url: String, val title: String, var state: Bundle?, val index: Int)
-    private val closedTabs = ArrayDeque<ClosedTab>()
-
-    private fun rememberClosed(tab: Tab): Boolean {
-        if (tab.isPrivate || nightOwl) return false
-        val url = tab.url
-        if (!(url.startsWith("https://") || url.startsWith("http://"))) return false
-        val state = tab.webView?.let { w ->
-            try { Bundle().also { w.saveState(it) } } catch (e: Exception) { null }
-        } ?: tab.savedState
-        closedTabs.addLast(ClosedTab(url, tab.title, state, tabs.tabs.indexOf(tab)))
-        while (closedTabs.size > 10) closedTabs.removeFirst()
-        // History kept for the newest three only; older ones keep their address.
-        closedTabs.toList().dropLast(3).forEach { it.state = null }
-        return true
-    }
-
-    /** A tab the user closed in the deck: remembered, closed, and offered back. */
-    private fun closeTabByUser(tab: Tab) {
-        Haptics.confirm(binding.tabList)
-        val remembered = rememberClosed(tab)
-        closeTabFromDeck(tab)
-        if (remembered && deckVisible) {
-            try {
-                com.google.android.material.snackbar.Snackbar
-                    .make(binding.tabDeck, "Tab closed", com.google.android.material.snackbar.Snackbar.LENGTH_LONG)
-                    .setAction("Undo") { reopenClosedTab(inDeck = true) }
-                    .setActionTextColor(currentAccent())
-                    .show()
-            } catch (e: Exception) { /* no window to show it in */ }
-        }
-    }
-
-    /** The last closed tab, back in its place: in the deck if it is open, otherwise on screen. */
-    private fun reopenClosedTab(inDeck: Boolean) {
-        if (nightOwl) { toast("Not in Night Owl"); return }
-        val c = closedTabs.removeLastOrNull() ?: return
-        val tab = tabs.createTab(c.url)
-        tab.title = c.title
-        tab.savedState = c.state
-        tabs.tabs.remove(tab)
-        tabs.tabs.add(c.index.coerceIn(0, tabs.tabs.size), tab)
-        if (inDeck && deckVisible) {
-            tabAdapter.notifyDataSetChanged()
-            updateTabCount()
-            scheduleSessionSave()
-        } else {
-            leaveTransientUi()
-            openTab(tab)
-        }
-    }
-
-    // ---------- Page tools: share, translate, reader view, home screen ----------
-
-    /** The website on screen, or null on home, an error page or a page of the app's own. */
-    private fun webPageUrl(): String? {
-        val url = activeWeb()?.url ?: tabs.activeTab?.url ?: return null
-        if (url == homePage || isErrorPage(url)) return null
-        return url.takeIf { it.startsWith("https://") || it.startsWith("http://") }
-    }
-
-    private fun needAPage() = toast("Open a page first")
-
-    /** The text size for [url]: its own (Menu > Zoom) or the one from Settings. */
-    private fun zoomFor(url: String?): Int =
-        SiteZoom.get(this, url) ?: Settings.getTextScale(this)
-
-    /**
-     * Menu > Zoom: a minus, a slider and a plus in 10% steps, the page
-     * reflowing under it as it moves, and the size kept for the site. At the
-     * bottom of the screen with a light scrim, so the page can be read while
-     * it is set. Reset returns the site to the size in Settings.
-     */
-    private fun showZoom() {
-        val web = activeWeb()
-        val url = webPageUrl()
-        val site = SiteZoom.keyOf(url)
-        if (web == null || url == null || site == null) { needAPage(); return }
-        val def = Settings.getTextScale(this)
-        val d = resources.displayMetrics.density
-        fun dp(v: Int) = (v * d).toInt()
-        var pct = web.settings.textZoom.coerceIn(SiteZoom.MIN, SiteZoom.MAX)
-
-        val label = android.widget.TextView(this).apply {
-            textSize = 16f
-            gravity = android.view.Gravity.CENTER
-            minWidth = dp(64)
-            setTextColor(androidx.core.content.ContextCompat.getColor(this@MainActivity, R.color.navIcon))
-        }
-        val bar = android.widget.SeekBar(this).apply {
-            max = (SiteZoom.MAX - SiteZoom.MIN) / SiteZoom.STEP
-            progress = (pct - SiteZoom.MIN) / SiteZoom.STEP
-        }
-        val ripple = android.util.TypedValue().also {
-            theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, it, true)
-        }.resourceId
-        fun stepButton(text: String, desc: String) = android.widget.TextView(this).apply {
-            this.text = text
-            textSize = 24f
-            gravity = android.view.Gravity.CENTER
-            contentDescription = desc
-            setBackgroundResource(ripple)
-            layoutParams = android.widget.LinearLayout.LayoutParams(dp(48), dp(48))
-        }
-        val minus = stepButton("\u2212", "Zoom out")
-        val plus = stepButton("+", "Zoom in")
-        fun apply(next: Int, fromBar: Boolean) {
-            val v = next.coerceIn(SiteZoom.MIN, SiteZoom.MAX)
-            if (v != pct) Haptics.tick(bar)
-            pct = v
-            label.text = "$v%"
-            if (!fromBar) bar.progress = (v - SiteZoom.MIN) / SiteZoom.STEP
-            // Still the page it was opened on; the size reflows it live.
-            if (activeWeb() === web) web.settings.textZoom = v
-            // Night Owl: applied, never written down.
-            if (!nightOwl) {
-                if (v == def) SiteZoom.forget(this, site) else SiteZoom.set(this, url, v)
-            }
-        }
-        label.text = "$pct%"
-        minus.setOnClickListener { apply(pct - SiteZoom.STEP, false) }
-        plus.setOnClickListener { apply(pct + SiteZoom.STEP, false) }
-        bar.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(s: android.widget.SeekBar?, p: Int, user: Boolean) {
-                if (user) apply(SiteZoom.MIN + p * SiteZoom.STEP, true)
-            }
-            override fun onStartTrackingTouch(s: android.widget.SeekBar?) {}
-            override fun onStopTrackingTouch(s: android.widget.SeekBar?) {}
-        })
-        val row = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER_VERTICAL
-            setPadding(dp(16), dp(8), dp(16), 0)
-            addView(minus)
-            addView(bar, android.widget.LinearLayout.LayoutParams(0, dp(48), 1f))
-            addView(plus)
-            addView(label)
-        }
-        val dialog = com.google.android.material.dialog.MaterialAlertDialogBuilder(this, R.style.Theme_Search_Dialog)
-            .setTitle(site.removePrefix("www."))
-            .setMessage(if (nightOwl) "Not kept after Night Owl." else "Kept for this site.")
-            .setView(row)
-            .setPositiveButton("Done", null)
-            .setNeutralButton("Reset") { _, _ -> apply(def, false) }
-            .create()
-        dialog.window?.let { w ->
-            w.setGravity(android.view.Gravity.BOTTOM)
-            w.setDimAmount(0.12f)
-        }
-        dialog.show()
-    }
-
-    /**
-     * Page info, from a tap on the site's icon, as the lock opens it in
-     * Chrome: whether the connection is private and who vouches for the site,
-     * what it has been allowed, and whether its ads are blocked - the last
-     * two changeable right here.
-     */
-    private fun showPageInfo() {
-        if (searchMode) return
-        val url = webPageUrl() ?: return
-        val host = try { android.net.Uri.parse(url).host?.ifBlank { null } } catch (e: Exception) { null } ?: return
-        val name = host.removePrefix("www.")
-        Haptics.tick(binding.siteIcon)
-        val text = android.text.SpannableStringBuilder()
-        fun block(head: String, body: String?) {
-            if (text.isNotEmpty()) text.append("\n\n")
-            val start = text.length
-            text.append(head)
-            text.setSpan(android.text.style.StyleSpan(android.graphics.Typeface.BOLD),
-                start, text.length, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-            if (!body.isNullOrBlank()) text.append("\n").append(body)
-        }
-        if (url.startsWith("https://")) {
-            val cert = try { activeWeb()?.certificate } catch (e: Exception) { null }
-            val by = cert?.issuedBy?.oName?.ifBlank { null } ?: cert?.issuedBy?.cName?.ifBlank { null }
-            val until = cert?.validNotAfterDate?.let {
-                java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(it)
-            }
-            block("Connection is secure",
-                "What you send this site, passwords and card numbers included, is " +
-                    "private on the way." +
-                    (if (by != null) "\nCertificate from " + by + (if (until != null) ", valid until $until" else "") + "." else ""))
-        } else {
-            block("Connection is not secure",
-                "Don't enter passwords or card details here: anyone on the network could read them.")
-        }
-        // What this site has been allowed, matched by host: the two prompts
-        // record their origin in slightly different forms.
-        val origins = SitePermissions.bySite(this).filterKeys {
-            SitePermissions.hostOf(it) == name
-        }
-        val answers = origins.values.flatMap { it.entries }
-        if (answers.isNotEmpty()) {
-            block("Permissions", answers.joinToString("\n") { (kind, answer) ->
-                val what = when (kind) {
-                    SitePermissions.LOCATION -> "Location"
-                    SitePermissions.CAMERA_MIC -> "Camera and microphone"
-                    else -> kind
-                }
-                what + ": " + if (answer == SitePermissions.ALLOW) "allowed" else "blocked"
-            })
-        }
-        val adsHost = siteForAds()
-        if (adsHost != null) {
-            block("Ads and trackers",
-                if (AdBlockSites.isAllowed(this, adsHost)) "Allowed on this site" else "Blocked on this site")
-        }
-        if (nightOwl) block("Night Owl", "Nothing from this visit is kept once the Night Owl tabs close.")
-        val dialog = com.google.android.material.dialog.MaterialAlertDialogBuilder(this, R.style.Theme_Search_Dialog)
-            .setTitle(name)
-            .setMessage(text)
-            .setPositiveButton("Done", null)
-        if (origins.isNotEmpty()) {
-            dialog.setNeutralButton("Reset permissions") { _, _ ->
-                origins.forEach { (origin, kinds) ->
-                    kinds.keys.forEach { SitePermissions.forget(this, origin, it) }
-                }
-                toast("$name will ask again")
-            }
-        }
-        if (adsHost != null) {
-            val allowed = AdBlockSites.isAllowed(this, adsHost)
-            dialog.setNegativeButton(if (allowed) "Block ads" else "Allow ads") { _, _ ->
-                if (allowed) AdBlockSites.block(this, adsHost) else AdBlockSites.allow(this, adsHost)
-                toast(if (allowed) "Ads blocked on $name" else "Ads allowed on $name")
-                // Blocking acts on requests, so the page is fetched again.
-                activeWeb()?.reload()
-            }
-        }
-        dialog.show()
-    }
-
-    /**
-     * Back or Forward held: the tab's pages that way, nearest first, as in
-     * Chrome; picking one goes straight there. The app's home is listed as
-     * Home rather than by its file address.
-     */
-    private fun showTabHistory(anchor: View, back: Boolean): Boolean {
-        val web = activeWeb() ?: return false
-        val list = try { web.copyBackForwardList() } catch (e: Exception) { return false }
-        val cur = list.currentIndex
-        val steps = if (back) (cur - 1 downTo maxOf(0, cur - 12))
-            else (cur + 1 until minOf(list.size, cur + 13))
-        if (steps.isEmpty()) return false
-        Haptics.tick(anchor)
-        val menu = android.widget.PopupMenu(this, anchor)
-        var order = 0
-        for (i in steps) {
-            val item = list.getItemAtIndex(i) ?: continue
-            val itemUrl = item.url ?: continue
-            val label = when {
-                itemUrl == homePage -> "Home"
-                isErrorPage(itemUrl) -> "Page didn't load"
-                else -> PageLabel.title(item.title ?: "", itemUrl)
-            }
-            menu.menu.add(0, i, order++, label)
-        }
-        menu.setOnMenuItemClickListener { item ->
-            closeMenuNow()
-            // Still the same tab, and the step still valid.
-            if (activeWeb() === web && web.canGoBackOrForward(item.itemId - cur)) {
-                web.goBackOrForward(item.itemId - cur)
-            }
-            true
-        }
-        menu.show()
-        return true
-    }
-
-    /**
-     * The page in the phone's language, through Google Translate's page
-     * proxy, which keeps it a working page; on a translated page, the original.
-     */
-    private fun translatePage() {
-        val web = activeWeb() ?: return
-        val url = webPageUrl() ?: run { needAPage(); return }
-        if (PageTranslate.isTranslated(url)) {
-            PageTranslate.originalUrl(url)?.let { loadInto(web, it) }
-            return
-        }
-        val lang = resources.configuration.locales.get(0)?.language?.ifBlank { null } ?: "en"
-        loadInto(web, PageTranslate.translatedUrl(url, lang))
-    }
-
-    /** The article on its own, in clean type (ReaderView); again, the page as it was. */
-    private fun toggleReaderView() {
-        val web = activeWeb() ?: return
-        if (webPageUrl() == null) { needAPage(); return }
-        web.evaluateJavascript(ReaderView.JS) { result ->
-            when (result?.trim('"')) {
-                "on" -> { showBars(); schedulePageTint(400L) }
-                "none" -> toast("Reader view needs an article - there isn't one on this page")
-            }
-        }
-    }
+    internal class ClosedTab(val url: String, val title: String, var state: Bundle?, val index: Int)
+    internal val closedTabs = ArrayDeque<ClosedTab>()
 
     // ---------- Offline pages ----------
     //
@@ -8330,114 +4941,14 @@ class MainActivity : AppCompatActivity() {
     // mobile data while on it, only the text is kept - the pictures would be
     // the data it is there to save. Never in Night Owl, which keeps nothing.
 
-    private fun savePageOffline() {
-        val url = webPageUrl() ?: run { needAPage(); return }
-        if (nightOwl) { toast("Night Owl keeps nothing. Turn it off to save pages offline."); return }
-        val web = activeWeb() ?: return
-        val ua = web.settings.userAgentString
-        val withImages = !imagesBlocked()
-        toast("Saving for offline…")
-        try {
-            web.evaluateJavascript(OfflinePages.JS) { raw ->
-                if (isFinishing || isDestroyed) return@evaluateJavascript
-                val page = OfflinePages.parseCapture(raw)
-                if (page == null) { toast("This page couldn't be saved"); return@evaluateJavascript }
-                Thread {
-                    val imgs = if (withImages) try {
-                        OfflinePages.fetchImages(page.imgs, ua, url) { u ->
-                            try { android.webkit.CookieManager.getInstance().getCookie(u) } catch (e: Exception) { null }
-                        }
-                    } catch (e: Throwable) { List(page.imgs.size) { null } } else List(page.imgs.size) { null }
-                    val entry = try { OfflinePages.save(this, page, imgs) } catch (e: Throwable) { null }
-                    runOnUiThread {
-                        if (isFinishing || isDestroyed) return@runOnUiThread
-                        if (entry == null) { toast("Couldn't save the page. Is the phone's storage full?"); return@runOnUiThread }
-                        try {
-                            com.google.android.material.snackbar.Snackbar
-                                .make(binding.webArea, "Saved for offline reading",
-                                    com.google.android.material.snackbar.Snackbar.LENGTH_LONG)
-                                .setAction("View all") { showOfflinePages() }
-                                .setActionTextColor(currentAccent())
-                                .show()
-                        } catch (e: Exception) { toast("Saved for offline reading") }
-                    }
-                }.start()
-            }
-        } catch (e: Exception) {
-            toast("This page couldn't be saved")
-        }
-    }
-
-    private fun showOfflinePages() {
-        Thread {
-            val list = try { OfflinePages.list(this) } catch (e: Exception) { emptyList() }
-            runOnUiThread {
-                if (isFinishing || isDestroyed) return@runOnUiThread
-                if (list.isEmpty()) {
-                    com.google.android.material.dialog.MaterialAlertDialogBuilder(this, R.style.Theme_Search_Dialog)
-                        .setTitle("No offline pages yet")
-                        .setMessage("On any page, open Menu > Page tools > Save offline. The page stays " +
-                            "readable here with no connection.")
-                        .setPositiveButton("OK", null)
-                        .show()
-                    return@runOnUiThread
-                }
-                val fmt = java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM)
-                val labels = list.map { e ->
-                    e.title.ifBlank { e.site } + "\n" + e.site + " · " + fmt.format(java.util.Date(e.savedAt))
-                }.toTypedArray<CharSequence>()
-                com.google.android.material.dialog.MaterialAlertDialogBuilder(this, R.style.Theme_Search_Dialog)
-                    .setTitle("Offline pages")
-                    .setItems(labels) { _, which ->
-                        list.getOrNull(which)?.let { leaveTransientUi(); addNewTab(OfflinePages.urlFor(it.id)) }
-                    }
-                    .setNeutralButton("Remove all") { _, _ -> confirmRemoveOfflinePages(list.size) }
-                    .setNegativeButton("Close", null)
-                    .show()
-            }
-        }.start()
-    }
-
-    private fun confirmRemoveOfflinePages(n: Int) {
-        com.google.android.material.dialog.MaterialAlertDialogBuilder(this, R.style.Theme_Search_Dialog)
-            .setTitle("Remove all offline pages?")
-            .setMessage(n.toString() + (if (n == 1) " page" else " pages") + " will be removed from this phone.")
-            .setPositiveButton("Remove") { _, _ ->
-                Thread { try { OfflinePages.deleteAll(this) } catch (e: Exception) {} }.start()
-                toast("Offline pages removed")
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-
     // ---------- Risky downloads ----------
 
     /** Files that run as programs or install as apps: what a bad download usually is. */
-    private val RISKY_EXT = setOf(
+    internal val RISKY_EXT = setOf(
         "apk", "apks", "xapk", "apkm", "exe", "msi", "bat", "cmd", "com", "scr", "pif",
         "vbs", "vbe", "js", "jse", "wsf", "jar", "sh", "ps1", "dll", "appx", "msix",
         "reg", "lnk", "hta", "cpl"
     )
-
-    /**
-     * What is worth a word before [url] is saved as [name]: an app or a
-     * program, and a file sent without https, which anyone on the way could
-     * have changed. Settings > Security > Warn about risky downloads.
-     */
-    private fun downloadRisks(url: String, name: String): List<String> {
-        if (!Settings.getBool(this, Settings.SEC_RISKY_DOWNLOADS, true)) return emptyList()
-        val out = ArrayList<String>()
-        val ext = name.substringAfterLast('.', "").lowercase()
-        if (ext in RISKY_EXT) {
-            out.add(if (ext.startsWith("apk") || ext == "xapk")
-                "Apps from the web can harm your phone. Install only from sites you trust."
-            else "Programs and scripts can harm your devices. Open this only if you trust the site.")
-        }
-        if (url.startsWith("http://", true)) {
-            out.add("This file comes over an insecure connection and could be changed on the way.")
-        }
-        return out
-    }
 
     // ---------- Look-alike sites ----------
     //
@@ -8448,30 +4959,7 @@ class MainActivity : AppCompatActivity() {
     // one says so, with the way back. Once per site per session.
     // Settings > Security > Warn about look-alike sites.
 
-    private val lookalikeWarned = HashSet<String>()
-
-    private fun checkLookalike(url: String?) {
-        if (url == null || !(url.startsWith("https://") || url.startsWith("http://"))) return
-        if (!Settings.getBool(this, Settings.SEC_LOOKALIKE, true)) return
-        val host = try { android.net.Uri.parse(url).host?.lowercase() } catch (e: Exception) { null } ?: return
-        if (host.split('.').none { it.startsWith("xn--") }) return
-        if (!lookalikeWarned.add(host)) return
-        val shown = try { java.net.IDN.toUnicode(host) } catch (e: Exception) { host }
-        uiHandler.postDelayed({
-            if (isFinishing || isDestroyed) return@postDelayed
-            val now = try { android.net.Uri.parse(activeWeb()?.url ?: "").host?.lowercase() } catch (e: Exception) { null }
-            if (now != host) return@postDelayed
-            try {
-                com.google.android.material.snackbar.Snackbar
-                    .make(binding.webArea, "Check the address: " + shown + " is written with letters " +
-                        "from another alphabet (" + host + "). Sites that copy a familiar name do this.",
-                        9000)
-                    .setAction("Go back") { navBack() }
-                    .setActionTextColor(currentAccent())
-                    .show()
-            } catch (e: Exception) { /* no window to show it in */ }
-        }, 700L)
-    }
+    internal val lookalikeWarned = HashSet<String>()
 
     // ---------- Night Owl: lock and hide ----------
     //
@@ -8484,24 +4972,17 @@ class MainActivity : AppCompatActivity() {
     // picture is blank while it is on. Hide Night Owl from screenshots and
     // recent apps sets FLAG_SECURE while Night Owl is on.
 
-    private var nightOwlLocked = false
-    private var unlocking = false
+    internal var nightOwlLocked = false
+    internal var unlocking = false
     private var lockPrompted = false
-    private var lockView: View? = null
+    internal var lockView: View? = null
 
-    private val unlockLauncher = registerForActivityResult(
+    internal val unlockLauncher = registerForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
     ) { r ->
         unlocking = false
         if (r.resultCode == android.app.Activity.RESULT_OK) unlockNightOwl()
     }
-
-    private fun deviceSecure(): Boolean = try {
-        (getSystemService(KEYGUARD_SERVICE) as android.app.KeyguardManager).isDeviceSecure
-    } catch (e: Exception) { false }
-
-    private fun nightOwlLockOn(): Boolean =
-        Settings.getBool(this, Settings.NIGHT_OWL_LOCK, false) && deviceSecure()
 
     private fun applyNightOwlSecure() {
         if (!::binding.isInitialized) return
@@ -8567,79 +5048,6 @@ class MainActivity : AppCompatActivity() {
         lockView = col
     }
 
-    private fun hideNightOwlLock() {
-        val v = lockView ?: return
-        lockView = null
-        (v.parent as? android.view.ViewGroup)?.removeView(v)
-    }
-
-    /** The phone's own unlock: BiometricPrompt (fingerprint, face or the PIN) from Android 11, its PIN screen before. */
-    private fun promptUnlock() {
-        if (unlocking || !nightOwlLocked || isFinishing || isDestroyed) return
-        if (!deviceSecure()) { unlockNightOwl(); return }
-        if (Build.VERSION.SDK_INT >= 30) {
-            unlocking = true
-            try {
-                val auth = android.hardware.biometrics.BiometricManager.Authenticators.BIOMETRIC_WEAK or
-                    android.hardware.biometrics.BiometricManager.Authenticators.DEVICE_CREDENTIAL
-                val prompt = android.hardware.biometrics.BiometricPrompt.Builder(this)
-                    .setTitle("Unlock Night Owl")
-                    .setSubtitle("Your Night Owl tabs are locked")
-                    .setAllowedAuthenticators(auth)
-                    .build()
-                prompt.authenticate(android.os.CancellationSignal(), mainExecutor,
-                    object : android.hardware.biometrics.BiometricPrompt.AuthenticationCallback() {
-                        override fun onAuthenticationSucceeded(
-                            result: android.hardware.biometrics.BiometricPrompt.AuthenticationResult?
-                        ) {
-                            unlocking = false
-                            unlockNightOwl()
-                        }
-                        // Cancelled or failed for good: still locked, and
-                        // Unlock asks again.
-                        override fun onAuthenticationError(errorCode: Int, errString: CharSequence?) {
-                            unlocking = false
-                        }
-                    })
-            } catch (e: Exception) {
-                unlocking = false
-                confirmCredential()
-            }
-        } else confirmCredential()
-    }
-
-    @Suppress("DEPRECATION")
-    private fun confirmCredential() {
-        val km = getSystemService(KEYGUARD_SERVICE) as? android.app.KeyguardManager
-        val i = try {
-            km?.createConfirmDeviceCredentialIntent("Unlock Night Owl", "Your Night Owl tabs are locked")
-        } catch (e: Exception) { null }
-        if (i == null) { unlockNightOwl(); return }
-        unlocking = true
-        try { unlockLauncher.launch(i) } catch (e: Exception) { unlocking = false }
-    }
-
-    private fun unlockNightOwl() {
-        nightOwlLocked = false
-        val v = lockView ?: return
-        lockView = null
-        if (Motion.animationsOn()) {
-            v.animate().alpha(0f).setDuration(200L)
-                .withEndAction { (v.parent as? android.view.ViewGroup)?.removeView(v) }.start()
-        } else (v.parent as? android.view.ViewGroup)?.removeView(v)
-    }
-
-    /** "Close Night Owl tabs" on the lock: the private session ends, nothing in it shown. */
-    private fun closeNightOwlFromLock() {
-        nightOwlLocked = false
-        hideNightOwlLock()
-        val private = tabs.tabs.filter { it.isPrivate }
-        if (nightOwl) exitNightOwl()
-        private.sortedBy { it === tabs.activeTab }.forEach { t ->
-            if (tabs.tabs.contains(t)) closeTabFromDeck(t)
-        }
-    }
-
     // ---------- Listen to this page ----------
     //
     // Menu > Page tools > Listen reads the page aloud through the phone's own
@@ -8650,19 +5058,19 @@ class MainActivity : AppCompatActivity() {
     // stops it; it goes on while you use other tabs, and stops when the page
     // it is reading goes away.
 
-    private var tts: android.speech.tts.TextToSpeech? = null
-    private var ttsReady = false
-    private var ttsFailed = false
-    private var pendingListen: (() -> Unit)? = null
-    private var listenChunks: List<String> = emptyList()
-    private var listenIndex = 0
-    private var listening = false
-    private var listenPaused = false
-    private var listenWeb: WebView? = null
-    private var listenLang: String? = null
-    private var listenBarWired = false
+    internal var tts: android.speech.tts.TextToSpeech? = null
+    internal var ttsReady = false
+    internal var ttsFailed = false
+    internal var pendingListen: (() -> Unit)? = null
+    internal var listenChunks: List<String> = emptyList()
+    internal var listenIndex = 0
+    internal var listening = false
+    internal var listenPaused = false
+    internal var listenWeb: WebView? = null
+    internal var listenLang: String? = null
+    internal var listenBarWired = false
 
-    private val LISTEN_JS = """
+    internal val LISTEN_JS = """
 (function(){
 try{
 var best=null,score=0,cs=document.querySelectorAll('article,main,[role=main],[itemprop=articleBody],section,div');
@@ -8688,211 +5096,17 @@ return {title:title,lang:(document.documentElement.lang||''),parts:parts};
 })()
 """.trimIndent()
 
-    private fun listenToPage() {
-        val web = activeWeb() ?: return
-        if (webPageUrl() == null) { needAPage(); return }
-        if (listening && listenWeb === web) { toggleListenPause(); return }
-        try {
-            web.evaluateJavascript(LISTEN_JS) { raw ->
-                if (isFinishing || isDestroyed) return@evaluateJavascript
-                val o = try { JSONObject(raw ?: "") } catch (e: Exception) { null }
-                val arr = o?.optJSONArray("parts")
-                val parts = ArrayList<String>()
-                val title = o?.optString("title", "")?.trim().orEmpty()
-                if (title.isNotEmpty()) parts.add(title)
-                if (arr != null) for (i in 0 until arr.length()) {
-                    val p = arr.optString(i, "").trim()
-                    if (p.isNotEmpty() && p != title) parts.add(p)
-                }
-                val chunks = splitForSpeech(parts)
-                if (chunks.size <= (if (title.isNotEmpty()) 1 else 0)) {
-                    toast("There's nothing on this page to read aloud")
-                    return@evaluateJavascript
-                }
-                listenLang = o?.optString("lang", "")?.trim()?.ifBlank { null }
-                listenChunks = chunks
-                listenWeb = web
-                withTts { speakFrom(0) }
-            }
-        } catch (e: Exception) {
-            toast("This page can't be read aloud")
-        }
-    }
-
-    /** Paragraphs, with any too long for one utterance cut at sentence ends. */
-    private fun splitForSpeech(parts: List<String>): List<String> {
-        val max = try { android.speech.tts.TextToSpeech.getMaxSpeechInputLength() } catch (e: Throwable) { 4000 }
-        val limit = (max - 100).coerceIn(500, 3900)
-        val out = ArrayList<String>()
-        for (p in parts) {
-            if (p.length <= limit) { out.add(p); continue }
-            var rest = p
-            while (rest.length > limit) {
-                val cut = rest.lastIndexOfAny(charArrayOf('.', '!', '?', ';'), limit).takeIf { it > limit / 3 }
-                    ?: rest.lastIndexOf(' ', limit).takeIf { it > limit / 3 } ?: limit
-                out.add(rest.substring(0, cut + 1).trim())
-                rest = rest.substring(cut + 1).trim()
-            }
-            if (rest.isNotEmpty()) out.add(rest)
-        }
-        return out
-    }
-
-    private fun withTts(then: () -> Unit) {
-        if (tts != null && ttsReady) { then(); return }
-        if (ttsFailed) {
-            toast("This phone has no text-to-speech voice. Add one in Android's settings.")
-            return
-        }
-        pendingListen = then
-        if (tts != null) return
-        tts = android.speech.tts.TextToSpeech(applicationContext) { status ->
-            runOnUiThread {
-                if (isFinishing || isDestroyed) return@runOnUiThread
-                if (status == android.speech.tts.TextToSpeech.SUCCESS) {
-                    ttsReady = true
-                    tts?.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
-                        override fun onStart(id: String?) {
-                            val i = id?.removePrefix("listen-")?.toIntOrNull() ?: return
-                            runOnUiThread { if (listening && !listenPaused) listenIndex = i }
-                        }
-                        override fun onDone(id: String?) {
-                            val i = id?.removePrefix("listen-")?.toIntOrNull() ?: return
-                            runOnUiThread {
-                                if (listening && !listenPaused && i >= listenChunks.size - 1) stopListening()
-                            }
-                        }
-                        @Deprecated("Deprecated in Java")
-                        override fun onError(id: String?) {}
-                    })
-                    val go = pendingListen
-                    pendingListen = null
-                    go?.invoke()
-                } else {
-                    ttsFailed = true
-                    try { tts?.shutdown() } catch (e: Exception) {}
-                    tts = null
-                    pendingListen = null
-                    toast("This phone has no text-to-speech voice. Add one in Android's settings.")
-                }
-            }
-        }
-    }
-
-    private fun speakFrom(i: Int) {
-        val t = tts ?: return
-        if (i !in listenChunks.indices) { stopListening(); return }
-        try {
-            val loc = listenLang?.let { java.util.Locale.forLanguageTag(it) }
-            if (loc != null && t.isLanguageAvailable(loc) >= android.speech.tts.TextToSpeech.LANG_AVAILABLE) {
-                t.language = loc
-            }
-            t.stop()
-            for (k in i until listenChunks.size) {
-                t.speak(listenChunks[k],
-                    if (k == i) android.speech.tts.TextToSpeech.QUEUE_FLUSH else android.speech.tts.TextToSpeech.QUEUE_ADD,
-                    null, "listen-$k")
-            }
-        } catch (e: Exception) {
-            toast("Couldn't read this page aloud")
-            stopListening()
-            return
-        }
-        listening = true
-        listenPaused = false
-        listenIndex = i
-        showListenBar()
-    }
-
-    private fun toggleListenPause() {
-        if (!listening) return
-        if (listenPaused) speakFrom(listenIndex)
-        else {
-            try { tts?.stop() } catch (e: Exception) {}
-            listenPaused = true
-            showListenBar()
-        }
-    }
-
-    private fun stopListening() {
-        try { tts?.stop() } catch (e: Exception) {}
-        listening = false
-        listenPaused = false
-        listenWeb = null
-        binding.listenBar.visibility = View.GONE
-    }
-
-    private fun showListenBar() {
-        val bar = binding.listenBar
-        if (!listenBarWired) {
-            listenBarWired = true
-            binding.listenToggle.setOnClickListener { v -> Haptics.tap(v); toggleListenPause() }
-            binding.listenStop.setOnClickListener { v -> Haptics.tap(v); stopListening() }
-        }
-        val accent = android.content.res.ColorStateList.valueOf(currentAccent())
-        binding.listenToggle.imageTintList = accent
-        binding.listenStop.imageTintList = accent
-        binding.listenToggle.setImageResource(if (listenPaused) R.drawable.listen_play else R.drawable.listen_pause)
-        binding.listenToggle.contentDescription = if (listenPaused) "Resume reading" else "Pause reading"
-        binding.listenLabel.text = if (listenPaused) "Paused" else "Listening"
-        bar.visibility = View.VISIBLE
-    }
-
-    /** The page as its own icon on the home screen, opening in Search. */
-    private fun addToHomeScreen() {
-        val url = webPageUrl() ?: run { needAPage(); return }
-        val web = activeWeb()
-        val title = web?.title?.takeIf { it.isNotBlank() } ?: siteNameOf(url)
-        val icon = SiteIcons.cached(url) ?: web?.favicon
-        if (!HomeShortcut.pin(this, url, title, icon)) toast("This home screen doesn't take shortcuts")
-    }
-
     // ---------- Default browser ----------
 
-    private val defaultBrowserLauncher = registerForActivityResult(
+    internal val defaultBrowserLauncher = registerForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
     ) {
         if (DefaultBrowser.isDefault(this)) toast("Search is now your default browser")
     }
 
-    /** Android's own request to make Search the default browser, or its Default apps screen. */
-    private fun askToBeDefaultBrowser() {
-        val ask = DefaultBrowser.requestIntent(this)
-        try {
-            if (ask != null) defaultBrowserLauncher.launch(ask)
-            else startActivity(DefaultBrowser.settingsIntent())
-        } catch (e: Exception) {
-            try { startActivity(DefaultBrowser.settingsIntent()) } catch (e2: Exception) {
-                toast("Pick Search under Settings > Apps > Default apps > Browser")
-            }
-        }
-    }
+    internal var offeredThisLaunch = false
 
-    /**
-     * Offered once, on the fourth launch or later, on the home page with
-     * nothing else going on - never on a first run and never twice. A browser
-     * that is not the default is only ever opened on purpose; as the default,
-     * every link tapped in another app comes here.
-     */
-    private fun maybeOfferDefaultBrowser() {
-        if (isFinishing || isDestroyed || offeredThisLaunch) return
-        if (nightOwl || searchMode || deckVisible || AdConsent.formShowing) return
-        if (binding.menuScrim.visibility == View.VISIBLE) return
-        val current = tabs.activeTab?.url
-        if (!(current == null || current == homePage)) return
-        if (!DefaultBrowser.shouldOffer(this)) return
-        offeredThisLaunch = true
-        DefaultBrowser.noteOffered(this)
-        com.google.android.material.dialog.MaterialAlertDialogBuilder(this, R.style.Theme_Search_Dialog)
-            .setTitle("Make Search your default browser?")
-            .setMessage("Links you tap in other apps will open in Search. You can change this any time in Settings.")
-            .setPositiveButton("Set as default") { _, _ -> askToBeDefaultBrowser() }
-            .setNegativeButton("Not now", null)
-            .show()
-    }
-    private var offeredThisLaunch = false
-
-    private fun closeTabFromDeck(tab: Tab) {
+    internal fun closeTabFromDeck(tab: Tab) {
         val wasActive = tab == tabs.activeTab
         // Resolved before teardown, while the tab is still in the list.
         val fallback = tab.openerId?.let { id ->
@@ -8922,18 +5136,10 @@ return {title:title,lang:(document.documentElement.lang||''),parts:parts};
 
     // ---------- History ----------
 
-    private var historyOpen = false
+    internal var historyOpen = false
 
-    /** Shows the deck empty-state with the given icon and message. */
-    private fun showDeckEmpty(iconRes: Int, title: String, subtitle: String) {
-        binding.deckEmptyIcon.setImageResource(iconRes)
-        binding.deckEmptyTitle.text = title
-        binding.deckEmptySubtitle.text = subtitle
-        binding.deckEmpty.visibility = View.VISIBLE
-    }
-
-    private var downloadsOpen = false
-    private var downloadsAdapter: DownloadsAdapter? = null
+    internal var downloadsOpen = false
+    internal var downloadsAdapter: DownloadsAdapter? = null
 
     /**
      * A download in flight changes underneath the list. The rows used to be a
@@ -8945,121 +5151,12 @@ return {title:title,lang:(document.documentElement.lang||''),parts:parts};
      * Re-queries itself while the list is on screen and stops on its own once
      * it is not, so nothing has to remember to cancel it.
      */
-    private val downloadsPoll = object : Runnable {
+    internal val downloadsPoll = object : Runnable {
         override fun run() {
             if (!downloadsOpen || !deckVisible) return
             refreshDownloads()
             binding.downloadList.postDelayed(this, 1200L)
         }
-    }
-
-    private fun showDownloads() {
-        if (downloadsAdapter == null) {
-            downloadsAdapter = DownloadsAdapter(
-                items = emptyList(),
-                onOpen = { d -> openDownloadedFile(d) },
-                onMore = { d -> showDownloadActions(d) }
-            )
-            binding.downloadList.layoutManager =
-                androidx.recyclerview.widget.LinearLayoutManager(this)
-            binding.downloadList.adapter = downloadsAdapter
-        }
-        binding.tabList.visibility = View.GONE
-        binding.deckGroups.visibility = View.GONE
-        binding.historyList.visibility = View.GONE
-        binding.bookmarkList.visibility = View.GONE
-        downloadsOpen = true
-        historyOpen = false
-        bookmarksOpen = false
-        // First pass on the main thread so the list is populated in the same
-        // frame the deck appears; refreshes after this one run off it.
-        applyDownloads(Downloads.load(this))
-        binding.downloadList.removeCallbacks(downloadsPoll)
-        binding.downloadList.postDelayed(downloadsPoll, 1200L)
-    }
-
-    /**
-     * Removes a download, by whichever route it arrived. A file this app wrote
-     * has no DownloadManager entry to remove, so calling remove() on it would
-     * delete nothing and report nothing - the row would simply reappear.
-     */
-    private fun deleteDownload(d: Downloads.Item) {
-        if (d.managed) {
-            try {
-                (getSystemService(DOWNLOAD_SERVICE) as android.app.DownloadManager)
-                    .remove(d.id)
-            } catch (e: Exception) { /* already gone */ }
-            return
-        }
-        val uri = d.localUri ?: return
-        try {
-            val parsed = android.net.Uri.parse(uri)
-            if (parsed.scheme.equals("content", true)) {
-                contentResolver.delete(parsed, null, null)
-            } else {
-                parsed.path?.let { java.io.File(it).delete() }
-            }
-        } catch (e: Exception) { /* already gone from disk */ }
-        SavedFiles.remove(this, uri)
-    }
-
-    private fun refreshDownloads() {
-        Thread {
-            val items = Downloads.load(this)
-            runOnUiThread { applyDownloads(items) }
-        }.start()
-    }
-
-    private fun applyDownloads(items: List<Downloads.Item>) {
-        if (!downloadsOpen || isFinishing || isDestroyed) return
-        downloadsAdapter?.submit(items)
-        if (items.isEmpty()) {
-            showDeckEmpty(R.drawable.menu_history, "No downloads yet",
-                "Files you download will show up here.")
-            binding.downloadList.visibility = View.GONE
-        } else {
-            binding.deckEmpty.visibility = View.GONE
-            binding.downloadList.visibility = View.VISIBLE
-        }
-    }
-
-    /**
-     * Opens a finished download in whatever app handles it.
-     *
-     * The old path handed DownloadManager's COLUMN_LOCAL_URI straight to
-     * ACTION_VIEW. For anything saved to the public Downloads folder that
-     * column is a file:// URI, and handing one to another app has thrown
-     * FileUriExposedException since Android 7. It was caught here as a plain
-     * Exception, so every tap reported "No app to open this file" however many
-     * viewers were installed - PDFs, audio, video, all of it. Nothing could
-     * ever be opened, and the message blamed the phone.
-     *
-     * Two things were missing: a URI another app is allowed to read, and a type
-     * worth routing on. DownloadManager issues a content:// URI of its own;
-     * where a device still hands back file://, it goes out through FileProvider
-     * instead. The stored media type is frequently blank or octet-stream, which
-     * matches no viewer, so the file extension decides - that is what puts a
-     * PDF in a PDF reader and an mp4 in a video player.
-     */
-    private fun openDownloadedFile(d: Downloads.Item) {
-        if (d.canRetry) { confirmRetryDownload(d); return }
-        if (!d.isComplete) {
-            toast(if (d.isRunning) "Still downloading\u2026" else "File not available")
-            return
-        }
-        val uri = resolveDownloadUri(d)
-        if (uri == null) {
-            toast("That file is no longer on this phone")
-            return
-        }
-        val mime = mimeForDownload(d)
-        if (isApk(d, mime)) { installApk(d, uri); return }
-        // Specific type first - it is what routes a PDF to a PDF reader rather
-        // than to a generic file browser. A wildcard type is the fallback for
-        // one that nothing claims outright.
-        if (startViewer(uri, mime)) return
-        if (!mime.equals("*/*", true) && startViewer(uri, "*/*")) return
-        toast("No app on this phone opens this kind of file")
     }
 
     // ---------- A downloaded app (.apk) ----------
@@ -9074,226 +5171,9 @@ return {title:title,lang:(document.documentElement.lang||''),parts:parts};
     // that switch is flipped, so what was being installed is kept on disk,
     // not in memory, for a few minutes.
 
-    private val APK_MIME = "application/vnd.android.package-archive"
-    private val APK_PREFS = "apk_install"
-    private val APK_PENDING_MS = 10L * 60_000L
-
-    private fun isApk(d: Downloads.Item, mime: String): Boolean {
-        if (mime.equals(APK_MIME, true)) return true
-        val name = android.net.Uri.decode(d.localUri?.substringAfterLast('/')?.substringBefore('?') ?: "")
-        return name.endsWith(".apk", true) || d.title.endsWith(".apk", true)
-    }
-
-    private fun installApk(d: Downloads.Item, uri: android.net.Uri) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !canInstallApps()) {
-            askToAllowInstalls(d)
-            return
-        }
-        if (!startViewer(uri, APK_MIME)) toast("Android's installer couldn't open this file")
-    }
-
-    private fun canInstallApps(): Boolean =
-        Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
-            try { packageManager.canRequestPackageInstalls() } catch (e: Exception) { false }
-
-    /** The owl's ask: allow the browser to hand apps to Android's installer. */
-    private fun askToAllowInstalls(d: Downloads.Item) {
-        if (isFinishing || isDestroyed) return
-        val view = layoutInflater.inflate(R.layout.dialog_install_apps, null)
-        applyOwlArtIn(view)
-        view.findViewById<android.widget.TextView>(R.id.installMessage).text =
-            "To install " + d.title.ifBlank { "this app" } + ", Android needs your OK for Search " +
-            "to open app files. Turn on \u201cAllow from this source\u201d, then come back " +
-            "and the install starts. Only install apps from sources you trust."
-        val dialog = android.app.AlertDialog.Builder(this).setView(view).create()
-        dialog.window?.setBackgroundDrawable(
-            android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
-        dialog.window?.attributes?.windowAnimations = R.style.OwlDialogAnim
-        view.findViewById<android.widget.TextView>(R.id.installNotNow).setOnClickListener {
-            Haptics.tap(it)
-            dialog.dismiss()
-        }
-        view.findViewById<android.widget.TextView>(R.id.installAllow).setOnClickListener {
-            Haptics.tap(it)
-            dialog.dismiss()
-            getSharedPreferences(APK_PREFS, Context.MODE_PRIVATE).edit()
-                .putLong("id", d.id).putBoolean("managed", d.managed)
-                .putString("local", d.localUri).putLong("at", System.currentTimeMillis())
-                .apply()
-            val opened = try {
-                startActivity(android.content.Intent(
-                    android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                    android.net.Uri.parse("package:" + packageName)))
-                true
-            } catch (e: Exception) {
-                try {
-                    startActivity(android.content.Intent(android.provider.Settings.ACTION_SECURITY_SETTINGS))
-                    true
-                } catch (e2: Exception) { false }
-            }
-            if (!opened) {
-                clearPendingApk()
-                toast("Turn on Install unknown apps for Search in Android's settings")
-            }
-        }
-        dialog.show()
-        dialog.window?.let { w ->
-            val width = (resources.displayMetrics.widthPixels * 0.86f).toInt()
-            w.setLayout(width, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
-        }
-    }
-
-    /** Back from the install switch (onResume): with it on, the install carries on. */
-    private fun resumePendingApkInstall() {
-        val p = getSharedPreferences(APK_PREFS, Context.MODE_PRIVATE)
-        if (!p.contains("id")) return
-        val at = p.getLong("at", 0L)
-        val id = p.getLong("id", -1L)
-        val managed = p.getBoolean("managed", true)
-        val local = p.getString("local", null)
-        // One go: on or off, the question has been answered.
-        clearPendingApk()
-        if (System.currentTimeMillis() - at !in 0L..APK_PENDING_MS) return
-        if (!canInstallApps()) return
-        Thread {
-            val d = try {
-                Downloads.load(this).firstOrNull { it.id == id && it.managed == managed && it.localUri == local }
-                    ?: Downloads.load(this).firstOrNull { it.id == id && it.managed == managed }
-            } catch (e: Exception) { null }
-            runOnUiThread {
-                if (isFinishing || isDestroyed) return@runOnUiThread
-                val uri = d?.takeIf { it.isComplete }?.let { resolveDownloadUri(it) }
-                if (d == null || uri == null) toast("That file is no longer on this phone")
-                else if (!startViewer(uri, APK_MIME)) toast("Android's installer couldn't open this file")
-            }
-        }.start()
-    }
-
-    private fun clearPendingApk() {
-        getSharedPreferences(APK_PREFS, Context.MODE_PRIVATE).edit().clear().apply()
-    }
-
-    /** A failed download: offer to fetch it again. */
-    private fun confirmRetryDownload(d: Downloads.Item) {
-        com.google.android.material.dialog.MaterialAlertDialogBuilder(
-            this, R.style.Theme_Search_Dialog)
-            .setTitle("Download failed")
-            .setMessage(d.title.ifBlank { "This file" } + " didn't finish. Try it again?")
-            .setPositiveButton("Retry") { _, _ -> retryDownload(d) }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-
-    /**
-     * Fetches a failed download again from where it came from, under the same
-     * name and type, through the same free-space check as a new one and with
-     * the site's cookies, so a file behind a sign-in still arrives. The failed
-     * record goes once the new one is queued; it holds no file.
-     */
-    private fun retryDownload(d: Downloads.Item) {
-        val url = d.remoteUri ?: return
-        val free = freeDownloadSpace()
-        if (downloadRoom(d.bytesTotal, free) == ROOM_NONE) {
-            showNoRoomForDownload(d.title, d.bytesTotal, free)
-            return
-        }
-        try {
-            val request = android.app.DownloadManager.Request(android.net.Uri.parse(url))
-            val name = d.title.ifBlank { "download" }
-            request.setMimeType(downloadMime(name, d.mimeType))
-            request.addRequestHeader("User-Agent",
-                android.webkit.WebSettings.getDefaultUserAgent(this))
-            request.setTitle(name)
-            request.setDescription("Downloading\u2026")
-            request.setNotificationVisibility(
-                android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            request.setDestinationInExternalPublicDir(
-                android.os.Environment.DIRECTORY_DOWNLOADS, name)
-            request.setAllowedOverMetered(true)
-            request.setAllowedOverRoaming(true)
-            val dm = getSystemService(DOWNLOAD_SERVICE) as android.app.DownloadManager
-            cookieIo.execute {
-                val ok = try {
-                    android.webkit.CookieManager.getInstance().getCookie(url)?.let {
-                        if (it.isNotBlank()) request.addRequestHeader("Cookie", it)
-                    }
-                    dm.enqueue(request)
-                    try { dm.remove(d.id) } catch (e: Exception) {}
-                    true
-                } catch (e: Exception) { false }
-                runOnUiThread {
-                    HealthStats.count(this,
-                        if (ok) HealthStats.DOWNLOADS else HealthStats.DOWNLOAD_FAILURES)
-                    toast(if (ok) "Downloading " + name else "Download failed")
-                    if (ok) refreshDownloads()
-                }
-            }
-        } catch (e: Exception) {
-            HealthStats.count(this, HealthStats.DOWNLOAD_FAILURES)
-            toast("Download failed")
-        }
-    }
-
-    private fun startViewer(uri: android.net.Uri, mime: String): Boolean = try {
-        startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, mime)
-            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-        })
-        true
-    } catch (e: Exception) {
-        false
-    }
-
-    /** A URI another app can read, or null if the file is gone. */
-    private fun resolveDownloadUri(d: Downloads.Item): android.net.Uri? {
-        // DownloadManager's own content:// URI is the first choice: it is
-        // readable by another app as soon as the read grant is attached. Only
-        // worth asking for a download it actually handled.
-        if (d.managed) {
-            try {
-                val dm = getSystemService(DOWNLOAD_SERVICE) as android.app.DownloadManager
-                val own = dm.getUriForDownloadedFile(d.id)
-                if (own != null && own.scheme.equals("content", true)) return own
-            } catch (e: Exception) { /* fall through to the stored path */ }
-        }
-
-        val parsed = try {
-            android.net.Uri.parse(d.localUri ?: return null)
-        } catch (e: Exception) { return null }
-        if (parsed.scheme.equals("content", true)) return parsed
-
-        // A file:// path. Wrap it rather than pass it: the raw URI is exactly
-        // what the platform refuses to let another app receive.
-        val file = java.io.File(parsed.path ?: return null)
-        if (!file.exists()) return null
-        return try {
-            androidx.core.content.FileProvider.getUriForFile(
-                this, packageName + ".files", file)
-        } catch (e: Exception) { null }
-    }
-
-    /**
-     * A type a viewer will actually match on. Servers frequently send nothing
-     * useful - blank, or octet-stream for a perfectly ordinary PDF - and that
-     * is a type no app claims, so the extension wins whenever the stored one
-     * says nothing.
-     */
-    private fun mimeForDownload(d: Downloads.Item): String {
-        val declared = d.mimeType?.trim().orEmpty()
-        val useful = declared.isNotBlank() &&
-            !declared.equals("*/*", true) &&
-            !declared.equals("application/octet-stream", true) &&
-            !declared.equals("binary/octet-stream", true)
-        if (useful) return declared
-        val name = (d.localUri?.substringAfterLast('/')?.substringBefore('?') ?: d.title)
-        val ext = android.net.Uri.decode(name).substringAfterLast('.', "").lowercase()
-        if (ext.isNotBlank()) {
-            android.webkit.MimeTypeMap.getSingleton()
-                .getMimeTypeFromExtension(ext)?.let { return it }
-        }
-        return declared.ifBlank { "*/*" }
-    }
+    internal val APK_MIME = "application/vnd.android.package-archive"
+    internal val APK_PREFS = "apk_install"
+    internal val APK_PENDING_MS = 10L * 60_000L
 
     private fun showHistory() {
         val entries = History.load(this)
@@ -9325,7 +5205,7 @@ return {title:title,lang:(document.documentElement.lang||''),parts:parts};
         bookmarksOpen = false
     }
 
-    private var bookmarksOpen = false
+    internal var bookmarksOpen = false
 
     private fun showBookmarks() {
         val entries = Bookmarks.load(this).map { History.Entry(it.title, it.url, it.time) }
@@ -9351,621 +5231,16 @@ return {title:title,lang:(document.documentElement.lang||''),parts:parts};
         historyOpen = false
     }
 
-    // ---------- Bookmarks ----------
-
-    private fun toggleBookmark() {
-        val tab = tabs.activeTab ?: return
-        val url = tab.url
-        if (url.isBlank() || url.startsWith("file:///android_asset/")) return
-        if (Bookmarks.isBookmarked(this, url)) {
-            Bookmarks.remove(this, url)
-            android.widget.Toast.makeText(this, "Bookmark removed", android.widget.Toast.LENGTH_SHORT).show()
-        } else {
-            Bookmarks.add(this, tab.title, url)
-            android.widget.Toast.makeText(this, "Bookmarked", android.widget.Toast.LENGTH_SHORT).show()
-        }
-        refreshStar()
-    }
-
-    private fun refreshStar() {
-        val url = tabs.activeTab?.url ?: ""
-        val marked = url.isNotBlank() && Bookmarks.isBookmarked(this, url)
-        binding.starBtn.setImageResource(
-            if (marked) R.drawable.ic_star_filled else R.drawable.ic_star_outline
-        )
-    }
-
     // ---------- Owl tap (context-aware) ----------
-    private val gamesUrl = "https://toolsepulse.co/games"
-
-    private fun openGames() {
-        addNewTab(gamesUrl)
-    }
-
-    private fun showGamesWelcome() {
-        val view = layoutInflater.inflate(R.layout.dialog_games_welcome, null)
-        applyOwlArtIn(view)
-        val dialog = android.app.AlertDialog.Builder(this).setView(view).create()
-        dialog.window?.setBackgroundDrawable(
-            android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT)
-        )
-        dialog.window?.attributes?.windowAnimations = R.style.OwlDialogAnim
-        view.findViewById<android.widget.TextView>(R.id.gamesLater).setOnClickListener {
-            Settings.setBool(this, Settings.GAMES_INTRO_SEEN, true)
-            dialog.dismiss()
-        }
-        view.findViewById<android.widget.TextView>(R.id.gamesGo).setOnClickListener {
-            Settings.setBool(this, Settings.GAMES_INTRO_SEEN, true)
-            dialog.dismiss()
-            openGames()
-        }
-        dialog.show()
-        dialog.window?.let { w ->
-            val width = (resources.displayMetrics.widthPixels * 0.86f).toInt()
-            w.setLayout(width, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
-        }
-    }
-
-    private fun showOwlCloseDialog() {
-        val view = layoutInflater.inflate(R.layout.dialog_owl_close, null)
-        applyOwlArtIn(view)
-        val dialog = android.app.AlertDialog.Builder(this).setView(view).create()
-        dialog.window?.setBackgroundDrawable(
-            android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT)
-        )
-        dialog.window?.attributes?.windowAnimations = R.style.OwlDialogAnim
-        view.findViewById<android.widget.TextView>(R.id.owlCloseNo).setOnClickListener {
-            dialog.dismiss()
-        }
-        view.findViewById<android.widget.TextView>(R.id.owlCloseYes).setOnClickListener {
-            dialog.dismiss()
-            finishAffinity()
-        }
-        dialog.show()
-        dialog.window?.let { w ->
-            val width = (resources.displayMetrics.widthPixels * 0.86f).toInt()
-            w.setLayout(width, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
-        }
-    }
-
-    // ---------- Downloads ----------
-
-    /**
-     * Returns a tab to the page it is actually showing, after a navigation
-     * turned out to be a download.
-     *
-     * The committed history entry is the truth here: a navigation that became a
-     * download never commits, so currentItem still names the page the user is
-     * looking at, while web.url can briefly report the address being fetched.
-     */
-    private fun restoreAfterDownload(web: WebView) {
-        val tab = tabs.tabs.firstOrNull { it.webView === web } ?: return
-        val committed = try {
-            web.copyBackForwardList().currentItem?.url
-        } catch (e: Exception) { null }
-        val real = committed ?: web.url ?: homePage
-        tab.url = real
-        (web as? BrowserWebView)?.pageHost =
-            try { android.net.Uri.parse(real).host } catch (e: Exception) { null }
-        if (web === activeWeb()) {
-            if (!binding.urlBar.hasFocus()) binding.urlBar.setText(displayUrl(real))
-            refreshOmniboxVisibility(real)
-        }
-    }
-
-    /**
-     * Security gate: every download — whether the user tapped it or a site
-     * triggered it silently — must be confirmed here before it proceeds.
-     * This stops websites from secretly downloading files to the device.
-     */
-    private fun startDownload(
-        url: String,
-        userAgent: String?,
-        contentDisposition: String?,
-        mimeType: String?,
-        contentLength: Long = -1L
-    ) {
-        val fileName = downloadName(url, contentDisposition, mimeType)
-        // Space first: a file that cannot fit is stopped here, with the
-        // reason, rather than failing part-way in DownloadManager.
-        val free = freeDownloadSpace()
-        val room = downloadRoom(contentLength, free)
-        if (room == ROOM_NONE) {
-            showNoRoomForDownload(fileName, contentLength, free)
-            return
-        }
-        // If the user disabled download confirmation, download straight away -
-        // unless the file would take most of the space left, which is worth a
-        // word first whatever the setting.
-        // Settings > Security > Warn about risky downloads: said even with
-        // confirmation off, since it is the one case the question matters.
-        val risks = downloadRisks(url, fileName)
-        if (!Settings.getBool(this, Settings.SEC_CONFIRM_DOWNLOADS, true) && room == ROOM_OK &&
-            risks.isEmpty()) {
-            performDownload(url, userAgent, contentDisposition, mimeType)
-            return
-        }
-
-        val view = layoutInflater.inflate(R.layout.dialog_download, null)
-        applyOwlArtIn(view)
-        view.findViewById<android.widget.TextView>(R.id.dlFileName).text = fileName
-        val fmt = { b: Long -> android.text.format.Formatter.formatShortFileSize(this, b) }
-        view.findViewById<android.widget.TextView>(R.id.dlSize).text =
-            (if (contentLength > 0) fmt(contentLength) else "Size unknown") +
-                " \u00B7 to Downloads" +
-                (if (free >= 0) " \u00B7 " + fmt(free) + " free" else "")
-        val warnings = ArrayList<String>()
-        if (room == ROOM_TIGHT) warnings.add("This will use most of your free space.")
-        warnings.addAll(risks)
-        if (warnings.isNotEmpty()) {
-            view.findViewById<android.widget.TextView>(R.id.dlSpaceWarn).apply {
-                text = warnings.joinToString("\n")
-                visibility = View.VISIBLE
-            }
-            (view.findViewById<android.widget.TextView>(R.id.dlSize).layoutParams
-                as? android.widget.LinearLayout.LayoutParams)?.bottomMargin =
-                (6 * resources.displayMetrics.density).toInt()
-        }
-
-        val dialog = android.app.AlertDialog.Builder(this)
-            .setView(view)
-            .setCancelable(false)
-            .create()
-        // Transparent window so our rounded layout shows cleanly.
-        dialog.window?.setBackgroundDrawable(
-            android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT)
-        )
-
-        view.findViewById<android.widget.TextView>(R.id.dlConfirm).setOnClickListener {
-            dialog.dismiss()
-            performDownload(url, userAgent, contentDisposition, mimeType)
-        }
-        view.findViewById<android.widget.TextView>(R.id.dlCancel).setOnClickListener {
-            dialog.dismiss()
-            android.widget.Toast.makeText(
-                this, "Download cancelled", android.widget.Toast.LENGTH_SHORT
-            ).show()
-        }
-        dialog.show()
-        // Constrain the dialog to a compact card width.
-        dialog.window?.let { w ->
-            val dm = resources.displayMetrics
-            val width = (dm.widthPixels * 0.86f).toInt()
-            w.setLayout(width, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
-        }
-    }
+    internal val gamesUrl = "https://toolsepulse.co/games"
 
     // ---------- Space for downloads ----------
 
-    private val ROOM_OK = 0
-    private val ROOM_TIGHT = 1
-    private val ROOM_NONE = 2
+    internal val ROOM_OK = 0
+    internal val ROOM_TIGHT = 1
+    internal val ROOM_NONE = 2
 
-    /**
-     * Free space where downloads go (the phone's shared storage), or -1 if it
-     * cannot be read. A statfs call: cheap enough for the main thread.
-     */
-    private fun freeDownloadSpace(): Long = try {
-        @Suppress("DEPRECATION")
-        android.os.StatFs(android.os.Environment.getExternalStorageDirectory().path).availableBytes
-    } catch (e: Exception) {
-        try { android.os.StatFs(filesDir.path).availableBytes } catch (e2: Exception) { -1L }
-    }
-
-    /**
-     * Whether a [size]-byte file fits in [free] bytes. It does not if it would
-     * leave less than 200MB, which Android needs to keep running smoothly; it
-     * is tight if it takes half the space or leaves under 1GB. An unknown size
-     * or free space is taken as fitting - nothing is stopped on a guess.
-     */
-    private fun downloadRoom(size: Long, free: Long): Int {
-        if (size <= 0L || free < 0L) return ROOM_OK
-        val reserve = 200L * 1024 * 1024
-        if (size > free - reserve) return ROOM_NONE
-        if (size * 2 >= free || free - size < 1024L * 1024 * 1024) return ROOM_TIGHT
-        return ROOM_OK
-    }
-
-    private fun showNoRoomForDownload(fileName: String, size: Long, free: Long) {
-        val fmt = { b: Long -> android.text.format.Formatter.formatShortFileSize(this, b) }
-        com.google.android.material.dialog.MaterialAlertDialogBuilder(
-            this, R.style.Theme_Search_Dialog)
-            .setTitle("Not enough storage")
-            .setMessage(fileName + " is " + fmt(size) + ", and this phone has " +
-                fmt(free.coerceAtLeast(0L)) + " free. Free up some space, then try again.")
-            .setPositiveButton("OK", null)
-            .setNeutralButton("Storage settings") { _, _ ->
-                try {
-                    startActivity(android.content.Intent(
-                        android.provider.Settings.ACTION_INTERNAL_STORAGE_SETTINGS))
-                } catch (e: Exception) { /* no such screen on this phone */ }
-            }
-            .show()
-    }
-
-    private fun performDownload(
-        url: String,
-        userAgent: String?,
-        contentDisposition: String?,
-        mimeType: String?
-    ) {
-        // On Android 9 and below, writing to public Downloads needs the runtime
-        // WRITE_EXTERNAL_STORAGE grant. Request it and resume after grant.
-        // Android 10+ (API 29+) doesn't need it, so skip the check there.
-        if (android.os.Build.VERSION.SDK_INT <= 28) {
-            val granted = androidx.core.content.ContextCompat.checkSelfPermission(
-                this, android.Manifest.permission.WRITE_EXTERNAL_STORAGE
-            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-            if (!granted) {
-                pendingDownload = PendingDownload(url, userAgent, contentDisposition, mimeType)
-                storagePermLauncher.launch(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                return
-            }
-        }
-        // DownloadManager fetches over http and https and nothing else. A blob:
-        // or data: address is the page's own in-memory data, which no other
-        // process can fetch at all - so it is read out through the page and
-        // written here instead of handed over. Without this, every export out
-        // of a web app ended in "Download failed".
-        if (url.startsWith("data:", true)) {
-            toast("Saving\u2026")
-            val name = downloadName(url, contentDisposition, mimeType)
-            Thread { saveDataDownload(url, name, mimeType) }.start()
-            return
-        }
-        if (url.startsWith("blob:", true)) {
-            toast("Saving\u2026")
-            requestBlobDownload(url, downloadName(url, contentDisposition, mimeType), mimeType)
-            return
-        }
-        try {
-            val fileName = downloadName(url, contentDisposition, mimeType)
-            val request = android.app.DownloadManager.Request(android.net.Uri.parse(url))
-            // Not the declared type: a host that says application/octet-stream
-            // for an mp3 has the file registered as binary, and no player
-            // claims it. downloadMime keeps a real type and replaces a generic
-            // one with whatever the extension says.
-            request.setMimeType(downloadMime(fileName, mimeType))
-            userAgent?.let { request.addRequestHeader("User-Agent", it) }
-            // Some hosts refuse a request that arrives with no referer. Read
-            // here: a WebView answers on the main thread only.
-            activeWeb()?.url?.let {
-                if (it.startsWith("http")) request.addRequestHeader("Referer", it)
-            }
-            request.setTitle(fileName)
-            request.setDescription("Downloading…")
-            request.setNotificationVisibility(
-                android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED
-            )
-            request.setDestinationInExternalPublicDir(
-                android.os.Environment.DIRECTORY_DOWNLOADS, fileName
-            )
-            // Stated outright: on any network, roaming included. A large file
-            // is fetched by DownloadManager in its own process, so it neither
-            // holds this app's memory nor stops when the app is closed, and it
-            // resumes by itself after the network drops.
-            request.setAllowedOverMetered(true)
-            request.setAllowedOverRoaming(true)
-            val dm = getSystemService(DOWNLOAD_SERVICE) as android.app.DownloadManager
-            val referer = activeWeb()?.url
-            // DownloadManager fetches in its own process, with none of the
-            // WebView's state. Without the session cookie, anything behind a
-            // sign-in hands back the sign-in page instead of the file, and the
-            // download "succeeds" - you get a saved HTML page named report.pdf.
-            //
-            // getCookie() waits on Chromium's cookie thread, so it is asked on
-            // the cookie thread's queue here rather than on the main thread,
-            // and the enqueue follows it there.
-            cookieIo.execute {
-                val cookie = try {
-                    android.webkit.CookieManager.getInstance().getCookie(url)
-                } catch (e: Exception) { null }
-                val ok = try {
-                    cookie?.let { if (it.isNotBlank()) request.addRequestHeader("Cookie", it) }
-                    dm.enqueue(request)
-                    true
-                } catch (e: Exception) { false }
-                runOnUiThread {
-                    if (ok) {
-                        HealthStats.count(this, HealthStats.DOWNLOADS)
-                        toast("Downloading $fileName")
-                        return@runOnUiThread
-                    }
-                    // DownloadManager would not take it (switched off on this
-                    // phone, or refusing the address): the app fetches it
-                    // itself, streamed to Downloads, rather than giving up.
-                    ensureNotifPermission()
-                    toast("Downloading $fileName")
-                    HttpSave.start(this, url, userAgent, referer, cookie, fileName,
-                        downloadMime(fileName, mimeType) ?: "application/octet-stream") { saved ->
-                        runOnUiThread {
-                            if (isFinishing || isDestroyed) return@runOnUiThread
-                            HealthStats.count(this,
-                                if (saved) HealthStats.DOWNLOADS else HealthStats.DOWNLOAD_FAILURES)
-                            toast(if (saved) "Saved to Downloads: $fileName" else "Download failed")
-                            if (downloadsOpen) refreshDownloads()
-                        }
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            HealthStats.count(this, HealthStats.DOWNLOAD_FAILURES)
-            android.widget.Toast.makeText(
-                this, "Download failed", android.widget.Toast.LENGTH_SHORT
-            ).show()
-        }
-    }
-
-    private fun downloadFailed() {
-        runOnUiThread {
-            HealthStats.count(this, HealthStats.DOWNLOAD_FAILURES)
-            toast("Couldn't save the file")
-        }
-    }
-
-    /**
-     * The owl, summoned for one file.
-     *
-     * Deliberately not a PopupMenu. Deleting a download is the one thing in
-     * this app that destroys something the user cannot get back -
-     * DownloadManager.remove takes the file off the disk, not just the row
-     * off the list - and the menu this replaces did it on a single tap, from
-     * a long-press nothing advertised. Naming the file and making the choice
-     * explicit is the confirmation that was missing; the owl is the app's own
-     * voice rather than a system menu's.
-     */
-    private fun showDownloadActions(d: Downloads.Item) {
-        val view = layoutInflater.inflate(R.layout.dialog_download_actions, null)
-        applyOwlArtIn(view)
-        // Middle ellipsis, not the end. The extension is the most useful part
-        // of a long filename - it is what tells you the thing is an mp3 - and
-        // trimming from the right is exactly what throws it away.
-        view.findViewById<android.widget.TextView>(R.id.dlaName).text =
-            d.title.ifBlank { "this file" }
-
-        val dialog = android.app.AlertDialog.Builder(this).setView(view).create()
-        dialog.window?.setBackgroundDrawable(
-            android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT)
-        )
-        dialog.window?.attributes?.windowAnimations = R.style.OwlDialogAnim
-
-        view.findViewById<android.widget.TextView>(R.id.dlaShare).setOnClickListener {
-            dialog.dismiss()
-            shareDownload(d)
-        }
-        view.findViewById<android.widget.TextView>(R.id.dlaDelete).setOnClickListener {
-            dialog.dismiss()
-            deleteDownload(d)
-            refreshDownloads()
-            toast("Gone")
-        }
-        view.findViewById<android.widget.TextView>(R.id.dlaCancel).setOnClickListener {
-            dialog.dismiss()
-        }
-        dialog.show()
-        dialog.window?.let { w ->
-            val width = (resources.displayMetrics.widthPixels * 0.86f).toInt()
-            w.setLayout(width, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
-        }
-    }
-
-    /**
-     * Hands a finished download to whatever the user picks.
-     *
-     * The same two things that broke opening a file break sharing one, for
-     * the same reasons: another app cannot read a file:// URI - that has
-     * thrown FileUriExposedException since Android 7 - and the stored media
-     * type is frequently blank or octet-stream, which no share target claims.
-     * resolveDownloadUri and mimeForDownload already answer both, so this
-     * leans on them rather than growing a second, slightly different answer
-     * that will drift from the first.
-     */
-    private fun shareDownload(d: Downloads.Item) {
-        if (!d.isComplete) {
-            toast(if (d.isRunning) "Still downloading\u2026" else "File not available")
-            return
-        }
-        val uri = resolveDownloadUri(d)
-        if (uri == null) {
-            toast("That file is no longer on this phone")
-            return
-        }
-        val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-            type = mimeForDownload(d)
-            putExtra(android.content.Intent.EXTRA_STREAM, uri)
-            // Without this the chooser lists apps that then cannot open what
-            // they were handed, which reads as the other app being broken.
-            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        try {
-            startActivity(android.content.Intent.createChooser(send, "Share file"))
-        } catch (e: Exception) {
-            toast("Nothing on this phone can share that")
-        }
-    }
-
-    /**
-     * Types that mean "a file" and nothing more.
-     *
-     * Most download hosts send one of these for everything they serve, so a
-     * declared type from this list carries no information and must never be
-     * allowed to overrule an extension the name already has. Treating
-     * application/octet-stream as authoritative is exactly what renamed an
-     * mp3 to .bin.
-     */
-    private fun isGenericMime(m: String?): Boolean {
-        val t = m?.substringBefore(';')?.trim()?.lowercase() ?: return true
-        return t.isEmpty() || t == "*/*" ||
-            t == "application/octet-stream" || t == "binary/octet-stream" ||
-            t == "application/unknown" || t == "application/force-download" ||
-            t == "application/download" || t == "application/x-download"
-    }
-
-    /**
-     * The filename a server stated in Content-Disposition.
-     *
-     * Parsed here rather than through the platform, whose own regex anchors
-     * filename= to the end of the header: a server sending filename= followed
-     * by anything at all - a second parameter, a trailing semicolon - yields
-     * no name from it and falls through to the address instead.
-     *
-     * filename* is preferred where both are present. It is the only form that
-     * can carry non-ASCII, so it is the accurate one whenever a title has an
-     * accent, an apostrophe or a non-Latin script in it.
-     */
-    private fun dispositionName(cd: String?): String {
-        val h = cd ?: return ""
-        Regex("filename\\*\\s*=\\s*([^']*)'[^']*'([^;]+)", RegexOption.IGNORE_CASE)
-            .find(h)?.let { m ->
-                val charset = m.groupValues[1].trim().ifBlank { "UTF-8" }
-                val raw = m.groupValues[2].trim().trim('"')
-                val decoded = try {
-                    java.net.URLDecoder.decode(raw, charset)
-                } catch (e: Exception) {
-                    try { java.net.URLDecoder.decode(raw, "UTF-8") }
-                    catch (e2: Exception) { raw }
-                }
-                if (decoded.isNotBlank()) return decoded
-            }
-        Regex("filename\\s*=\\s*\"([^\"]*)\"", RegexOption.IGNORE_CASE)
-            .find(h)?.let {
-                if (it.groupValues[1].isNotBlank()) return it.groupValues[1]
-            }
-        Regex("filename\\s*=\\s*([^;]+)", RegexOption.IGNORE_CASE)
-            .find(h)?.let {
-                val v = it.groupValues[1].trim().trim('"')
-                if (v.isNotBlank()) return v
-            }
-        return ""
-    }
-
-    /**
-     * Safe to hand to setDestinationInExternalPublicDir, which throws on a
-     * name containing a path separator. Parentheses and spaces are left alone
-     * - they are legal, and stripping them mangles titles for no reason.
-     */
-    private fun sanitizeName(n: String): String {
-        var s = n.substringAfterLast('/').substringAfterLast('\\').trim()
-        s = s.replace(Regex("[\\x00-\\x1f<>:\"|?*]"), "_")
-        s = s.trim('.', ' ')
-        if (s.length > 120) {
-            val ext = s.substringAfterLast('.', "")
-            val stem = s.substringBeforeLast('.', s).take(110)
-            s = if (ext.isBlank()) stem else stem + "." + ext
-        }
-        return s
-    }
-
-    /**
-     * Whether the tail after the final dot is an extension or just part of
-     * the name. "mp3" is; "com)" - from Shallipopi-Laho-(TrendySongz.com).mp3
-     * with its real extension already lost - is not.
-     */
-    private fun looksLikeExt(name: String): Boolean {
-        val e = name.substringAfterLast('.', "")
-        return e.length in 1..5 && e.isNotEmpty() && e.all { it.isLetterOrDigit() }
-    }
-
-    /**
-     * A filename that keeps what the server called the file and carries an
-     * extension the phone can act on.
-     *
-     * In order of trust: the name the server stated, the last piece of the
-     * address, then the platform's guess - which is last because of what it
-     * does to a generic content type, and which is still needed for data:
-     * URLs, where there is no name anywhere else.
-     */
-    private fun downloadName(url: String, cd: String?, mime: String?): String {
-        val fromUrl = sanitizeName(try {
-            android.net.Uri.parse(url).lastPathSegment.orEmpty()
-        } catch (e: Exception) { "" })
-
-        var name = sanitizeName(dispositionName(cd))
-        if (name.isBlank()) name = fromUrl
-        if (name.isBlank()) {
-            name = sanitizeName(try {
-                android.webkit.URLUtil.guessFileName(url, cd, mime)
-            } catch (e: Exception) { "" })
-            // .bin is guessFileName's way of saying it does not know. Dropped
-            // so the recovery below gets a chance rather than being handed a
-            // name that already looks finished.
-            if (name.endsWith(".bin", true)) name = name.dropLast(4)
-        }
-        if (name.isBlank()) name = "download_" + System.currentTimeMillis()
-
-        val map = android.webkit.MimeTypeMap.getSingleton()
-        val declared = mime?.substringBefore(';')?.trim()?.lowercase()
-
-        // A REAL declared type that disagrees with the extension on the name
-        // wins, and the extension is swapped for the one that type maps to.
-        // This is the part guessFileName gets right - a .php that serves audio
-        // should land as .mp3 - and it is kept. What is not kept is doing it
-        // for a generic type, and cutting the base name at the first dot
-        // instead of the last.
-        if (looksLikeExt(name) && declared != null && !isGenericMime(declared)) {
-            val fromName = map.getMimeTypeFromExtension(
-                name.substringAfterLast('.').lowercase())
-            if (fromName != null && !fromName.equals(declared, true)) {
-                val want = map.getExtensionFromMimeType(declared)
-                if (!want.isNullOrBlank()) {
-                    name = name.substringBeforeLast('.') + "." + want
-                }
-            }
-        }
-
-        if (!looksLikeExt(name)) {
-            val urlExt =
-                if (looksLikeExt(fromUrl)) fromUrl.substringAfterLast('.') else ""
-            val mimeExt = declared
-                ?.takeIf { !isGenericMime(it) }
-                ?.let { map.getExtensionFromMimeType(it) }
-                .orEmpty()
-            val ext = urlExt.ifBlank { mimeExt }
-            if (ext.isNotBlank()) name = name + "." + ext
-        }
-        return name
-    }
-
-    /**
-     * The type to register the file under.
-     *
-     * A real declared type is kept. A generic one is replaced by whatever the
-     * extension maps to, so an mp3 served as application/octet-stream is
-     * stored as audio/mpeg - which is what decides whether a music player
-     * will open it and whether the media scanner indexes it at all.
-     */
-    private fun downloadMime(name: String, declared: String?): String? {
-        val clean = declared?.substringBefore(';')?.trim()
-        if (!isGenericMime(clean)) return clean
-        val ext = name.substringAfterLast('.', "").lowercase()
-        if (ext.isBlank()) return clean
-        return android.webkit.MimeTypeMap.getSingleton()
-            .getMimeTypeFromExtension(ext) ?: clean
-    }
-
-    /**
-     * Only the page that minted a blob: URL can read it, so the page is asked
-     * to: fetch it and hand the bytes back.
-     *
-     * In pieces of about 2MB, each base64 across the bridge and written to the
-     * file as it arrives (blobFileBegin, blobFileChunk, blobFileEnd), read
-     * off the response as a stream so the page never makes a second copy of
-     * the file either. It used to come across whole, as one data: URL, which
-     * took several times the file's size in memory - capped at 16MB for that
-     * reason, so any larger export simply failed. Now a file of several GB
-     * saves with no more memory than one piece, with a progress notification
-     * while it is written.
-     */
-    private fun requestBlobDownload(url: String, name: String, mime: String?) {
-        val web = activeWeb() ?: run { downloadFailed(); return }
-        val token = java.util.UUID.randomUUID().toString()
-        blobSaves[token] = BlobSave(name, mime)
-        ensureNotifPermission()
-        web.evaluateJavascript(BLOB_STREAM_JS + "(" +
-            JSONObject.quote(url) + "," + JSONObject.quote(token) + ");", null)
-    }
-
-    private val BLOB_STREAM_JS = "(function(u,t){var A=window.SearchApp,CH=2097152;" +
+    internal val BLOB_STREAM_JS = "(function(u,t){var A=window.SearchApp,CH=2097152;" +
         "function fail(){try{A.blobFileFailed(t);}catch(e){}}" +
         "function b64(parts,done){var fr=new FileReader();fr.onload=function(){var s=fr.result;" +
         "done(s.substring(s.indexOf(',')+1));};fr.onerror=fail;fr.readAsDataURL(new Blob(parts));}" +
@@ -9984,43 +5259,6 @@ return {title:title,lang:(document.documentElement.lang||''),parts:parts};
         "parts.push(x.value);size+=x.value.byteLength;if(size>=CH)flush(pump);else pump();" +
         "}).catch(fail);})();" +
         "}).catch(fail);}catch(e){fail();}})"
-
-    /**
-     * A data: address, decoded a piece at a time straight into the file. The
-     * address itself is already in memory (the page handed it over whole),
-     * but decoding it whole as well doubled that.
-     */
-    private fun saveDataDownload(dataUrl: String, name: String, mime: String?) {
-        val comma = dataUrl.indexOf(',')
-        if (comma < 5) { downloadFailed(); return }
-        val header = dataUrl.substring(5, comma)
-        val type = mime?.takeIf { it.isNotBlank() }
-            ?: header.substringBefore(';').ifBlank { "application/octet-stream" }
-        val sink = DownloadSink.open(this, name, type) ?: run { downloadFailed(); return }
-        try {
-            if (header.contains("base64", true)) {
-                var body = dataUrl.substring(comma + 1)
-                if (body.any { it.isWhitespace() }) body = body.filterNot { it.isWhitespace() }
-                // A multiple of four characters, so every piece decodes on its own.
-                val step = 4 * 1024 * 1024
-                var i = 0
-                while (i < body.length) {
-                    val j = minOf(i + step, body.length)
-                    sink.write(android.util.Base64.decode(body.substring(i, j), android.util.Base64.DEFAULT))
-                    i = j
-                }
-            } else {
-                sink.write(java.net.URLDecoder.decode(dataUrl.substring(comma + 1), "UTF-8").toByteArray())
-            }
-            val uri = if (sink.written > 0) sink.finish() else { sink.abort(); null }
-            if (uri == null) { downloadFailed(); return }
-            SavedFiles.add(this, sink.name, uri, sink.mime, sink.written)
-            runOnUiThread { toast("Saved to Downloads: " + sink.name) }
-        } catch (t: Throwable) {
-            sink.abort()
-            downloadFailed()
-        }
-    }
 
     // ---------- UI wiring ----------
 
@@ -10168,13 +5406,13 @@ return {title:title,lang:(document.documentElement.lang||''),parts:parts};
     }
 
     /** Find bar and search sheet give way before a bar button acts. */
-    private fun leaveTransientUi() {
+    internal fun leaveTransientUi() {
         if (findActive) closeFindBar()
         if (searchMode) exitSearchMode()
     }
 
     /** Back for the page: the same steps as the system Back. */
-    private fun navBack() {
+    internal fun navBack() {
         if (findActive) { closeFindBar(); return }
         if (searchMode) { exitSearchMode(); return }
         val web = activeWeb()
@@ -10267,7 +5505,7 @@ return {title:title,lang:(document.documentElement.lang||''),parts:parts};
         androidx.core.content.ContextCompat.getColor(this, R.color.navIcon)
 
     // The New tab button's paint, rebuilt only when the accent changes.
-    private var newTabAccent = 0
+    internal var newTabAccent = 0
 
     /**
      * Puts the bars in step with the tab on screen: Home filled in the accent,
@@ -10275,7 +5513,7 @@ return {title:title,lang:(document.documentElement.lang||''),parts:parts};
      * when there is nowhere to go. Called on every load, history change and
      * tab switch, and when the accent changes.
      */
-    private fun refreshNav() {
+    internal fun refreshNav() {
         if (!::binding.isInitialized) return
         val web = activeWeb()
         val tab = tabs.activeTab
@@ -10337,50 +5575,14 @@ return {title:title,lang:(document.documentElement.lang||''),parts:parts};
     // the first or last tab the page only gives a little, like rubber.
     // Swiping left brings in the tab after this one, as in Chrome.
 
-    private var swipeNeighbor: Tab? = null
+    internal var swipeNeighbor: Tab? = null
     /** -1: moving to the next tab, +1: to the previous one, 0: not decided. */
-    private var swipeDir = 0
-    private val swipeSpring by lazy {
+    internal var swipeDir = 0
+    internal val swipeSpring by lazy {
         Spring(stiffness = 340f, dampingRatio = 0.9f, precision = 0.5f) { placeSwipe(it) }
     }
 
-    private fun setupTabSwipe() {
-        binding.bottomBar.onSwipeStart = { beginSwipe() }
-        binding.bottomBar.onSwipe = { dx ->
-            swipeSpring.cancel()
-            placeSwipe(followSwipe(dx))
-        }
-        binding.bottomBar.onSwipeEnd = { dx, vx -> finishSwipe(followSwipe(dx), vx) }
-    }
-
-    private fun beginSwipe(): Boolean {
-        if (!swipeTabsPref) return false
-        if (searchMode || deckVisible || swipeSpring.isRunning || activeWeb() == null) return false
-        if (binding.menuScrim.visibility == View.VISIBLE) return false
-        swipeDir = 0
-        swipeNeighbor = null
-        // The deck's picture of this tab, taken while it is still in place.
-        tabs.activeTab?.let { captureThumbnail(it) }
-        return true
-    }
-
-    private fun followSwipe(dx: Float): Float {
-        val dir = if (dx < 0f) -1 else 1
-        if (dir != swipeDir) {
-            swipeDir = dir
-            val list = tabs.tabs
-            val i = list.indexOf(tabs.activeTab)
-            swipeNeighbor = if (i < 0) null else list.getOrNull(if (dir < 0) i + 1 else i - 1)
-            val peek = binding.tabPeek
-            peek.setImageBitmap(swipeNeighbor?.thumbnail?.takeIf { !it.isRecycled })
-            peek.visibility = if (swipeNeighbor != null) View.VISIBLE else View.GONE
-        }
-        if (swipeNeighbor != null) return dx
-        val reach = 56f * resources.displayMetrics.density
-        return kotlin.math.sign(dx) * reach * (1f - kotlin.math.exp(-kotlin.math.abs(dx) / reach))
-    }
-
-    private fun placeSwipe(x: Float) {
+    internal fun placeSwipe(x: Float) {
         val w = binding.webArea.width.toFloat()
         binding.webContainer.translationX = x
         // The feed ad cards ride with the page. Placed as on a scroll, which
@@ -10389,35 +5591,6 @@ return {title:title,lang:(document.documentElement.lang||''),parts:parts};
         // it that far to the side until the page next scrolled.
         activeWeb()?.let { web -> if (isLiveWeb(web)) positionAdSlot(web, web.scrollY) }
         binding.tabPeek.translationX = if (x < 0f) x + w else x - w
-    }
-
-    private fun finishSwipe(x: Float, vx: Float) {
-        val w = binding.webArea.width.toFloat()
-        val n = swipeNeighbor
-        val fast = 900f * resources.displayMetrics.density
-        val flung = kotlin.math.abs(vx) > fast
-        val toward = flung && kotlin.math.sign(vx) == kotlin.math.sign(x)
-        val back = flung && !toward
-        if (n != null && w > 0f && !back && (toward || kotlin.math.abs(x) > w * 0.35f)) {
-            Haptics.tick(binding.bottomBar)
-            swipeSpring.animate(x, if (x < 0f) -w else w, vx) {
-                // The page is off screen; the tab it slid to takes its place
-                // in the same frame, where its picture was.
-                if (tabs.tabs.contains(n)) openTab(n)
-                endSwipe()
-            }
-        } else {
-            swipeSpring.animate(x, 0f, vx) { endSwipe() }
-        }
-    }
-
-    private fun endSwipe() {
-        swipeSpring.cancel()
-        placeSwipe(0f)
-        binding.tabPeek.visibility = View.GONE
-        binding.tabPeek.setImageDrawable(null)
-        swipeNeighbor = null
-        swipeDir = 0
     }
 
     // ---------- Pull to refresh ----------
@@ -10429,105 +5602,19 @@ return {title:title,lang:(document.documentElement.lang||''),parts:parts};
     // Driven by the page's own overscroll (BrowserWebView), so it only answers
     // once the page really is at its top - not while a list inside it scrolls.
 
-    private var pullRaw = 0f
-    private var pullRefreshing = false
-    private var pullSpin: android.animation.ObjectAnimator? = null
-    private var pullStartedAt = 0L
-    private val pullTimeout = Runnable { endPullRefresh() }
-    private val pullSpring by lazy { Spring(stiffness = 420f, dampingRatio = 0.72f, precision = 0.5f) { placePull(it) } }
-    private val pullTrigger get() = 84f * resources.displayMetrics.density
-    private val pullReach get() = 140f * resources.displayMetrics.density
-    private val pullHold get() = 64f * resources.displayMetrics.density
+    internal var pullRaw = 0f
+    internal var pullRefreshing = false
+    internal var pullSpin: android.animation.ObjectAnimator? = null
+    internal var pullStartedAt = 0L
+    internal val pullTimeout = Runnable { endPullRefresh() }
+    internal val pullSpring by lazy { Spring(stiffness = 420f, dampingRatio = 0.72f, precision = 0.5f) { placePull(it) } }
+    internal val pullTrigger get() = 84f * resources.displayMetrics.density
+    internal val pullReach get() = 140f * resources.displayMetrics.density
+    internal val pullHold get() = 64f * resources.displayMetrics.density
 
     /** Settings > Customize > Pull to refresh and Swipe the bottom bar (refreshScrollPrefs). */
-    private var pullRefreshPref = true
-    private var swipeTabsPref = true
-
-    private fun pullBy(px: Int) {
-        if (!pullRefreshPref || pullRefreshing || searchMode || deckVisible) return
-        val url = tabs.activeTab?.url
-        if (url == null || url == homePage) return
-        pullSpring.cancel()
-        pullRaw += px
-        placePull(rubber(pullRaw))
-    }
-
-    // 1:1 at the start, approaching pullReach and never passing it.
-    private fun rubber(raw: Float): Float = pullReach * (1f - kotlin.math.exp(-raw / pullReach))
-
-    private fun placePull(y: Float) {
-        val disc = binding.pullIndicator
-        val size = disc.height.takeIf { it > 0 } ?: (40f * resources.displayMetrics.density).toInt()
-        if (y <= 0.5f && !pullRefreshing) {
-            disc.visibility = View.GONE
-            return
-        }
-        if (disc.visibility != View.VISIBLE) {
-            disc.imageTintList = android.content.res.ColorStateList.valueOf(newTabAccent)
-            disc.visibility = View.VISIBLE
-        }
-        disc.translationY = y - size
-        val armed = (y / pullTrigger).coerceIn(0f, 1f)
-        disc.alpha = 0.4f + 0.6f * armed
-        disc.scaleX = 0.7f + 0.3f * armed
-        disc.scaleY = disc.scaleX
-        if (!pullRefreshing) disc.rotation = y * 1.6f
-    }
-
-    private fun releasePull() {
-        if (pullRaw <= 0f) return
-        val y = rubber(pullRaw)
-        pullRaw = 0f
-        if (pullRefreshing) return
-        if (y < pullTrigger) {
-            pullSpring.animate(y, 0f)
-            return
-        }
-        pullRefreshing = true
-        pullStartedAt = android.os.SystemClock.uptimeMillis()
-        // A small tick in the hand as the refresh takes, as Chrome gives.
-        Haptics.confirm(binding.pullIndicator)
-        pullSpring.animate(y, pullHold)
-        val disc = binding.pullIndicator
-        pullSpin = android.animation.ObjectAnimator.ofFloat(disc, View.ROTATION, disc.rotation, disc.rotation + 360f).apply {
-            duration = 700L
-            repeatCount = android.animation.ValueAnimator.INFINITE
-            interpolator = android.view.animation.LinearInterpolator()
-            start()
-        }
-        activeWeb()?.reload()
-        // A reload that never reports back still lets the disc go.
-        uiHandler.removeCallbacks(pullTimeout)
-        uiHandler.postDelayed(pullTimeout, 10_000L)
-    }
-
-    /** The reload has landed - or the tab changed. The disc goes back up. */
-    private fun endPullRefresh(now: Boolean = false) {
-        pullRaw = 0f
-        if (!pullRefreshing) {
-            if (now) { pullSpring.cancel(); placePull(0f) }
-            return
-        }
-        // At least a moment of spinning, or a fast reload reads as a flicker.
-        val shown = android.os.SystemClock.uptimeMillis() - pullStartedAt
-        if (!now && shown < 450L) {
-            uiHandler.postDelayed({ endPullRefresh() }, 450L - shown)
-            return
-        }
-        pullRefreshing = false
-        uiHandler.removeCallbacks(pullTimeout)
-        pullSpin?.cancel()
-        pullSpin = null
-        if (now) {
-            pullSpring.cancel()
-            placePull(0f)
-        } else pullSpring.animate(pullSpring.value, 0f)
-    }
-
-    private fun setNavEnabled(v: View, enabled: Boolean) {
-        v.isEnabled = enabled
-        v.alpha = if (enabled) 1f else 0.38f
-    }
+    internal var pullRefreshPref = true
+    internal var swipeTabsPref = true
 
     private fun setupToolbar() {
 
@@ -10661,110 +5748,8 @@ return {title:title,lang:(document.documentElement.lang||''),parts:parts};
         binding.starBtn.setOnClickListener { toggleBookmark() }
     }
 
-    // ---------- In-app updates (Google Play) ----------
-    private fun checkForUpdate(fromUser: Boolean) {
-        appUpdateManager.appUpdateInfo
-            .addOnSuccessListener { info ->
-                val available = info.updateAvailability() ==
-                    com.google.android.play.core.install.model.UpdateAvailability.UPDATE_AVAILABLE
-                val allowsFlexible = info.isUpdateTypeAllowed(
-                    com.google.android.play.core.install.model.AppUpdateType.FLEXIBLE)
-                if (available && allowsFlexible) {
-                    try {
-                        appUpdateManager.startUpdateFlowForResult(
-                            info,
-                            updateLauncher,
-                            com.google.android.play.core.appupdate.AppUpdateOptions.newBuilder(
-                                com.google.android.play.core.install.model.AppUpdateType.FLEXIBLE
-                            ).build()
-                        )
-                    } catch (e: Exception) { /* ignore */ }
-                } else if (fromUser) {
-                    android.widget.Toast.makeText(this,
-                        "You're on the latest version", android.widget.Toast.LENGTH_SHORT).show()
-                }
-            }
-            .addOnFailureListener {
-                if (fromUser) android.widget.Toast.makeText(this,
-                    "Couldn't check for updates", android.widget.Toast.LENGTH_SHORT).show()
-            }
-    }
-
-    // Public entry point for the Settings "Check for updates" row.
-    fun checkForUpdateFromSettings() = checkForUpdate(fromUser = true)
-
-    // ---------- In-app review (Google Play) ----------
-    /**
-     * Asks Play to show its review dialog, if this is a fair moment to.
-     *
-     * Deliberately has no caller anywhere the user can reach. Play's policy
-     * forbids a "Rate us" button and forbids gating the prompt behind a
-     * question like "enjoying the app?" - showing the real dialog only to
-     * people who answered yes is review gating, which is a violation rather
-     * than a funnel. So this fires on its own or not at all.
-     *
-     * Nothing may be branched on the outcome. The listener below is called
-     * whether the user wrote a review, dismissed the sheet, or never saw one
-     * because Play's quota suppressed it - the API reports none of that, by
-     * design, so that apps cannot treat reviewers differently.
-     */
-    private fun maybeAskForReview() {
-        if (isFinishing || isDestroyed) return
-        // Never during a private session, and never over something else -
-        // the ad consent message included.
-        if (nightOwl || searchMode || deckVisible || AdConsent.formShowing) return
-        val current = tabs.activeTab?.url
-        if (!(current == null || current == homePage)) return
-        if (!Reviews.eligible(this)) return
-        // One ask per launch: the default-browser offer stands aside.
-        offeredThisLaunch = true
-
-        // FakeReviewManager runs the whole flow and shows nothing, which is
-        // the only way to prove the plumbing works: the real dialog cannot be
-        // summoned on demand, since quota decides whether it appears.
-        val manager = if (BuildConfig.DEBUG) {
-            com.google.android.play.core.review.testing.FakeReviewManager(this)
-        } else {
-            com.google.android.play.core.review.ReviewManagerFactory.create(this)
-        }
-
-        manager.requestReviewFlow().addOnCompleteListener { request ->
-            if (!request.isSuccessful) return@addOnCompleteListener
-            if (isFinishing || isDestroyed) return@addOnCompleteListener
-            manager.launchReviewFlow(this, request.result).addOnCompleteListener {
-                // Recorded on the attempt, not on a result, because there is
-                // no result to wait for. If quota swallowed the dialog this
-                // spends the window on nothing - which is the trade for never
-                // pestering someone who did see it and closed it.
-                Reviews.noteAsked(this)
-                if (BuildConfig.DEBUG) toast("Review flow ran (fake in debug)")
-            }
-        }
-    }
-
     // ---------- Media control notification ----------
-    private var mediaActive = false
-
-    private fun onMediaState(state: String, title: String, host: String) {
-        when (state) {
-            "playing", "paused" -> {
-                // Many players only take their source once they start.
-                if (state == "playing" && foundVideos.isEmpty()) scheduleVideoScan(400L)
-                ensureNotifPermission()
-                val intent = android.content.Intent(this, MediaService::class.java).apply {
-                    action = MediaService.ACTION_UPDATE
-                    putExtra(MediaService.EXTRA_TITLE, if (title.isBlank()) "Media" else title)
-                    putExtra(MediaService.EXTRA_HOST, host)
-                    putExtra(MediaService.EXTRA_PLAYING, state == "playing")
-                }
-                try {
-                    androidx.core.content.ContextCompat.startForegroundService(this, intent)
-                    mediaActive = true
-                } catch (e: Exception) { /* ignore */ }
-            }
-            "none" -> stopMediaService()
-        }
-    }
+    internal var mediaActive = false
 
     // ---------- Video downloader ----------
     //
@@ -10777,419 +5762,15 @@ return {title:title,lang:(document.documentElement.lang||''),parts:parts};
     // (many players only set their source then) and twice more a little later.
     // Never on home, so the button is never near the ad cards.
 
-    private var foundVideos: List<VideoFinder.Found> = emptyList()
+    internal var foundVideos: List<VideoFinder.Found> = emptyList()
     /** The address the WebView showed when [foundVideos] were found. */
-    private var foundVideosFor: String? = null
-    private var videoScans = 0
-    private val videoScan = Runnable { scanVideos(null) }
-    private val videoFabShrink = Runnable { setVideoFabExtended(false) }
-    private var videoFabStyled = false
+    internal var foundVideosFor: String? = null
+    internal var videoScans = 0
+    internal val videoScan = Runnable { scanVideos(null) }
+    internal val videoFabShrink = Runnable { setVideoFabExtended(false) }
+    internal var videoFabStyled = false
 
-    private fun videoButtonOn() = Settings.getBool(this, Settings.VIDEO_BUTTON, true)
-
-    private fun scheduleVideoScan(delay: Long) {
-        videoScans = 0
-        uiHandler.removeCallbacks(videoScan)
-        uiHandler.postDelayed(videoScan, delay)
-    }
-
-    /** Asks the page on screen for its videos; [then] runs once the answer is in. */
-    private fun scanVideos(then: (() -> Unit)?) {
-        val web = activeWeb()
-        val url = web?.url
-        if (web == null || url == null || url == homePage ||
-            !(url.startsWith("https://") || url.startsWith("http://"))) {
-            setFoundVideos(emptyList(), url)
-            then?.invoke()
-            return
-        }
-        val host = try { android.net.Uri.parse(url).host } catch (e: Exception) { null }
-        if (VideoFinder.pageExcluded(host)) {
-            setFoundVideos(emptyList(), url)
-            then?.invoke()
-            return
-        }
-        videoScans++
-        try {
-            web.evaluateJavascript(VideoFinder.JS) { raw ->
-                if (isFinishing || isDestroyed || web !== activeWeb() || web.url != url) return@evaluateJavascript
-                val found = VideoFinder.parse(raw, url)
-                setFoundVideos(found, url)
-                then?.invoke()
-                if (then == null && found.isEmpty() && videoScans < 3) {
-                    uiHandler.removeCallbacks(videoScan)
-                    uiHandler.postDelayed(videoScan, 2500L)
-                }
-            }
-        } catch (e: Exception) {
-            then?.invoke()
-        }
-    }
-
-    private fun setFoundVideos(list: List<VideoFinder.Found>, url: String?) {
-        val had = foundVideos.isNotEmpty() && foundVideosFor == url
-        foundVideos = list
-        foundVideosFor = url
-        updateVideoFab(announce = list.isNotEmpty() && !had)
-    }
-
-    /** Shows or hides the button for the page on screen; [announce] spells it out again for a moment. */
-    private fun updateVideoFab(announce: Boolean = false) {
-        val fab = binding.videoFab
-        val web = activeWeb()
-        val show = foundVideos.isNotEmpty() && web != null && foundVideosFor != null &&
-            foundVideosFor == web.url && tabs.activeTab?.url != homePage &&
-            videoButtonOn() && !barsHidden && !searchMode && !deckVisible && fullscreenView == null
-        if (!show) {
-            uiHandler.removeCallbacks(videoFabShrink)
-            if (fab.visibility == View.VISIBLE) {
-                fab.animate().cancel()
-                fab.animate().alpha(0f).scaleX(0.8f).scaleY(0.8f).setDuration(140L)
-                    .withEndAction { if (fab.alpha == 0f) fab.visibility = View.GONE }.start()
-            }
-            return
-        }
-        styleVideoFab()
-        val n = foundVideos.size
-        fab.contentDescription = if (n == 1) "Download video" else "Download videos, " + n + " found"
-        if (fab.visibility != View.VISIBLE || fab.alpha < 1f) {
-            fab.animate().cancel()
-            if (fab.visibility != View.VISIBLE) {
-                fab.alpha = 0f; fab.scaleX = 0.8f; fab.scaleY = 0.8f
-                fab.visibility = View.VISIBLE
-            }
-            fab.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(200L)
-                .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
-        }
-        if (announce) {
-            setVideoFabExtended(true)
-            uiHandler.removeCallbacks(videoFabShrink)
-            uiHandler.postDelayed(videoFabShrink, 4000L)
-        }
-    }
-
-    private fun styleVideoFab() {
-        val fab = binding.videoFab
-        val accent = currentAccent()
-        val pill = android.graphics.drawable.GradientDrawable().apply {
-            cornerRadius = 22f * resources.displayMetrics.density
-            setColor(accent)
-        }
-        fab.background = android.graphics.drawable.RippleDrawable(
-            android.content.res.ColorStateList.valueOf(0x33FFFFFF), pill, null)
-        val icon = androidx.core.content.ContextCompat.getDrawable(this, R.drawable.menu_downloads)?.mutate()
-        icon?.setTint(android.graphics.Color.WHITE)
-        fab.setCompoundDrawablesRelativeWithIntrinsicBounds(icon, null, null, null)
-        if (!videoFabStyled) {
-            videoFabStyled = true
-            fab.setOnClickListener { v ->
-                Haptics.tap(v)
-                offerVideoDownload()
-            }
-        }
-    }
-
-    /** The button with its words ("Download video"), or shrunk to its icon. */
-    private fun setVideoFabExtended(extended: Boolean) {
-        val fab = binding.videoFab
-        val d = resources.displayMetrics.density
-        if (animationsOn() && fab.isLaidOut) {
-            android.transition.TransitionManager.beginDelayedTransition(binding.webArea,
-                android.transition.ChangeBounds().addTarget(fab).setDuration(220L))
-        }
-        val n = foundVideos.size
-        if (extended) {
-            fab.text = if (n > 1) "Download video (" + n + ")" else "Download video"
-            fab.compoundDrawablePadding = (8 * d).toInt()
-            fab.setPaddingRelative((12 * d).toInt(), 0, (16 * d).toInt(), 0)
-        } else {
-            fab.text = ""
-            fab.compoundDrawablePadding = 0
-            fab.setPaddingRelative((11 * d).toInt(), 0, (11 * d).toInt(), 0)
-        }
-    }
-
-    /** Menu > Page tools > Download video: looks again first, then offers what is there. */
-    private fun downloadVideoFromMenu() {
-        if (webPageUrl() == null) { needAPage(); return }
-        scanVideos { offerVideoDownload() }
-    }
-
-    private fun offerVideoDownload() {
-        val web = activeWeb() ?: return
-        val list = if (foundVideosFor == web.url) foundVideos else emptyList()
-        if (list.isEmpty()) {
-            val host = try { android.net.Uri.parse(web.url ?: "").host } catch (e: Exception) { null }
-            toast(when {
-                VideoFinder.youTube(host) -> "YouTube's terms don't allow saving its videos"
-                VideoFinder.pageExcluded(host) -> "Open the video's own page to save it"
-                else -> "No video on this page can be saved. Start it playing, then try again."
-            })
-            return
-        }
-        if (list.size == 1) { fetchVideo(list[0]); return }
-        val labels = list.mapIndexed { i, f -> VideoFinder.label(f, i) }.toTypedArray<CharSequence>()
-        com.google.android.material.dialog.MaterialAlertDialogBuilder(this, R.style.Theme_Search_Dialog)
-            .setTitle("Download video")
-            .setItems(labels) { _, which -> list.getOrNull(which)?.let { fetchVideo(it) } }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-
-    /**
-     * Checks [f] with the server first - what it is and how big - so the
-     * confirmation can show its size and a stream's page is turned away with
-     * a reason instead of saving as a broken file. Then the usual download.
-     */
-    private fun fetchVideo(f: VideoFinder.Found) {
-        val web = activeWeb()
-        val ua = web?.settings?.userAgentString
-        val referer = web?.url?.takeIf { it.startsWith("http") }
-        toast("Getting the video…")
-        Thread {
-            val probe = try {
-                VideoFinder.probe(f.url, ua, referer) { u ->
-                    try { android.webkit.CookieManager.getInstance().getCookie(u) } catch (e: Exception) { null }
-                }
-            } catch (e: Throwable) { null }
-            runOnUiThread {
-                if (isFinishing || isDestroyed) return@runOnUiThread
-                if (probe != null && !VideoFinder.looksLikeVideo(probe.finalUrl, probe.type)) {
-                    toast("This video can't be saved: the site plays it in pieces")
-                    return@runOnUiThread
-                }
-                val type = probe?.type?.substringBefore(';')?.trim()?.lowercase()
-                val mime = type?.takeIf { it.startsWith("video/") } ?: VideoFinder.mimeFor(f)
-                startDownload(f.url, ua, VideoFinder.disposition(f, mime), mime, probe?.length ?: -1L)
-            }
-        }.start()
-    }
-
-    private fun stopMediaService() {
-        if (!mediaActive) return
-        mediaActive = false
-        try {
-            startService(android.content.Intent(this, MediaService::class.java).apply {
-                action = MediaService.ACTION_STOP
-            })
-        } catch (e: Exception) { /* ignore */ }
-    }
-
-    private fun launchScan() {
-        val scanner = com.google.mlkit.vision.codescanner.GmsBarcodeScanning.getClient(this)
-        scanner.startScan()
-            .addOnSuccessListener { barcode ->
-                val value = barcode.rawValue?.trim()
-                if (!value.isNullOrEmpty()) go(value)
-            }
-            .addOnCanceledListener { /* user closed the scanner */ }
-            .addOnFailureListener { e ->
-                android.widget.Toast.makeText(this,
-                    "Scanner unavailable", android.widget.Toast.LENGTH_SHORT).show()
-            }
-    }
-
-    private fun launchVoiceSearch() {
-        val intent = android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "Speak to search")
-        }
-        try {
-            voiceLauncher.launch(intent)
-        } catch (e: Exception) {
-            android.widget.Toast.makeText(this,
-                "Voice search not available", android.widget.Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    /**
-     * Opens a Play Store listing (play.google.com/store/apps/details?id=...)
-     * in the Play Store app. False when [url] is not one, or there is no Play
-     * Store on the phone - the listing then opens as a web page.
-     */
-    private fun openPlayListing(url: String): Boolean {
-        val uri = try { android.net.Uri.parse(url) } catch (e: Exception) { return false }
-        if (uri.host?.lowercase() != "play.google.com" || uri.path != "/store/apps/details") return false
-        val id = uri.getQueryParameter("id")?.takeIf { Shortcuts.PLAY_ID.matches(it) } ?: return false
-        return try {
-            startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,
-                android.net.Uri.parse("market://details?id=$id"))
-                .setPackage("com.android.vending")
-                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
-            true
-        } catch (e: Exception) {
-            false
-        }
-    }
-
-    /**
-     * Hands a non-web link to whichever app on the phone claims it.
-     *
-     * intent:// URLs are unpacked rather than passed straight through, and
-     * stripped of the parts that would turn a link into a way to reach inside
-     * another app - or back into this one. A page gets to name an action; it
-     * does not get to name a component. Any URI grant a page tried to attach is
-     * dropped for the same reason.
-     *
-     * Nothing here uses resolveActivity: under package visibility it reports
-     * "nothing handles this" for apps we cannot see, while startActivity would
-     * have worked. Trying and catching is both simpler and more accurate.
-     *
-     * Returns true only when a web fallback is being loaded into [from], which
-     * is the one outcome that leaves something to show in that tab.
-     */
-    private fun openExternal(url: String, from: WebView?): Boolean {
-        val isIntentUri = url.startsWith("intent://", ignoreCase = true)
-        val intent = try {
-            if (isIntentUri) {
-                android.content.Intent.parseUri(
-                    url, android.content.Intent.URI_INTENT_SCHEME
-                ).apply {
-                    component = null
-                    selector = null
-                    addCategory(android.content.Intent.CATEGORY_BROWSABLE)
-                    // A web page must not be able to open this app's own screens.
-                    if (`package` == packageName) `package` = null
-                }
-            } else {
-                android.content.Intent(
-                    android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
-            }
-        } catch (e: Exception) {
-            return false
-        }
-        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-        intent.flags = intent.flags and
-            android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION.inv() and
-            android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION.inv()
-        try {
-            startActivity(intent)
-            return false
-        } catch (e: Exception) { /* no app claims it - fall through */ }
-
-        // intent:// can name a web page to use when the app isn't installed.
-        val fallback = try {
-            if (isIntentUri) android.content.Intent.parseUri(
-                url, android.content.Intent.URI_INTENT_SCHEME
-            ).getStringExtra("browser_fallback_url") else null
-        } catch (e: Exception) { null }
-        if (!fallback.isNullOrBlank() &&
-            (fallback.startsWith("http://") || fallback.startsWith("https://"))
-        ) {
-            // Into the tab the link was followed in, which is not always the
-            // one on screen, and after the callback that asked - see
-            // loadAfterCallback for why never during it.
-            loadAfterCallback(from ?: activeWeb(), fallback)
-            return true
-        }
-        // Say so plainly. The old path showed "this site can't be reached",
-        // which blamed the site for a missing app.
-        android.widget.Toast.makeText(
-            this, "No app on this phone opens that kind of link",
-            android.widget.Toast.LENGTH_SHORT).show()
-        return false
-    }
-
-    /**
-     * Pulls a web link out of an incoming intent, if any:
-     *  - ACTION_VIEW carries the link in the intent data (tapped links).
-     *  - ACTION_SEND carries it in EXTRA_TEXT (shared links).
-     * Returns the URL string, or null if the intent has no usable link.
-     */
-    private fun urlFromIntent(intent: android.content.Intent?): String? {
-        if (intent == null) return null
-        when (intent.action) {
-            android.content.Intent.ACTION_VIEW -> {
-                val d = intent.dataString?.trim()
-                if (!d.isNullOrEmpty()) return d
-            }
-            android.content.Intent.ACTION_SEND -> {
-                val t = intent.getStringExtra(android.content.Intent.EXTRA_TEXT)?.trim()
-                if (!t.isNullOrEmpty()) return t
-            }
-        }
-        return null
-    }
-
-    /**
-     * What the user typed, or what another app handed over, turned into an
-     * address to load. Shared so a link arriving by intent is treated exactly
-     * like one typed into the bar, rather than skipping these rules.
-     */
-    private fun resolveInput(input: String): String {
-        var url = UrlHelper.toUrlOrSearch(input, Settings.getEngineUrl(this))
-        if (httpsOnly() && url.startsWith("http://")) {
-            val host = try {
-                android.net.Uri.parse(url).host
-            } catch (e: Exception) { null }
-            // A host the user has already said yes to stays as typed.
-            if (host == null || !httpAllowed.contains(host)) {
-                val https = "https://" + url.removePrefix("http://")
-                // Recorded so that if https fails, the failure is met with the
-                // warning and a way through, not "site can't be reached".
-                upgradedFrom[https] = url
-                if (host != null) {
-                    upgradedAt[host] = android.os.SystemClock.uptimeMillis()
-                }
-                url = https
-            }
-        }
-        return url
-    }
-
-    private fun go(input: String) {
-        tabs.activeTab?.fromApp = false
-        if (searchMode) exitSearchMode()
-        // An empty bar has nothing to go to. It used to load a blank search.
-        if (input.isBlank()) { hideKeyboard(); return }
-        loadInto(activeWeb(), resolveInput(input))
-        hideKeyboard()
-        activeWeb()?.requestFocus()
-    }
-
-    private fun activeWeb(): WebView? = tabs.activeTab?.webView
-
-    /** The open-tab count, on the badge at the Tabs button's corner. */
-    private fun updateTabCount() {
-        val n = tabs.count()
-        // A circle for one digit and a pill for two; past 99 there is no
-        // room, so it says so the way Chrome does.
-        binding.navTabsCount.text = if (n > 99) ":D" else n.toString()
-        binding.navTabs.contentDescription = if (n == 1) "1 tab" else "$n tabs"
-    }
-
-    // Everything that carries the accent on the home page carries it here too:
-    // the tab count, and the mic and scan glyphs, which home draws in var(--accent).
-    /**
-     * The accent chosen for the owl, or the default when the stored value is
-     * unparseable. Extracted so the tab deck and the chrome cannot disagree
-     * about what the accent is.
-     */
-    private fun currentAccent(): Int = try {
-        android.graphics.Color.parseColor(Settings.getHomeAccent(this))
-    } catch (e: Exception) {
-        android.graphics.Color.parseColor("#8B6BD8")
-    }
-
-    private fun applyAccentTints() {
-        val accent = currentAccent()
-
-        val tint = android.content.res.ColorStateList.valueOf(accent)
-        binding.micBtn.imageTintList = tint
-        binding.scanBtn.imageTintList = tint
-        // The deck's "+ New" and "Done" too; they were a fixed blue.
-        Settings.accentInk(this).let { ink ->
-            binding.deckNewTab.setTextColor(ink)
-            binding.deckClose.setTextColor(ink)
-        }
-        // Selected Home wears the accent, so the bars follow it too.
-        refreshNav()
-        applyArtAccent(accent)
-        pushAccentToPage(activeWeb())
-    }
-
-    private var owlAccent = 0
+    internal var owlAccent = 0
 
     /**
      * Moves the owl's body colour onto the accent by rotating hue, rather than
@@ -11201,165 +5782,6 @@ return {title:title,lang:(document.documentElement.lang||''),parts:parts};
      * far enough off the body hue to fall outside the band. Saturation and
      * value are left alone, so the two-tone shading is preserved exactly.
      */
-    private var owlArt: android.graphics.Bitmap? = null
-
-    /**
-     * Hands the accent to whichever asset page is loaded. Values are rebuilt
-     * from the parsed colour rather than passed through, so nothing out of
-     * settings reaches a page as script. A no-op on real sites, which do not
-     * define the hook.
-     */
-    private fun pushAccentToPage(web: android.webkit.WebView?) {
-        val accent = currentAccent()
-        val target = FloatArray(3)
-        android.graphics.Color.colorToHSV(accent, target)
-        val base = FloatArray(3)
-        android.graphics.Color.colorToHSV(android.graphics.Color.parseColor("#8B6BD8"), base)
-        var shift = target[0] - base[0]
-        if (shift > 180f) shift -= 360f
-        if (shift < -180f) shift += 360f
-        val hex = String.format("#%06X", 0xFFFFFF and accent)
-        // And Focus and Zen's colours for it, built here (HomeWash), so the
-        // page and the bars over it are painted from the same values.
-        val wash = HomeWash.json(hex).toString()
-        web?.evaluateJavascript(
-            "window.__setAccent && window.__setAccent('$hex', ${shift.toInt()}, $wash)", null)
-    }
-
-    private fun applyArtAccent(accent: Int) {
-        if (accent == owlAccent) return
-        owlAccent = accent
-        owlArt = recolouredToAccent(R.drawable.ic_owl, accent)
-        owlArt?.let { binding.homeBtn.setImageBitmap(it) }
-        // The settings glyph and the reload ring were recoloured here while
-        // they lived in the bar.
-        // The menu's own glyphs are handled by applyMenuAccent, which tints
-        // rather than hue-shifts because they are single tone.
-        applyMenuAccent(accent)
-    }
-
-    // Menu glyphs are single-tone vectors, so a tint is exactly right here -
-    // there is no second colour for it to flatten. The rows carry ids but the
-    // icons inside them do not, so the panel is walked instead.
-    private fun applyMenuAccent(accent: Int) {
-        val tint = android.content.res.ColorStateList.valueOf(accent)
-        fun walk(v: View) {
-            if (v is android.view.ViewGroup) {
-                for (i in 0 until v.childCount) walk(v.getChildAt(i))
-            } else if (v is android.widget.ImageView && v.tag != "chevron") {
-                v.imageTintList = tint
-            }
-        }
-        walk(binding.menuPanel)
-    }
-
-    /**
-     * Swaps every owl in an inflated tree for the recoloured one. Matched on
-     * constant state rather than id: all four dialogs draw the same resource,
-     * and drawables loaded from one resource share it.
-     */
-    private fun applyOwlArtIn(root: View) {
-        applyAccentIn(root)
-        val art = owlArt ?: return
-        val ref = androidx.core.content.ContextCompat
-            .getDrawable(this, R.drawable.ic_owl)?.constantState ?: return
-        fun walk(v: View) {
-            if (v is android.view.ViewGroup) {
-                for (i in 0 until v.childCount) walk(v.getChildAt(i))
-            } else if (v is android.widget.ImageView && v.drawable?.constantState == ref) {
-                v.setImageBitmap(art)
-            }
-        }
-        walk(root)
-    }
-
-    /**
-     * The owl's dialogs in the accent the user picked: the filled button (deep
-     * ink and white text on light, light ink and dark text on dark, so it
-     * reads either way) and the text buttons beside it. They were a fixed
-     * purple whatever the accent.
-     */
-    private fun applyAccentIn(root: View) {
-        val ink = Settings.accentInk(this)
-        val brand = 0xFF5E44A0.toInt()
-        val filled = androidx.core.content.ContextCompat
-            .getDrawable(this, R.drawable.dialog_btn_filled)?.constantState
-        fun walk(v: View) {
-            if (v is android.view.ViewGroup) {
-                for (i in 0 until v.childCount) walk(v.getChildAt(i))
-                return
-            }
-            val t = v as? android.widget.TextView ?: return
-            if (filled != null && t.background?.constantState == filled) {
-                t.backgroundTintList = android.content.res.ColorStateList.valueOf(ink)
-                t.setTextColor(if (isDarkTheme()) 0xFF141416.toInt() else android.graphics.Color.WHITE)
-            } else if (t.currentTextColor == brand) {
-                t.setTextColor(ink)
-            }
-        }
-        walk(root)
-    }
-
-    /**
-     * Draws a drawable that has no bitmap of its own into one.
-     *
-     * Four times its intrinsic size deliberately. This runs so the accent
-     * pass has PIXELS to hue-shift, and whatever is rendered here is the
-     * resolution the icon ends up being displayed at - a 24dp vector has a
-     * 96px intrinsic size at xxxhdpi while the button it goes in draws 36dp,
-     * which is 144px. Rendering at intrinsic size would put the icon straight
-     * back to being upscaled, which is the whole thing this replaced.
-     */
-    private fun rasterise(d: android.graphics.drawable.Drawable): android.graphics.Bitmap? {
-        val w = d.intrinsicWidth
-        val h = d.intrinsicHeight
-        if (w <= 0 || h <= 0) return null
-        val bmp = android.graphics.Bitmap.createBitmap(
-            w * 4, h * 4, android.graphics.Bitmap.Config.ARGB_8888)
-        d.setBounds(0, 0, w * 4, h * 4)
-        d.draw(android.graphics.Canvas(bmp))
-        return bmp
-    }
-
-    private fun recolouredToAccent(resId: Int, accent: Int): android.graphics.Bitmap? {
-        val art = androidx.core.content.ContextCompat.getDrawable(this, resId)
-            ?: return null
-        // A vector has no bitmap to read. Before this it fell straight through
-        // the null branch below and the icon quietly stopped taking the accent.
-        val src = (art as? android.graphics.drawable.BitmapDrawable)?.bitmap
-            ?: rasterise(art) ?: return null
-
-        val target = FloatArray(3)
-        android.graphics.Color.colorToHSV(accent, target)
-        val base = FloatArray(3)
-        android.graphics.Color.colorToHSV(android.graphics.Color.parseColor("#8B6BD8"), base)
-
-        val w = src.width
-        val h = src.height
-        val px = IntArray(w * h)
-        src.getPixels(px, 0, w, 0, 0, w, h)
-        val hsv = FloatArray(3)
-        for (i in px.indices) {
-            val c = px[i]
-            if (android.graphics.Color.alpha(c) == 0) continue
-            android.graphics.Color.colorToHSV(c, hsv)
-            if (hsv[1] < 0.15f) continue
-            var delta = hsv[0] - base[0]
-            if (delta > 180f) delta -= 360f
-            if (delta < -180f) delta += 360f
-            if (kotlin.math.abs(delta) > 45f) continue
-            hsv[0] = ((target[0] + delta) % 360f + 360f) % 360f
-            px[i] = android.graphics.Color.HSVToColor(android.graphics.Color.alpha(c), hsv)
-        }
-        val out = android.graphics.Bitmap.createBitmap(
-            w, h, android.graphics.Bitmap.Config.ARGB_8888)
-        out.setPixels(px, 0, w, 0, 0, w, h)
-        return out
-    }
-
-    private fun hideKeyboard() {
-        val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
-        imm.hideSoftInputFromWindow(binding.urlBar.windowToken, 0)
-    }
+    internal var owlArt: android.graphics.Bitmap? = null
 
 }

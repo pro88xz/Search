@@ -33,8 +33,8 @@ android {
         applicationId = "com.devbangs.search"
         minSdk = 24
         targetSdk = 36
-        versionCode = 51
-        versionName = "2.2.4"
+        versionCode = 52
+        versionName = "2.2.5"
 
         buildConfigField("String", "YOUTUBE_API_KEY", "\"" + youtubeApiKey + "\"")
     }
@@ -70,9 +70,12 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+    // Lint stops the build on an error: every release build runs its fatal
+    // checks (lintVitalRelease), and CI runs the full set (lintRelease) on
+    // every push. Warnings are reported, not fatal.
     lint {
-        abortOnError = false
-        checkReleaseBuilds = false
+        abortOnError = true
+        checkReleaseBuilds = true
     }
 
     buildFeatures {
