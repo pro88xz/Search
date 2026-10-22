@@ -6,9 +6,19 @@ import android.webkit.WebResourceResponse
 import java.io.ByteArrayInputStream
 
 /**
- * Lightweight ad/tracker blocker using domain matching against a bundled list.
- * Not as thorough as uBlock (no cosmetic filtering), but blocks the common
- * ad networks and trackers by intercepting their requests.
+ * Ad and tracker blocking (Settings > Ad blocking).
+ *
+ * Requests a website makes are judged by Brave's engine with EasyList and
+ * EasyPrivacy (AdblockEngine), and by the short host list below, which is
+ * what blocked before the engine came and what still blocks on a phone the
+ * engine cannot run on, or in the moment before it has loaded. What either
+ * blocks is blocked. On top of that, the ad boxes left empty on a page are
+ * hidden ([COSMETIC_JS]).
+ *
+ * The app's own pages and ads are outside all of it: requests from home and
+ * the other pages shipped in the app are only ever held to the host list, as
+ * they always were, the app's sites are never blocked ([isOwnSite]), and the
+ * feed's ad is a native view that no WebView request carries.
  */
 object AdBlocker {
 
@@ -185,29 +195,96 @@ object AdBlocker {
         // Answered with an empty response, the tab showed a blank page and
         // stayed there. Blocking is for what a page pulls in, not for where
         // the user is headed.
-        if (request?.isForMainFrame == true) return null
-        val uri = request?.url ?: return null
+        if (request == null || request.isForMainFrame) return null
+        val uri = request.url ?: return null
         val host = uri.host?.lowercase()?.removeSuffix(".") ?: return null
         val path = (uri.path ?: "").lowercase()
-        if (isBlockedHost(host)) {
-            PrivacyStats.blocked()
-            return if (wantsCallbacks(host, path)) callbacksResponse() else emptyResponse()
-        }
-        if (isFacebookPixel(host, path) || BLOCKED_PATHS.any { (host + path).contains(it) }) {
-            PrivacyStats.blocked()
-            return emptyResponse()
-        }
-        return null
+        val listed = isBlockedHost(host) || isFacebookPixel(host, path) ||
+            BLOCKED_PATHS.any { (host + path).contains(it) }
+        if (!listed && !engineBlocks(c, request, uri, path, pageHost)) return null
+        PrivacyStats.blocked()
+        return if (wantsCallbacks(host, path)) callbacksResponse() else emptyResponse()
     }
 
     /**
-     * CSS that hides ad containers.
+     * Whether Brave's engine blocks this request. Only for websites: a page
+     * with no host is one of the app's own (home, the legal pages), and those
+     * stay as they were.
+     */
+    private fun engineBlocks(
+        c: Context, request: WebResourceRequest, uri: android.net.Uri, path: String, pageHost: String?
+    ): Boolean {
+        if (pageHost.isNullOrEmpty()) return false
+        val scheme = uri.scheme
+        if (scheme != "https" && scheme != "http") return false
+        AdblockEngine.warmUp(c)
+        val types = requestTypes(path, request.method, request.requestHeaders)
+        return AdblockEngine.check(uri.toString(), "https://$pageHost/", types) == AdblockEngine.BLOCK
+    }
+
+    /**
+     * What a request is for, as the lists name it - "script", "image" - or the
+     * things it might be, comma separated.
      *
-     * The previous selectors were substring matches on class and id, and they
-     * took a great deal of the web with them. "[class*='ads']" matches
-     * downloads, threads, uploads and headsup; "[class*='ad-']" matches
-     * thread-, upload- and header-anything; "[class*='banner']" hides the
-     * banner at the top of a site the user actually wants; and
+     * Filter lists say what they block by kind: a rule can be for scripts from
+     * a host whose images are wanted. A desktop browser knows each request's
+     * kind; Android's WebView does not say. Newer WebViews send the
+     * Sec-Fetch-Dest header, which does; otherwise the request's Accept header
+     * tells an image, a style sheet and a frame apart, a Range header tells
+     * media, and the file's extension most of the rest. What is left - a fetch,
+     * or a script with no ".js" on its name, which look alike - is asked about
+     * as both, and AdblockEngine honours an exception for either.
+     */
+    internal fun requestTypes(path: String, method: String?, headers: Map<String, String>?): String {
+        var dest: String? = null
+        var accept = ""
+        var range = false
+        headers?.forEach { (k, v) ->
+            when (k.lowercase()) {
+                "sec-fetch-dest" -> dest = v.lowercase()
+                "accept" -> accept = v.lowercase()
+                "range" -> range = true
+            }
+        }
+        when (dest) {
+            "script", "worker", "sharedworker", "serviceworker", "audioworklet", "paintworklet" -> return "script"
+            "style" -> return "stylesheet"
+            "image" -> return "image"
+            "font" -> return "font"
+            "iframe", "frame", "fencedframe", "document" -> return "sub_frame"
+            "audio", "video", "track" -> return "media"
+            "object", "embed" -> return "object"
+            "empty" -> return if (method.equals("POST", true)) "xmlhttprequest,ping" else "xmlhttprequest"
+            null, "" -> Unit
+            else -> return "other"
+        }
+        if (accept.startsWith("image/")) return "image"
+        if (accept.startsWith("text/css")) return "stylesheet"
+        if (accept.startsWith("text/html") || accept.startsWith("application/xhtml")) return "sub_frame"
+        if (accept.startsWith("application/json")) return "xmlhttprequest"
+        if (range) return "media"
+        val ext = path.substringAfterLast('/').substringAfterLast('.', "")
+        return when (ext) {
+            "js", "mjs" -> "script"
+            "css" -> "stylesheet"
+            "png", "jpg", "jpeg", "gif", "webp", "avif", "svg", "ico", "bmp", "apng" -> "image"
+            "woff", "woff2", "ttf", "otf", "eot" -> "font"
+            "mp4", "webm", "m4v", "mov", "mp3", "m4a", "aac", "ogg", "oga", "opus", "wav", "flac",
+            "m3u8", "mpd", "m4s" -> "media"
+            "json", "xml" -> "xmlhttprequest"
+            else -> if (method.equals("POST", true)) "xmlhttprequest,ping" else "script,xmlhttprequest"
+        }
+    }
+
+    /**
+     * The ad containers hidden while Brave's engine is not there to say more
+     * - the moment before it loads, or a phone it cannot run on.
+     *
+     * The selectors these replaced were substring matches on class and id,
+     * and they took a great deal of the web with them. "[class*='ads']"
+     * matches downloads, threads, uploads and headsup; "[class*='ad-']"
+     * matches thread-, upload- and header-anything; "[class*='banner']" hides
+     * the banner at the top of a site the user actually wants; and
      * "iframe[src*='ad']" hides any iframe whose address contains those two
      * letters anywhere, which includes upload, download, broadcast, read and
      * load - so embedded players and maps disappeared on sites with no ads on
@@ -217,24 +294,114 @@ object AdBlocker {
      * own generated ids, a whole class token rather than a fragment of one,
      * and iframes from the ad networks by name.
      */
-    fun hideCss(): String {
-        val css = listOf(
-            "ins.adsbygoogle",
-            "[id^='google_ads_']",
-            "[id^='div-gpt-ad']",
-            "[id^='aswift_']",
-            "[data-ad-slot]",
-            "[data-ad-client]",
-            "[class~='advertisement']",
-            "[id='advertisement']",
-            "[aria-label='Advertisement']",
-            "iframe[src*='doubleclick.net']",
-            "iframe[src*='googlesyndication.com']",
-            "iframe[src*='amazon-adsystem.com']"
-        ).joinToString(",")
-        val js = "(function(){try{var s=document.createElement('style');" +
-            "s.innerHTML='" + css + "{display:none !important;visibility:hidden !important;}';" +
-            "document.head.appendChild(s);}catch(e){}})();"
-        return js
+    private val BASIC_CSS = listOf(
+        "ins.adsbygoogle",
+        "[id^='google_ads_']",
+        "[id^='div-gpt-ad']",
+        "[id^='aswift_']",
+        "[data-ad-slot]",
+        "[data-ad-client]",
+        "[class~='advertisement']",
+        "[id='advertisement']",
+        "[aria-label='Advertisement']",
+        "iframe[src*='doubleclick.net']",
+        "iframe[src*='googlesyndication.com']",
+        "iframe[src*='amazon-adsystem.com']"
+    ).joinToString("") { "$it{display:none!important}\n" }
+
+    /**
+     * The element hiding for a page at [url], for [COSMETIC_JS], as JSON:
+     * {"css", "exceptions", "generichide"} - or "" for none: blocking is off,
+     * the page is not a website, or it is on a site where blocking does not
+     * apply. [pageHost] is the site of the tab's page, which is the one those
+     * rules are about: an ad's own frame on a site the user allows ads on is
+     * left alone too.
+     */
+    fun cosmetic(c: Context, url: String?, pageHost: String?): String {
+        if (url == null || pageHost.isNullOrEmpty() || !isEnabled(c)) return ""
+        if (!url.startsWith("https://") && !url.startsWith("http://")) return ""
+        if (isOwnSite(pageHost) || AdBlockSites.isAllowed(c, pageHost)) return ""
+        AdblockEngine.warmUp(c)
+        return AdblockEngine.cosmetic(url)
+            ?: org.json.JSONObject().put("css", BASIC_CSS).put("generichide", true).toString()
     }
+
+    /**
+     * CSS hiding the elements with these classes and ids that the lists'
+     * generic rules are about ("\n" separated, from [COSMETIC_JS]).
+     * [exceptions] come back from [cosmetic] as they were given.
+     */
+    fun hidden(c: Context, classes: String?, ids: String?, exceptions: String?): String {
+        if (!isEnabled(c)) return ""
+        fun names(s: String?) = s?.split('\n')?.filter { it.isNotEmpty() }?.take(1000)?.toTypedArray() ?: emptyArray()
+        return AdblockEngine.hidden(names(classes), names(ids), names(exceptions))
+    }
+
+    /**
+     * Hides the ad boxes on a page: the page's own rules from the lists, then
+     * the generic ones for each class and id that turns up, as it turns up.
+     *
+     * Run as each document starts, where the WebView can (MainActivity adds
+     * it to every WebView), so the boxes never show; otherwise once the page
+     * has loaded. It asks the app what to hide (SearchApp.adCosmetic), and
+     * stops there when the answer is nothing - blocking off, a site allowed,
+     * one of the app's own pages. The classes and ids it sends are names
+     * only, each sent once, at most a few times a second; the answers are
+     * style sheets. Nothing on the page is removed, only hidden.
+     */
+    const val COSMETIC_JS = """
+(function(){
+  try {
+    if (window.__searchAdHide) return;
+    window.__searchAdHide = 1;
+    if (location.protocol !== 'https:' && location.protocol !== 'http:') return;
+    var app = window.SearchApp;
+    if (!app || !app.adCosmetic) return;
+    var got = app.adCosmetic(location.href);
+    if (!got) return;
+    var r = JSON.parse(got), doc = document;
+    function add(css){
+      if (!css) return;
+      var s = doc.createElement('style');
+      s.textContent = css;
+      var at = doc.head || doc.documentElement;
+      if (at) at.appendChild(s);
+      else doc.addEventListener('DOMContentLoaded', function(){ (doc.head || doc.documentElement).appendChild(s); });
+    }
+    add(r.css);
+    if (r.generichide) return;
+    var exc = (r.exceptions || []).join('\n'), seen = Object.create(null), count = 0, cls = [], ids = [], timer = 0;
+    function note(el){
+      if (count > 20000) return;
+      var id = el.id;
+      if (id && typeof id === 'string' && !seen['#' + id]) { seen['#' + id] = 1; ids.push(id); count++; }
+      var cl = el.classList;
+      if (cl) for (var i = 0; i < cl.length; i++) {
+        var c = cl[i];
+        if (!seen['.' + c]) { seen['.' + c] = 1; cls.push(c); count++; }
+      }
+    }
+    function flush(){
+      timer = 0;
+      while (cls.length || ids.length) add(app.adHide(cls.splice(0, 1000).join('\n'), ids.splice(0, 1000).join('\n'), exc));
+    }
+    function later(){ if (!timer && (cls.length || ids.length)) timer = setTimeout(flush, 60); }
+    function scan(node){
+      if (node.nodeType !== 1) return;
+      note(node);
+      var all = node.getElementsByTagName('*');
+      for (var i = 0; i < all.length; i++) note(all[i]);
+    }
+    new MutationObserver(function(ms){
+      for (var i = 0; i < ms.length; i++) {
+        var m = ms[i];
+        if (m.type === 'attributes') note(m.target);
+        else for (var j = 0; j < m.addedNodes.length; j++) scan(m.addedNodes[j]);
+      }
+      later();
+    }).observe(doc, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'id'] });
+    if (doc.documentElement) { scan(doc.documentElement); later(); }
+  } catch (e) {}
+})();
+"""
 }

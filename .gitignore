@@ -24,3 +24,6 @@ keystore.properties
 # Stray compiler output
 a.out
 *.o
+
+# Kotlin compiler daemon sessions
+.kotlin/
