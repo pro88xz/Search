@@ -27,12 +27,6 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Android SDK packages
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;35.0.0" > /dev/null
-      - name: Newest AGP and R8 on Google Maven (info)
-        continue-on-error: true
-        run: |
-          for a in com/android/tools/build/gradle com/android/tools/r8; do
-            echo "$a: $(curl -s https://dl.google.com/dl/android/maven2/$a/maven-metadata.xml | grep -o '<version>[0-9.]*</version>' | sed 's/<[^>]*>//g' | sort -V | tail -6 | tr '\n' ' ')"
-          done
       - name: Lint
         run: ./gradlew --stacktrace lintRelease
       - name: Lint summary

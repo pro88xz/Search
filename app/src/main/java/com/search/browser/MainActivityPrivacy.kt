@@ -36,7 +36,7 @@ internal fun MainActivity.checkLookalike(url: String?) {
 // ---------- Night Owl: lock and hide ----------
 
 internal fun MainActivity.deviceSecure(): Boolean = try {
-    (getSystemService(KEYGUARD_SERVICE) as android.app.KeyguardManager).isDeviceSecure
+    (getSystemService(android.content.Context.KEYGUARD_SERVICE) as android.app.KeyguardManager).isDeviceSecure
 } catch (e: Exception) { false }
 
 internal fun MainActivity.nightOwlLockOn(): Boolean =
@@ -85,7 +85,7 @@ internal fun MainActivity.promptUnlock() {
 
 @Suppress("DEPRECATION")
 internal fun MainActivity.confirmCredential() {
-    val km = getSystemService(KEYGUARD_SERVICE) as? android.app.KeyguardManager
+    val km = getSystemService(android.content.Context.KEYGUARD_SERVICE) as? android.app.KeyguardManager
     val i = try {
         km?.createConfirmDeviceCredentialIntent("Unlock Night Owl", "Your Night Owl tabs are locked")
     } catch (e: Exception) { null }

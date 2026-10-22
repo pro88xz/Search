@@ -91,7 +91,7 @@ internal fun MainActivity.imagesBlocked(): Boolean {
     if (Settings.getBool(this, Settings.SITE_BLOCK_IMAGES, false)) return true
     if (!Settings.getBool(this, Settings.DATA_SAVER_MOBILE, false)) return false
     return try {
-        (getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager).isActiveNetworkMetered
+        (getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager).isActiveNetworkMetered
     } catch (e: Exception) { false }
 }
 
@@ -289,7 +289,7 @@ internal fun MainActivity.openTabSuggestions(q: String): List<JSONObject> {
 internal fun MainActivity.copiedLinkSuggestion(q: String): JSONObject? {
     if (q.isNotEmpty()) return null
     return try {
-        val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        val cm = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
         val desc = cm.primaryClipDescription ?: return null
         if (!desc.hasMimeType("text/*")) return null
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -313,7 +313,7 @@ internal fun MainActivity.copiedLinkSuggestion(q: String): JSONObject? {
 
 /** The clipboard's text, or null. */
 internal fun MainActivity.readClipboardText(): String? = try {
-    val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+    val cm = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
     cm.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)
         ?.coerceToText(this)?.toString()?.trim()?.takeIf { it.isNotEmpty() && it.length < 2048 }
 } catch (e: Exception) { null }
@@ -461,7 +461,7 @@ internal fun MainActivity.expectPageStart(tab: Tab, afterMs: Long = 4000L) {
  * does not mean waiting for a reload.
  */
 internal fun MainActivity.liveTabBudget(): Int {
-    val am = getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager
+    val am = getSystemService(android.content.Context.ACTIVITY_SERVICE) as android.app.ActivityManager
     if (am.isLowRamDevice) return 2
     val info = android.app.ActivityManager.MemoryInfo()
     am.getMemoryInfo(info)

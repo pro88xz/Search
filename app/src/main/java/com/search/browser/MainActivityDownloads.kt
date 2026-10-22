@@ -211,7 +211,7 @@ internal fun MainActivity.printPage() {
     val web = activeWeb() ?: return
     val url = tabs.activeTab?.url
     if (url == null || url == homePage || isErrorPage(url)) { toast("Open a page to print it"); return }
-    val pm = getSystemService(PRINT_SERVICE) as? android.print.PrintManager ?: return
+    val pm = getSystemService(android.content.Context.PRINT_SERVICE) as? android.print.PrintManager ?: return
     val name = (web.title?.takeIf { it.isNotBlank() } ?: UrlHelper.siteOf(url) ?: "Page").take(80)
     try {
         pm.print(name, web.createPrintDocumentAdapter(name),
@@ -963,7 +963,7 @@ internal fun MainActivity.retryDownload(d: Downloads.Item) {
             android.os.Environment.DIRECTORY_DOWNLOADS, name)
         request.setAllowedOverMetered(true)
         request.setAllowedOverRoaming(true)
-        val dm = getSystemService(DOWNLOAD_SERVICE) as android.app.DownloadManager
+        val dm = getSystemService(android.content.Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
         cookieIo.execute {
             val ok = try {
                 android.webkit.CookieManager.getInstance().getCookie(url)?.let {
@@ -1004,7 +1004,7 @@ internal fun MainActivity.resolveDownloadUri(d: Downloads.Item): android.net.Uri
     // worth asking for a download it actually handled.
     if (d.managed) {
         try {
-            val dm = getSystemService(DOWNLOAD_SERVICE) as android.app.DownloadManager
+            val dm = getSystemService(android.content.Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
             val own = dm.getUriForDownloadedFile(d.id)
             if (own != null && own.scheme.equals("content", true)) return own
         } catch (e: Exception) { /* fall through to the stored path */ }
@@ -1261,7 +1261,7 @@ internal fun MainActivity.performDownload(
         // resumes by itself after the network drops.
         request.setAllowedOverMetered(true)
         request.setAllowedOverRoaming(true)
-        val dm = getSystemService(DOWNLOAD_SERVICE) as android.app.DownloadManager
+        val dm = getSystemService(android.content.Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
         val referer = activeWeb()?.url
         // DownloadManager fetches in its own process, with none of the
         // WebView's state. Without the session cookie, anything behind a
@@ -2178,6 +2178,6 @@ internal fun MainActivity.recolouredToAccent(resId: Int, accent: Int): android.g
 }
 
 internal fun MainActivity.hideKeyboard() {
-    val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+    val imm = getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as InputMethodManager
     imm.hideSoftInputFromWindow(binding.urlBar.windowToken, 0)
 }

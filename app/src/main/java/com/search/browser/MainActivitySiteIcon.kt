@@ -192,7 +192,7 @@ internal fun MainActivity.enterSearchMode() {
     }
     if (onHome) hideSiteIcon() else showSiteIcon(current)
     binding.urlBar.requestFocus()
-    val imm = getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+    val imm = getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
     imm.showSoftInput(binding.urlBar, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
     binding.suggestBackdrop.visibility = View.VISIBLE
     androidx.core.view.ViewCompat.requestApplyInsets(binding.root)
@@ -231,7 +231,7 @@ internal fun MainActivity.exitSearchMode() {
     // tap (which re-enables focus via enterSearchMode) can re-open search.
     binding.urlBar.isFocusable = false
     binding.urlBar.isFocusableInTouchMode = false
-    val imm = getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+    val imm = getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
     imm.hideSoftInputFromWindow(binding.urlBar.windowToken, 0)
     val current = tabs.activeTab?.url
     val onHome = (current == null || current == homePage)

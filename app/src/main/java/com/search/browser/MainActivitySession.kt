@@ -95,7 +95,7 @@ internal fun MainActivity.showDownloads() {
 internal fun MainActivity.deleteDownload(d: Downloads.Item) {
     if (d.managed) {
         try {
-            (getSystemService(DOWNLOAD_SERVICE) as android.app.DownloadManager)
+            (getSystemService(android.content.Context.DOWNLOAD_SERVICE) as android.app.DownloadManager)
                 .remove(d.id)
         } catch (e: Exception) { /* already gone */ }
         return

@@ -139,7 +139,7 @@ internal fun MainActivity.addBackgroundTab(url: String) {
 
 internal fun MainActivity.copyText(label: String, text: String) {
     try {
-        val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        val cm = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
         cm.setPrimaryClip(android.content.ClipData.newPlainText(label, text))
         // Android 13+ raises its own copy confirmation; ours would double it.
         if (android.os.Build.VERSION.SDK_INT < 33) {
