@@ -201,8 +201,8 @@ class SectionActivity : AppCompatActivity() {
         )
         addNote("Reload open pages after changing this for it to take full effect.")
         addNote("Powered by Brave's open-source ad blocking engine with the EasyList and EasyPrivacy " +
-            "filter lists, which update every few days while blocking is on. Credits are in " +
-            "Settings > Open-source licences.")
+            "filter lists, which update every few days while blocking is on." +
+            (if (Settings.getBool(this, Settings.ADBLOCK_ENABLED, false)) " " + AdblockEngine.status(this) else ""))
         val week = PrivacyStats.week(this)
         val all = PrivacyStats.total(this)
         if (all > 0) {
@@ -215,6 +215,12 @@ class SectionActivity : AppCompatActivity() {
         fillAllowedSites()
         addNote("Turn blocking off for one site from the menu while you're on it: " +
             "\u201CAllow ads on this site\u201D. Tap a site here to block its ads again.")
+        group("Credits")
+        addAction("Open-source licences",
+            "Brave's engine, EasyList, EasyPrivacy and everything else Search is built with") {
+            startActivity(android.content.Intent(this, LegalActivity::class.java)
+                .putExtra("url", "file:///android_asset/licenses.html"))
+        }
     }
 
     // ---- Ad blocking: sites allowed ----

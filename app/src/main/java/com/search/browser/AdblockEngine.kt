@@ -60,6 +60,7 @@ object AdblockEngine {
 
     @Volatile private var ready = false
     @Volatile private var started = false
+    @Volatile private var failed = false
 
     /** Whether the engine is loaded and answering. */
     fun isReady(): Boolean = ready
@@ -80,6 +81,7 @@ object AdblockEngine {
         Thread({
             android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
             ready = load(app)
+            failed = !ready
             maybeUpdate(app)
         }, "adblock-engine").start()
     }
@@ -177,6 +179,22 @@ object AdblockEngine {
         } finally {
             conn?.disconnect()
         }
+    }
+
+    /**
+     * For Settings > Ad blocking: which blocker is answering and how old its
+     * lists are, so a look there says whether the engine is running.
+     */
+    fun status(c: Context): String {
+        warmUp(c)
+        if (!libLoaded) return "This phone is using the basic blocker: Brave's engine can't run on it."
+        if (failed) return "This phone is using the basic blocker: Brave's engine couldn't load its lists."
+        if (!ready) return "Brave's engine is starting."
+        val prefs = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val updated = maxOf(prefs.getLong(KEY_UPDATED, 0L), File(c.applicationInfo.sourceDir).lastModified())
+        val ago = android.text.format.DateUtils.getRelativeTimeSpanString(
+            updated, System.currentTimeMillis(), android.text.format.DateUtils.DAY_IN_MILLIS)
+        return "Brave's engine is running. Filter lists updated " + ago.toString().lowercase() + "."
     }
 
     /**
