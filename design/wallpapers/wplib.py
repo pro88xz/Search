@@ -88,7 +88,7 @@ def edges(c, img, top_band=0.05, bottom_band=0.04):
     """Top and bottom rows become flat colours (the bars' colours), eased in, so the bars meet the page without a seam
     whatever the crop. Returns the image and the two colours as #hex."""
     ti = int(top_band * c.H); bi = int((1 - bottom_band) * c.H)
-    top = img[:3].reshape(-1, 3).mean(0); bot = img[-3:].reshape(-1, 3).mean(0)
+    top = np.median(img[:3].reshape(-1, 3), 0); bot = np.median(img[-3:].reshape(-1, 3), 0)   # median: a star is not the sky
     wt = 1 - smooth(0.0, top_band, c.v); wb = smooth(1 - bottom_band, 1.0, c.v)
     img = over(img, top, wt); img = over(img, bot, wb)
     tohex = lambda l: '#%02X%02X%02X' % tuple(int(round(float(x) * 255)) for x in l2s(l))

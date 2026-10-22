@@ -448,6 +448,11 @@ internal fun MainActivity.plainBars(url: String?, animate: Boolean) {
     setBarTint(w?.get(0), w?.get(1), animate)
 }
 
+/** Behind the bars when they wear no page's colours: Night Owl's wash, else the theme's background. */
+internal fun MainActivity.rootBackdrop(): Int =
+    if (nightOwl) binding.topBar.surfaceColor
+    else android.util.TypedValue().also { theme.resolveAttribute(android.R.attr.colorBackground, it, true) }.data
+
 /** Eases both bars to [top] / [bottom] (null: their plain surface). */
 internal fun MainActivity.setBarTint(top: IntArray?, bottom: IntArray?, animate: Boolean) {
     if (top?.contentEquals(topTint) ?: (topTint == null) &&
@@ -461,6 +466,12 @@ internal fun MainActivity.setBarTint(top: IntArray?, bottom: IntArray?, animate:
     val toBottom = bottom ?: plainBottom
     topTint = top
     bottomTint = bottom
+    // What shows through the seam while the top bar and the page slide apart.
+    // hideBars and showBars move them as two animations, so for a frame the
+    // row between them is only partly covered, and whatever is behind both
+    // shows through: the window's light grey, a white hairline over a dark
+    // wallpaper. Behind them now is the bar's own colour.
+    binding.rootView.setBackgroundColor(top?.get(1) ?: rootBackdrop())
     applyBarForeground()
     if (!animate || !animationsOn()) {
         binding.topBar.tint = top

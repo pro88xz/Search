@@ -27,8 +27,8 @@ def mountains(c, img, layers, seed, haze, near, fog, v0, dv, amp0, damp, f0, df,
 
 def owl_night(c):
     img = ramp(c.v, [(0, '#0E0A26'), (0.3, '#221650'), (0.5, '#3E2A78'), (0.62, '#7456A8'), (0.7, '#A487CC')])
-    mx, my, mr = 0.83, 0.088, 0.042
-    img = img + hexlin('#B9A2F0') * ((0.32 * glow(c, mx, my, 0.20) + 0.32 * glow(c, mx, my, 0.07)) * smooth(0.0, 0.11, c.v))[..., None]
+    mx, my, mr = 0.70, 0.585, 0.046
+    img = img + hexlin('#B9A2F0') * ((0.45 * glow(c, mx, my, 0.24) + 0.4 * glow(c, mx, my, 0.08)) * smooth(0.22, 0.5, c.v))[..., None]
     sky_mask = 1 - smooth(0.42, 0.64, c.v)
     d = np.sqrt(((c.u - mx)) ** 2 + ((c.v - my) * c.aspect) ** 2)
     img = stars(c, img, int(2600 * c.s * c.s), 0.62, 11, mag=(0.04, 1.1), mask=sky_mask * smooth(mr * 1.6, mr * 3.5, d) * smooth(0.02, 0.07, c.v))
@@ -223,7 +223,7 @@ def nebula(c):
     n1 = fbm(Perlin(102), wx * 2.5, wy * 2.5, 6) * 0.5 + 0.5
     n2 = fbm(Perlin(103), wx * 4.0 + 3, wy * 4.0, 5) * 0.5 + 0.5
     img = ramp(c.v, [(0, '#03030A'), (0.5, '#070514'), (1, '#04030C')])
-    band = np.exp(-((c.u - 0.3 - 0.35 * c.v) ** 2) / 0.08)
+    band = np.exp(-((c.u - 0.3 - 0.35 * c.v) ** 2) / 0.08) * smooth(0.05, 0.3, c.v)
     fil = (1 - np.abs(fbm(Perlin(108), wx * 6, wy * 6, 5))) ** 6
     img = img + hexlin('#6A3BD1') * (smooth(0.45, 0.85, n1) ** 1.5 * band * 1.1)[..., None]
     img = img + hexlin('#C77DFF') * (fil * smooth(0.4, 0.8, n1) * band * 0.9)[..., None]
