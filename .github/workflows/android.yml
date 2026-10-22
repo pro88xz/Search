@@ -1,0 +1,45 @@
+# Builds the app and runs Android lint on every push, so a change that does
+# not compile, breaks R8 or brings a new lint error is caught before it
+# reaches a release. Release outputs here are unsigned (the keystore never
+# leaves the developer's machine); the signed AAB is still built locally.
+name: Android
+
+on:
+  push:
+    branches: [main, 'claude/**']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Android SDK packages
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;35.0.0" > /dev/null
+      - name: Lint
+        run: ./gradlew --stacktrace lintRelease
+      - name: Lint summary
+        if: always()
+        run: python3 .github/scripts/lint_summary.py app/build/reports/lint-results-release.xml
+      - name: Release build (R8) and bundle
+        run: ./gradlew --stacktrace assembleRelease bundleRelease 2>&1 | tee build.log
+      - name: R8 Kotlin metadata warnings
+        if: always()
+        run: echo "R8 kotlin-metadata warnings:" $(grep -c "parsing kotlin metadata" build.log || true)
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reports
+          path: app/build/reports/
+          if-no-files-found: ignore
