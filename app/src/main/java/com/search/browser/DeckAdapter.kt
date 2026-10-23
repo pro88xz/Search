@@ -156,7 +156,6 @@ class DeckAdapter(private val host: Host) : RecyclerView.Adapter<RecyclerView.Vi
         if (viewType == 0) {
             val h = TabVH(inflater.inflate(R.layout.item_tab, parent, false))
             h.itemView.clipToOutline = true
-            h.thumbBox.clipToOutline = true
             return h
         }
         val v = inflater.inflate(R.layout.item_tab_group, parent, false)
@@ -211,7 +210,8 @@ class DeckAdapter(private val host: Host) : RecyclerView.Adapter<RecyclerView.Vi
         // The tab on screen: its header in the accent and a ring round the
         // card, as Samsung Internet and Chrome mark it. A chosen card, while
         // choosing, takes the ring instead.
-        h.itemView.background = card(ctx, when {
+        h.itemView.background = cardFill(ctx)
+        h.itemView.foreground = cardEdge(ctx, when {
             selected -> accent
             active && !selecting -> accent
             else -> null
@@ -245,10 +245,10 @@ class DeckAdapter(private val host: Host) : RecyclerView.Adapter<RecyclerView.Vi
             if (i >= 0) notifyItemChanged(i)
         }
 
-        h.thumbBox.background = GradientDrawable().apply {
-            cornerRadius = 15 * d
-            setColor(ContextCompat.getColor(ctx, R.color.menuTileBg))
-        }
+        // Edge to edge under the header, square: the card's own corners,
+        // which clip it, are the only curves. Inset with corners of its own,
+        // the picture left white wedges between it and the header and ring.
+        h.thumbBox.setBackgroundColor(ContextCompat.getColor(ctx, R.color.menuTileBg))
         val pic = tab.thumbnail?.takeIf { !it.isRecycled }
         if (pic != null) showPicture(h.thumb, pic) else showStandIn(h.thumb, tab)
 
@@ -268,7 +268,8 @@ class DeckAdapter(private val host: Host) : RecyclerView.Adapter<RecyclerView.Vi
         val g = item.group
         val color = host.groupColor(g)
         val holdsActive = item.tabs.any { host.isActive(it) }
-        h.itemView.background = card(ctx, color, width = if (holdsActive) 2.5f else 1.6f)
+        h.itemView.background = cardFill(ctx)
+        h.itemView.foreground = cardEdge(ctx, color, width = if (holdsActive) 2.5f else 1.6f)
         h.itemView.elevation = (if (holdsActive) 4f else 1.5f) * d
         h.dot.background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(color) }
         h.name.text = g.name.ifBlank { "Group" }
@@ -317,12 +318,21 @@ class DeckAdapter(private val host: Host) : RecyclerView.Adapter<RecyclerView.Vi
         h.itemView.setOnLongClickListener { v -> host.onGroupLongPress(g, v); true }
     }
 
-    /** The card behind a tab or group: rounded, with a hairline or, in [ring], a coloured edge. */
-    private fun card(ctx: Context, ring: Int?, width: Float = 2.5f): GradientDrawable {
+    /** The card itself: rounded, and the shape everything in it is clipped to. */
+    private fun cardFill(ctx: Context): GradientDrawable = GradientDrawable().apply {
+        cornerRadius = 18 * ctx.resources.displayMetrics.density
+        setColor(ContextCompat.getColor(ctx, R.color.settingsCard))
+    }
+
+    /**
+     * The card's edge, drawn over what is in it so a picture running to the
+     * edge does not cover it: a hairline, or in [ring] a coloured ring.
+     */
+    private fun cardEdge(ctx: Context, ring: Int?, width: Float = 2.5f): GradientDrawable {
         val d = ctx.resources.displayMetrics.density
         return GradientDrawable().apply {
             cornerRadius = 18 * d
-            setColor(ContextCompat.getColor(ctx, R.color.settingsCard))
+            setColor(android.graphics.Color.TRANSPARENT)
             if (ring != null) setStroke((width * d).toInt(), ring)
             else setStroke(maxOf(1, d.toInt()), ContextCompat.getColor(ctx, R.color.feedHair))
         }
