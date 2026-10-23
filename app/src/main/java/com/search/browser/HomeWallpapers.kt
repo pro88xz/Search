@@ -41,9 +41,65 @@ object HomeWallpapers {
 
     private fun hex(c: Int): String = String.format(java.util.Locale.ROOT, "#%06X", c and 0xFFFFFF)
 
-    /** As home.html takes it: {"id","dark","top","bottom"}, or null. */
-    fun json(w: Wallpaper?): String =
+    /**
+     * As home.html takes it: {"id","dark","top","bottom","lift"}, or null.
+     * [lift] is how far below the top of the screen the page starts, in
+     * pixels (MainActivity.wallpaperLift): home lays the wallpaper out from
+     * the top of the screen, and the top bar paints the part above the page
+     * ([topSlice]).
+     */
+    fun json(w: Wallpaper?, lift: Int = 0): String =
         if (w == null) "null"
         else org.json.JSONObject().put("id", w.id).put("dark", w.dark)
-            .put("top", hex(w.top)).put("bottom", hex(w.bottom)).toString()
+            .put("top", hex(w.top)).put("bottom", hex(w.bottom)).put("lift", lift).toString()
+
+    /**
+     * The part of [w] behind the top bar and the status bar, [width] by
+     * [lift] pixels, cut from the wallpaper laid out as home.html lays it
+     * out: covering [width] by [span] (the top of the screen to the bottom
+     * of the page), centred across and anchored at the top. [large] is the
+     * 4K file, as home picks it. Only those rows are decoded. Null if it
+     * cannot be cut; the bar keeps its flat colour then, as before.
+     */
+    fun topSlice(c: android.content.Context, w: Wallpaper, width: Int, lift: Int, span: Int,
+                 large: Boolean): android.graphics.Bitmap? {
+        if (width <= 0 || lift <= 0 || span < lift) return null
+        return try {
+            c.assets.open("wallpapers/" + w.id + (if (large) "" else "-1440") + ".webp").use { input ->
+                val decoder = (if (android.os.Build.VERSION.SDK_INT >= 31)
+                    android.graphics.BitmapRegionDecoder.newInstance(input)
+                else @Suppress("DEPRECATION")
+                    android.graphics.BitmapRegionDecoder.newInstance(input, false)) ?: return null
+                try {
+                    val iw = decoder.width
+                    val ih = decoder.height
+                    val s = maxOf(width.toFloat() / iw, span.toFloat() / ih)
+                    // The image's columns and rows under the bar.
+                    val left = (iw - width / s) / 2f
+                    val rect = android.graphics.Rect(
+                        kotlin.math.floor(left).toInt().coerceAtLeast(0), 0,
+                        kotlin.math.ceil(left + width / s).toInt().coerceAtMost(iw),
+                        kotlin.math.ceil(lift / s).toInt().coerceIn(1, ih))
+                    // Half the pixels where the slice is drawn at half size or less.
+                    val sample = if (s <= 0.5f) 2 else 1
+                    val region = decoder.decodeRegion(rect, android.graphics.BitmapFactory.Options().apply {
+                        inSampleSize = sample
+                        inPreferredConfig = android.graphics.Bitmap.Config.ARGB_8888
+                    }) ?: return null
+                    val out = android.graphics.Bitmap.createBitmap(width, lift, android.graphics.Bitmap.Config.ARGB_8888)
+                    val m = android.graphics.Matrix()
+                    m.setScale(s * sample, s * sample)
+                    m.postTranslate((rect.left - left) * s, 0f)
+                    android.graphics.Canvas(out).drawBitmap(region, m,
+                        android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG))
+                    region.recycle()
+                    out
+                } finally {
+                    decoder.recycle()
+                }
+            }
+        } catch (t: Throwable) {
+            null
+        }
+    }
 }
