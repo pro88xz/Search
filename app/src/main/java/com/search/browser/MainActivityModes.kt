@@ -17,7 +17,7 @@ import android.view.ViewGroup
 internal fun MainActivity.maybeAnnounceModes() {
     if (announcing || isFinishing || isDestroyed) return
     if (!BrowsingMode.announcementDue(this)) return
-    if (keepSplash || searchMode || deckVisible || findActive || nightOwl) return
+    if (keepSplash || launchCover != null || searchMode || deckVisible || findActive || nightOwl) return
     if (AdConsent.formShowing || !hasWindowFocus()) return
     if (activeWeb()?.url != homePage) return
     announcing = true

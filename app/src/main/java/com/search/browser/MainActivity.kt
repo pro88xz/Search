@@ -3547,8 +3547,9 @@ class MainActivity : AppCompatActivity() {
         consentInFlight = true
         AdConsent.gather(this, onFormNeeded = {
             // A consent message has to be answered: it must be seen, so the
-            // splash makes way, and this launch goes without the app open ad.
-            splashAdWanted = false
+            // splash and its cover make way, and this launch goes without the
+            // app open ad.
+            endSplashWait()
             releaseSplash()
         }) { allowed ->
             consentInFlight = false
@@ -4433,17 +4434,27 @@ class MainActivity : AppCompatActivity() {
      */
     private val AD_WAIT_GUARD_MS = 15_000L
     private var splashAdWanted = false
-    private var launchCover: View? = null
+    internal var launchCover: View? = null
     private var coverAdShowing = false
 
     /**
-     * The splash has been up its usual 1.5 s. On a plain launch it now stays
-     * until the app open ad has loaded and is shown over it: first until the
+     * The splash has been up its usual 1.5 s. On a plain launch the browser
+     * now waits for the app open ad, which is shown over it: first until the
      * consent check has answered (whether ads may be asked for is only known
      * then - on a fresh start it is not known from before), then until the
      * ad itself has loaded. Only a request that fails, a consent message
      * that has to be answered, or no ad being allowed lets the browser open
      * without the ad. Nothing is ever shown over home once it is up.
+     *
+     * The wait is behind the launch cover - the same splash picture, laid over
+     * the browser's own window - not behind the system splash. Held, the
+     * system splash keeps the window from being drawn, and a window not yet
+     * drawn has no focus: a tap during a wait of more than five seconds had
+     * nowhere to go, and Android reported the app as not responding (Play
+     * Console: "Input dispatching timed out (No focused window)" with the
+     * main thread idle in nativePollOnce). The cover is part of a window that
+     * is up, so it takes the tap and the app stays responsive. The two
+     * pictures are the same, so the hand-over does not show.
      */
     private fun onSplashMinimumDone() {
         if (isFinishing || isDestroyed) { keepSplash = false; return }
@@ -4451,35 +4462,44 @@ class MainActivity : AppCompatActivity() {
         splashAdWanted = keepSplash && coldLaunch && !launchedForTask && !nightOwl &&
             BrowsingMode.introDone(this) && !Settings.getBool(this, Settings.IS_SUPPORTER, false) &&
             hasNetwork() && AppOpenAds.wantedThisOpen()
-        if (!splashAdWanted) { releaseSplash(); return }
+        if (splashAdWanted) showLaunchCover()
+        releaseSplash()
+        if (!splashAdWanted) return
         uiHandler.postDelayed(splashGuard, AD_WAIT_GUARD_MS)
         continueSplashAd()
     }
 
-    /** The next step of the splash's wait: consent answered, then the ad loaded, then shown. */
+    /** The browser opens now, without the launch ad: the cover comes off. */
+    private fun endSplashWait() {
+        uiHandler.removeCallbacks(splashGuard)
+        AppOpenAds.onResult = null
+        if (!splashAdWanted) return
+        splashAdWanted = false
+        if (!coverAdShowing) hideLaunchCover()
+    }
+
+    /** The next step of the launch's wait: consent answered, then the ad loaded, then shown. */
     private fun continueSplashAd() {
-        if (!keepSplash || !splashAdWanted) return
+        if (!splashAdWanted) return
         // Where consent is required the consent check is waited for (this runs
         // again when it answers); everywhere else the ad does not wait on it.
         if (consentInFlight && AdConsent.regulated(this)) return
-        if (!AdConsent.adsAllowed(this)) { splashAdWanted = false; releaseSplash(); return }
+        if (!AdConsent.adsAllowed(this)) { endSplashWait(); return }
         if (AppOpenAds.readyNow()) { splashAd(); return }
         AppOpenAds.onResult = { loaded ->
             AppOpenAds.onResult = null
-            if (keepSplash && splashAdWanted) {
-                if (loaded) splashAd() else { splashAdWanted = false; releaseSplash() }
+            if (splashAdWanted) {
+                if (loaded) splashAd() else endSplashWait()
             }
         }
         // Asked for now if it can be; if the SDK is still starting, it asks
         // the moment it can (sdkReady), and the answer comes all the same.
         // With the SDK started and still no request out, one has just failed
         // (the next is not due for a while): nothing is coming to wait for.
-        if (!AppOpenAds.requestNow() && adsSdkCalled) { splashAdWanted = false; releaseSplash() }
+        if (!AppOpenAds.requestNow() && adsSdkCalled) endSplashWait()
     }
 
-    private val splashGuard = Runnable {
-        if (keepSplash && splashAdWanted) { splashAdWanted = false; releaseSplash() }
-    }
+    private val splashGuard = Runnable { endSplashWait() }
     private var coldLaunch = false
 
     private fun splashAd() {
@@ -4488,22 +4508,18 @@ class MainActivity : AppCompatActivity() {
         splashAdWanted = false
         var onScreen = false
         // Some of AdMob's app open creatives are a card on a see-through
-        // screen, and home showed through them. So the splash picture stays
-        // behind the ad: the moment the ad is up, the same picture goes over
-        // the browser (the launch cover, as on a return from the background)
-        // and only then does the splash let go; closing the ad uncovers home.
+        // screen: the cover - the splash picture - stays behind the ad, and
+        // closing the ad uncovers home.
+        showLaunchCover()
         AppOpenAds.showNow(this, onShowing = {
             onScreen = true
-            showLaunchCover()
             coverAdShowing = true
-            releaseSplash()
         }, onDone = {
-            releaseSplash()
             hideLaunchCover()
         })
         // Should the SDK say nothing either way, the browser still opens; an
         // ad on screen keeps its cover until it is closed.
-        uiHandler.postDelayed({ if (!onScreen) releaseSplash() }, 5000L)
+        uiHandler.postDelayed({ if (!onScreen) hideLaunchCover() }, 5000L)
     }
 
     private fun releaseSplash() {
@@ -4530,8 +4546,11 @@ class MainActivity : AppCompatActivity() {
             releaseSplash()
             return
         }
-        // Should the introduction not come up for any reason, the browser opens.
-        uiHandler.postDelayed({ releaseSplashOnStop = false; releaseSplash() }, 6000L)
+        // Should the introduction not come up for any reason, the browser opens -
+        // within 3 s: with the splash's own 1.5 s before it, the window is
+        // drawn inside the 5 s after which a tap that has nowhere to go is
+        // reported as the app not responding.
+        uiHandler.postDelayed({ releaseSplashOnStop = false; releaseSplash() }, 3000L)
     }
     private var introFromSplash = false
     private var releaseSplashOnStop = false
@@ -5871,6 +5890,15 @@ return {title:title,lang:(document.documentElement.lang||''),parts:parts};
 
     // ---------- Media control notification ----------
     internal var mediaActive = false
+
+    /** A page's video or audio is playing now (MediaDetect), as opposed to paused or gone. */
+    internal var mediaPlaying = false
+
+    /**
+     * A tab's picture once took long enough to stall the app, so none is
+     * taken again this run (captureThumbnail).
+     */
+    internal var slowTabPictures = false
 
     // ---------- Video downloader ----------
     //

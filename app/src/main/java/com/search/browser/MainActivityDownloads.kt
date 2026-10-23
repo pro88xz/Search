@@ -418,8 +418,15 @@ internal fun MainActivity.displayUrl(url: String?): String {
 
 internal fun MainActivity.captureThumbnail(tab: Tab, onDone: (() -> Unit)? = null) {
     val web = tab.webView
+    // Not while a video plays, and not again on a phone where it was slow.
+    // Up to Android 11 PixelCopy does its copy before it returns, on the
+    // thread that asked - the main one - while the GPU reads the screen back;
+    // with a video playing on a weak GPU that read-back can run for seconds,
+    // and a tap on Tabs then went unanswered long enough for Android to call
+    // the app not responding. The tab keeps the picture it had.
     if (deckVisible || web == null || web.width <= 0 || web.height <= 0 ||
-        !web.isAttachedToWindow || binding.webContainer.translationX != 0f
+        !web.isAttachedToWindow || binding.webContainer.translationX != 0f ||
+        mediaPlaying || slowTabPictures
     ) { onDone?.invoke(); return }
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
         try {
@@ -435,6 +442,7 @@ internal fun MainActivity.captureThumbnail(tab: Tab, onDone: (() -> Unit)? = nul
                 location[0], location[1],
                 location[0] + web.width, location[1] + web.height
             )
+            val asked = android.os.SystemClock.uptimeMillis()
             PixelCopy.request(
                 window, rect, source,
                 { result ->
@@ -444,6 +452,9 @@ internal fun MainActivity.captureThumbnail(tab: Tab, onDone: (() -> Unit)? = nul
                 },
                 Handler(Looper.getMainLooper())
             )
+            // Where the copy was done in the call, its time is known now: a
+            // quarter of a second is a phone where it can stall far longer.
+            if (android.os.SystemClock.uptimeMillis() - asked > 250L) slowTabPictures = true
             return
         } catch (e: Exception) { /* fall through */ }
     }

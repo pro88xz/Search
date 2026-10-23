@@ -289,6 +289,7 @@ internal fun MainActivity.addToHomeScreen() {
 // ---------- Media control notification ----------
 
 internal fun MainActivity.onMediaState(state: String, title: String, host: String) {
+    mediaPlaying = state == "playing"
     when (state) {
         "playing", "paused" -> {
             // Many players only take their source once they start.
