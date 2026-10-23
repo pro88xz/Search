@@ -147,9 +147,84 @@ object AdBlocker {
     // A blocked request must get its own WebResourceResponse each time: a
     // response's input stream is consumed once and read from WebView threads,
     // so a single shared instance across concurrent blocked requests is unsafe.
-    private fun emptyResponse() = WebResourceResponse(
-        "text/plain", "utf-8", ByteArrayInputStream(ByteArray(0))
+    private fun emptyResponse(mime: String = "text/plain") = WebResourceResponse(
+        mime, "utf-8", ByteArrayInputStream(ByteArray(0))
     )
+
+    /** One exception for every blocked read; no stack trace, which nobody reads. */
+    private val REFUSAL = object : java.io.IOException("Blocked by Search's ad blocker") {
+        override fun fillInStackTrace(): Throwable = this
+    }
+
+    /** A body that cannot be read: WebView fails the request, as a network error. */
+    private class Refused : java.io.InputStream() {
+        override fun read(): Int = throw REFUSAL
+        override fun read(b: ByteArray, off: Int, len: Int): Int = throw REFUSAL
+        override fun available(): Int = 0
+    }
+
+    /**
+     * What a blocked request gets: a failure, as Brave and uBlock Origin give
+     * it by cancelling the request - the filter lists are written, and their
+     * exceptions tested, against exactly that.
+     *
+     * It used to be an empty page that loaded fine. A page that fetches JSON
+     * and reads it then got "success" with nothing in it, and choked: YouTube's
+     * player asks youtubei/v1/player/ad_break (on EasyList) for its ad plan,
+     * could not read the empty answer, and spun for ever. A script answered
+     * empty fired onload with none of its code, where a page that copes with
+     * blockers waits for onerror. WebView has no way to cancel from here, but
+     * a body that throws on read fails the request the same way: fetch and
+     * XMLHttpRequest report a network error, scripts and images their onerror.
+     * Frames are the exception: a failed frame shows an error page in the ad's
+     * place, so they get an empty page, as before.
+     */
+    private fun blockedResponse(types: String): WebResourceResponse =
+        if (types == "sub_frame") emptyResponse("text/html")
+        else WebResourceResponse("text/plain", "utf-8", Refused())
+
+    /**
+     * Sites the blocker leaves alone, whatever the setting.
+     *
+     * YouTube stops its videos when it finds its ads blocked - the player
+     * waits on them, and spins for ever. Brave keeps YouTube playing only by
+     * running scripts of its own inside YouTube's pages, rewritten every few
+     * days as YouTube changes; Search runs no script from the lists. So
+     * YouTube is not blocked at all, its pages or its servers - which also
+     * keeps a YouTube video playing when it is embedded in another site.
+     */
+    private val LEFT_ALONE = setOf(
+        "youtube.com", "youtube-nocookie.com", "youtu.be", "googlevideo.com", "ytimg.com",
+        "youtubei.googleapis.com", "youtube.googleapis.com", "youtubekids.com"
+    )
+
+    /** Whether [host] is one of [LEFT_ALONE] or under one. */
+    fun isLeftAlone(host: String?): Boolean = under(host, LEFT_ALONE)
+
+    /**
+     * The services sites use to tell a person from a bot - AWS WAF (Amazon,
+     * IMDb and many more), PerimeterX's Press & Hold, DataDome, Arkose,
+     * hCaptcha, Cloudflare Turnstile, reCAPTCHA, GeeTest - never blocked, and
+     * nothing hidden in their frames. EasyPrivacy lists parts of them, as the
+     * device data they collect is tracking; but a check that cannot report
+     * back never passes, and the site stays shut: in testing, Amazon and IMDb
+     * came up blank behind an AWS WAF check whose verify call was blocked.
+     * uBlock Origin carries exceptions of its own for these; Search's lists
+     * do not, so they are here.
+     */
+    private val SECURITY_CHECKS = setOf(
+        "awswaf.com", "perimeterx.net", "px-cdn.net", "px-cloud.net", "px-client.net",
+        "perimeterx.com", "humansecurity.com", "datadome.co", "captcha-delivery.com",
+        "arkoselabs.com", "funcaptcha.com", "hcaptcha.com", "challenges.cloudflare.com",
+        "recaptcha.net", "geetest.com", "geevisit.com", "friendlycaptcha.com", "mtcaptcha.com"
+    )
+
+    fun isSecurityCheck(host: String?): Boolean = under(host, SECURITY_CHECKS)
+
+    private fun under(host: String?, set: Set<String>): Boolean {
+        val h = host?.lowercase()?.removeSuffix(".") ?: return false
+        return set.any { h == it || h.endsWith(".$it") }
+    }
 
     fun isEnabled(c: Context): Boolean =
         Settings.getBool(c, Settings.ADBLOCK_ENABLED, false)
@@ -186,7 +261,7 @@ object AdBlocker {
      */
     fun check(c: Context, request: WebResourceRequest?, pageHost: String? = null): WebResourceResponse? {
         if (!isEnabled(c)) return null
-        if (isOwnSite(pageHost)) return null
+        if (isOwnSite(pageHost) || isLeftAlone(pageHost)) return null
         if (pageHost != null && AdBlockSites.isAllowed(c, pageHost)) return null
         // Never the page itself. A top-level navigation is somewhere the user
         // is going - a link they tapped, or a redirect on the way to one - and
@@ -198,12 +273,14 @@ object AdBlocker {
         if (request == null || request.isForMainFrame) return null
         val uri = request.url ?: return null
         val host = uri.host?.lowercase()?.removeSuffix(".") ?: return null
+        if (isLeftAlone(host) || isSecurityCheck(host)) return null
         val path = (uri.path ?: "").lowercase()
+        val types = requestTypes(path, request.method, request.requestHeaders)
         val listed = isBlockedHost(host) || isFacebookPixel(host, path) ||
             BLOCKED_PATHS.any { (host + path).contains(it) }
-        if (!listed && !engineBlocks(c, request, uri, path, pageHost)) return null
+        if (!listed && !engineBlocks(c, uri, types, pageHost)) return null
         PrivacyStats.blocked()
-        return if (wantsCallbacks(host, path)) callbacksResponse() else emptyResponse()
+        return if (wantsCallbacks(host, path)) callbacksResponse() else blockedResponse(types)
     }
 
     /**
@@ -211,14 +288,11 @@ object AdBlocker {
      * with no host is one of the app's own (home, the legal pages), and those
      * stay as they were.
      */
-    private fun engineBlocks(
-        c: Context, request: WebResourceRequest, uri: android.net.Uri, path: String, pageHost: String?
-    ): Boolean {
+    private fun engineBlocks(c: Context, uri: android.net.Uri, types: String, pageHost: String?): Boolean {
         if (pageHost.isNullOrEmpty()) return false
         val scheme = uri.scheme
         if (scheme != "https" && scheme != "http") return false
         AdblockEngine.warmUp(c)
-        val types = requestTypes(path, request.method, request.requestHeaders)
         return AdblockEngine.check(uri.toString(), "https://$pageHost/", types) == AdblockEngine.BLOCK
     }
 
@@ -320,7 +394,11 @@ object AdBlocker {
     fun cosmetic(c: Context, url: String?, pageHost: String?): String {
         if (url == null || pageHost.isNullOrEmpty() || !isEnabled(c)) return ""
         if (!url.startsWith("https://") && !url.startsWith("http://")) return ""
-        if (isOwnSite(pageHost) || AdBlockSites.isAllowed(c, pageHost)) return ""
+        if (isOwnSite(pageHost) || isLeftAlone(pageHost) || AdBlockSites.isAllowed(c, pageHost)) return ""
+        // A YouTube player embedded in another site, and a bot check's frame,
+        // are left alone too.
+        val docHost = try { android.net.Uri.parse(url).host } catch (e: Exception) { null }
+        if (isLeftAlone(docHost) || isSecurityCheck(docHost)) return ""
         AdblockEngine.warmUp(c)
         return AdblockEngine.cosmetic(url)
             ?: org.json.JSONObject().put("css", BASIC_CSS).put("generichide", true).toString()

@@ -50,7 +50,9 @@ internal fun MainActivity.siteForAds(): String? {
     if (!AdBlocker.isEnabled(this)) return null
     val url = tabs.activeTab?.url ?: return null
     if (!url.startsWith("http://") && !url.startsWith("https://")) return null
-    return try { android.net.Uri.parse(url).host?.ifBlank { null } } catch (e: Exception) { null }
+    val host = try { android.net.Uri.parse(url).host?.ifBlank { null } } catch (e: Exception) { null }
+    // Sites ad blocking never touches (YouTube) have nothing to allow.
+    return host?.takeIf { !AdBlocker.isLeftAlone(it) && !AdBlocker.isOwnSite(it) }
 }
 
 /** Whether the page on screen is still loading. */
