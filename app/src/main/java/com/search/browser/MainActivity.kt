@@ -1171,6 +1171,11 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+        // Home's wallpaper behind the top bar is cut for the page's size
+        // (refreshWallpaperBar): cut again when that changes.
+        binding.webContainer.addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+            if (right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop) refreshWallpaperBar()
+        }
         lastSiteSig = siteSettingsSignature()
 
         onBackPressedDispatcher.addCallback(this, object :
@@ -1767,7 +1772,7 @@ class MainActivity : AppCompatActivity() {
             // Focus and Zen's colours in this accent, light and dark (HomeWash).
             val wash = HomeWash.json(accent).toString()
             // The wallpaper chosen in Customize, if any (HomeWallpapers).
-            val wallpaper = HomeWallpapers.json(HomeWallpapers.current(this@MainActivity))
+            val wallpaper = HomeWallpapers.json(HomeWallpapers.current(this@MainActivity), wallpaperLift)
             return "{\"background\":\"$bg\",\"accent\":\"$accent\",\"tiles\":$tiles,\"nightOwl\":$nightOwl," +
                 "\"mode\":\"$mode\",\"zenTiles\":$zen,\"powerSave\":$powerSave,\"wash\":$wash,\"wallpaper\":$wallpaper}"
         }
@@ -3259,6 +3264,13 @@ class MainActivity : AppCompatActivity() {
     internal var barOverlapHome: Boolean? = null
     /** How far the bottom bar overlaps the page while it is in place (setPageUnderBars). */
     internal var barRestOverlap = 0
+
+    // ---------- Home's wallpaper behind the top bar (refreshWallpaperBar) ----------
+
+    /** How far below the top of the screen the page starts, in pixels: 0 until measured. Read by getConfig too. */
+    @Volatile internal var wallpaperLift = 0
+    /** What the top bar's wallpaper slice was last cut for: wallpaper, width, lift, span, file. */
+    internal var wallpaperBarKey: String? = null
 
     /**
      * Whether a tab may be frozen to stay under the live-tab cap.

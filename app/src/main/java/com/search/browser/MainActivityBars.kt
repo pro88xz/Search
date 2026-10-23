@@ -446,6 +446,56 @@ internal fun MainActivity.plainBars(url: String?, animate: Boolean) {
     val w = homeWash(url)
     binding.topBar.seamless = w != null
     setBarTint(w?.get(0), w?.get(1), animate)
+    refreshWallpaperBar()
+}
+
+/**
+ * Home's wallpaper runs up behind the top bar and the status bar: the bar
+ * paints the wallpaper's top (HomeWallpapers.topSlice) and home.html lays
+ * the wallpaper out from the top of the screen, [MainActivity.wallpaperLift]
+ * above the page, so the two meet with no seam. Before, the bar was a band
+ * of the wallpaper's top colour and the picture started below it.
+ *
+ * Measured on home with the bars at rest: while they are away the page runs
+ * under them, and on a site it stops higher (applyBarOverlap). Called when
+ * the bars take home's colours and when the page changes size; cheap when
+ * nothing has changed. The slice is cut off the main thread.
+ */
+internal fun MainActivity.refreshWallpaperBar() {
+    val w = HomeWallpapers.current(this)
+    if (w == null) {
+        wallpaperBarKey = null
+        binding.topBar.wallpaper = null
+        return
+    }
+    val bar = binding.topBar
+    val page = binding.webContainer
+    if (barsHidden || pageUnderBars || barOverlapHome != true ||
+        bar.width <= 0 || bar.height <= 0 || page.height <= 0) return
+    val lift = binding.rootView.paddingTop + bar.height
+    if (lift != wallpaperLift) {
+        wallpaperLift = lift
+        // A home page already open takes it at once; one opening reads it (getConfig).
+        activeWeb()?.takeIf { it.url == homePage }?.evaluateJavascript(
+            "window.__setWallpaper && window.__setWallpaper(" + HomeWallpapers.json(w, lift) + ")", null)
+    }
+    val width = bar.width
+    val span = lift + page.height
+    // The file home.html picks for this screen.
+    val dm = resources.displayMetrics
+    val large = maxOf(dm.widthPixels, dm.heightPixels) > 2816
+    val key = w.id + ":" + width + ":" + lift + ":" + span + ":" + large
+    if (key == wallpaperBarKey) return
+    // Another wallpaper's slice must not show over this one while it is cut.
+    if (wallpaperBarKey?.substringBefore(':') != w.id) binding.topBar.wallpaper = null
+    wallpaperBarKey = key
+    val app = applicationContext
+    Thread({
+        val slice = HomeWallpapers.topSlice(app, w, width, lift, span, large)
+        uiHandler.post {
+            if (wallpaperBarKey == key && !isDestroyed) binding.topBar.wallpaper = slice
+        }
+    }, "wallpaper-bar").start()
 }
 
 /** Behind the bars when they wear no page's colours: Night Owl's wash, else the theme's background. */

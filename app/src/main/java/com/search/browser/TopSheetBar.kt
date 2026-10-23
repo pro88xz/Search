@@ -94,6 +94,34 @@ class TopSheetBar @JvmOverloads constructor(
             repaint()
         }
 
+    /**
+     * Home's wallpaper behind the bar and the status bar: the part of it
+     * above the page (HomeWallpapers.topSlice), cut to exactly the bar's
+     * width and its height plus [topInset], so it is drawn pixel for pixel
+     * and runs on into the page's with no seam. Drawn only while the bar is
+     * home's ([seamless], not [flat]); one cut for another size is left
+     * out, and the bar keeps its flat colour, until the right one is ready.
+     * Fades in as home.html's does.
+     */
+    var wallpaper: android.graphics.Bitmap? = null
+        set(v) {
+            if (field === v) return
+            val fadeIn = field == null && v != null
+            field = v
+            wallpaperFade?.cancel()
+            wallpaperPaint.alpha = 255
+            if (fadeIn) {
+                wallpaperFade = android.animation.ValueAnimator.ofInt(0, 255).apply {
+                    duration = 500L
+                    addUpdateListener { wallpaperPaint.alpha = it.animatedValue as Int; invalidate() }
+                    start()
+                }
+            }
+            invalidate()
+        }
+    private val wallpaperPaint = Paint()
+    private var wallpaperFade: android.animation.ValueAnimator? = null
+
     /** The home page's background, which [blend] fades toward. */
     private val pageBackground = context.getColor(R.color.appBackground)
 
@@ -206,6 +234,10 @@ class TopSheetBar @JvmOverloads constructor(
         // From the top of the status bar strip rather than the top of this
         // view, so the surface reaches the top of the screen.
         canvas.drawRect(0f, -topInset.toFloat(), w, h, fill)
+        val wp = wallpaper
+        if (wp != null && seamless && !flat && wp.width == width && wp.height == height + topInset) {
+            canvas.drawBitmap(wp, 0f, -topInset.toFloat(), wallpaperPaint)
+        }
         if (lineShows) canvas.drawLine(0f, h, w, h, line)
     }
 

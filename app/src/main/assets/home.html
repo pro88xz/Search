@@ -707,11 +707,14 @@
      --wp-bottom) that the bars take too, so bar and page meet with no seam;
      it is anchored to the top so that row stays the top however a screen
      crops it. Words that sit on it follow the wallpaper's tone (wp-dark,
-     wp-light), not the phone's theme, with a soft shadow for busy scenes. */
+     wp-light), not the phone's theme, with a soft shadow for busy scenes.
+     It is laid out from the top of the screen, --wp-lift above this page:
+     the top bar paints the part above the page (TopSheetBar.wallpaper), so
+     the picture runs up behind the bar and the status bar. */
   html.wp { background:var(--wp-bottom); }
   html.wp body { background:transparent; }
   html.wp::before {
-    content:""; position:fixed; left:0; top:0; right:0; bottom:0; z-index:-1; pointer-events:none;
+    content:""; position:fixed; left:0; top:calc(0px - var(--wp-lift, 0px)); right:0; bottom:0; z-index:-1; pointer-events:none;
     background:var(--wp-top) var(--wp-img) center top / cover no-repeat;
     animation:washIn .5s var(--ease-out);
   }
@@ -862,10 +865,14 @@
     var ok = !!w && /^[a-z_]+$/.test(String(w.id || '')) && !!parseHex(w.top) && !!parseHex(w.bottom);
     wallpaper = ok ? w : null;
     var st = root.style;
-    if (!wallpaper) { st.removeProperty('--wp-img'); return; }
+    if (!wallpaper) { st.removeProperty('--wp-img'); st.removeProperty('--wp-lift'); return; }
     var px = Math.max(screen.width || 0, screen.height || 0) * (window.devicePixelRatio || 1);
     var file = 'wallpapers/' + wallpaper.id + (px <= 2816 ? '-1440' : '') + '.webp';
     st.setProperty('--wp-img', 'url("' + file + '")');
+    // How far below the top of the screen this page starts, in device
+    // pixels (MainActivity.wallpaperLift); 0 until the app has measured it.
+    var lift = Number(wallpaper.lift);
+    st.setProperty('--wp-lift', (lift > 0 && lift < 2000 ? lift / (window.devicePixelRatio || 1) : 0) + 'px');
     st.setProperty('--wp-top', toHex(parseHex(wallpaper.top)));
     st.setProperty('--wp-bottom', toHex(parseHex(wallpaper.bottom)));
   }
