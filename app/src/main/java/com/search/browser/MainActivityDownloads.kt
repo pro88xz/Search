@@ -456,7 +456,8 @@ internal fun MainActivity.storeScaled(tab: Tab, full: Bitmap) {
         val targetH = (thumbWidthPx * ratio).toInt().coerceAtLeast(1)
         val scaled = Bitmap.createScaledBitmap(full, thumbWidthPx, targetH, true)
         if (scaled != full) full.recycle()
-        tab.thumbnail?.recycle()
+        // The old picture is let go of, not recycled: the deck may still be
+        // showing it, and drawing a recycled bitmap is a crash.
         tab.thumbnail = scaled
     } catch (e: Exception) { if (!full.isRecycled) full.recycle() }
 }

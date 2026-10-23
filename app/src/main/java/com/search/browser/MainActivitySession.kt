@@ -129,7 +129,9 @@ internal fun MainActivity.deleteDownload(d: Downloads.Item) {
 
 internal fun MainActivity.refreshDownloads() {
     Thread {
-        val items = Downloads.load(this)
+        // A thread of its own has nothing above it to catch an error, which
+        // would end the app: the list stays as it was instead.
+        val items = try { Downloads.load(this) } catch (t: Throwable) { return@Thread }
         runOnUiThread { applyDownloads(items) }
     }.start()
 }

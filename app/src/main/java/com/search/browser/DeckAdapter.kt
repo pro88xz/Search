@@ -36,6 +36,54 @@ class RatioFrameLayout @JvmOverloads constructor(
 }
 
 /**
+ * A page's picture filling its frame from the top: scaled to cover, centred
+ * across and cropped at the bottom - the top of a page is the part that says
+ * what it is. Fitted again whenever its size or picture changes (a turn of
+ * the phone, a change in the deck's columns), not once after the first
+ * layout. With [crop] off, the image sits at its own size in the middle - a
+ * site's icon standing in for a page not pictured yet.
+ */
+class TopCropImageView @JvmOverloads constructor(
+    context: Context, attrs: AttributeSet? = null
+) : androidx.appcompat.widget.AppCompatImageView(context, attrs) {
+    var crop = true
+        set(value) {
+            field = value
+            scaleType = if (value) ScaleType.MATRIX else ScaleType.CENTER
+            fit()
+        }
+
+    init { scaleType = ScaleType.MATRIX }
+
+    override fun setFrame(l: Int, t: Int, r: Int, b: Int): Boolean {
+        val changed = super.setFrame(l, t, r, b)
+        fit()
+        return changed
+    }
+
+    override fun setImageDrawable(drawable: android.graphics.drawable.Drawable?) {
+        super.setImageDrawable(drawable)
+        fit()
+    }
+
+    private fun fit() {
+        // Also reached from the superclass constructor, before [crop] is set.
+        if (!crop || scaleType != ScaleType.MATRIX) return
+        val d = drawable ?: return
+        val w = (width - paddingLeft - paddingRight).toFloat()
+        val h = (height - paddingTop - paddingBottom).toFloat()
+        val dw = d.intrinsicWidth.toFloat()
+        val dh = d.intrinsicHeight.toFloat()
+        if (w <= 0f || h <= 0f || dw <= 0f || dh <= 0f) return
+        val s = maxOf(w / dw, h / dh)
+        val m = Matrix()
+        m.setScale(s, s)
+        m.postTranslate((w - dw * s) / 2f, 0f)
+        imageMatrix = m
+    }
+}
+
+/**
  * The tab deck's cards: a tab - its site's icon, title and close button
  * over a picture of the page - or a tab group, its colour, name and size
  * over its first four tabs. [items] is a snapshot, taken by [refresh], so
@@ -90,10 +138,10 @@ class DeckAdapter(private val host: Host) : RecyclerView.Adapter<RecyclerView.Vi
         val close: ImageButton = v.findViewById(R.id.closeTab)
         val check: ImageView = v.findViewById(R.id.tabCheck)
         val thumbBox: View = v.findViewById(R.id.tabThumbBox)
-        val thumb: ImageView = v.findViewById(R.id.tabThumb)
+        val thumb: TopCropImageView = v.findViewById(R.id.tabThumb)
     }
 
-    class Tile(val frame: FrameLayout, val image: ImageView, val label: TextView)
+    class Tile(val frame: FrameLayout, val image: TopCropImageView, val label: TextView)
 
     class GroupVH(v: View, val tiles: List<Tile>) : RecyclerView.ViewHolder(v) {
         val dot: View = v.findViewById(R.id.groupDot)
@@ -124,8 +172,7 @@ class DeckAdapter(private val host: Host) : RecyclerView.Adapter<RecyclerView.Vi
             repeat(2) {
                 val frame = FrameLayout(ctx)
                 frame.clipToOutline = true
-                val image = ImageView(ctx)
-                image.scaleType = ImageView.ScaleType.MATRIX
+                val image = TopCropImageView(ctx)
                 image.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
                 frame.addView(image, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
                 val label = TextView(ctx)
@@ -318,10 +365,11 @@ class DeckAdapter(private val host: Host) : RecyclerView.Adapter<RecyclerView.Vi
      * started, a new tab): its site's icon, or home's house, small and
      * quiet in the middle.
      */
-    private fun showStandIn(view: ImageView, tab: Tab) {
+    private fun showStandIn(view: TopCropImageView, tab: Tab) {
         val ctx = view.context
         val px = (34 * ctx.resources.displayMetrics.density).toInt()
-        val icon: Bitmap? = if (host.letter(tab) == 0.toChar()) {
+        val home = host.letter(tab) == 0.toChar()
+        val icon: Bitmap? = if (home) {
             ContextCompat.getDrawable(ctx, R.drawable.menu_home)?.mutate()?.let { d ->
                 d.setTint(ContextCompat.getColor(ctx, R.color.sugIcon))
                 d.toBitmap(px, px)
@@ -329,34 +377,15 @@ class DeckAdapter(private val host: Host) : RecyclerView.Adapter<RecyclerView.Vi
         } else {
             host.icon(tab) {}?.let { Bitmap.createScaledBitmap(it, px, px, true) }
         }
-        view.scaleType = ImageView.ScaleType.CENTER
+        view.crop = false
         view.setImageBitmap(icon)
-        view.alpha = if (icon != null && host.letter(tab) == 0.toChar()) 0.7f else 1f
+        view.alpha = if (icon != null && home) 0.7f else 1f
     }
 
-    /**
-     * A page's picture filling [view] from the top, cropped at the sides or
-     * the bottom - the top of a page is the part that says what it is.
-     */
-    private fun showPicture(view: ImageView, bmp: Bitmap?) {
+    /** A page's picture, filling [view] from the top (TopCropImageView). */
+    private fun showPicture(view: TopCropImageView, bmp: Bitmap?) {
         view.alpha = 1f
-        view.scaleType = ImageView.ScaleType.MATRIX
-        if (bmp == null) {
-            view.setImageDrawable(null)
-            return
-        }
-        view.setImageBitmap(bmp)
-        fun fit() {
-            val w = view.width.toFloat()
-            val h = view.height.toFloat()
-            if (w <= 0f || h <= 0f || bmp.width <= 0 || bmp.height <= 0) return
-            val s = maxOf(w / bmp.width, h / bmp.height)
-            val m = Matrix()
-            m.setScale(s, s)
-            m.postTranslate((w - bmp.width * s) / 2f, 0f)
-            view.imageMatrix = m
-        }
-        if (view.width > 0) fit()
-        view.post { fit() }
+        view.crop = true
+        if (bmp == null) view.setImageDrawable(null) else view.setImageBitmap(bmp)
     }
 }
