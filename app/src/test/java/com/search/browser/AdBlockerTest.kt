@@ -16,6 +16,13 @@ class AdBlockerTest {
             .forEach { assertFalse(it.toString(), AdBlocker.isLeftAlone(it)) }
     }
 
+    @Test fun botChecksAreNeverBlocked() {
+        listOf("fb423e1ef94f.6277d64d.us-east-1.token.awswaf.com", "client.perimeterx.net", "geo.captcha-delivery.com",
+            "challenges.cloudflare.com", "a.hcaptcha.com", "client-api.arkoselabs.com", "www.recaptcha.net")
+            .forEach { assertTrue(it, AdBlocker.isSecurityCheck(it)) }
+        listOf("cloudflare.com", "doubleclick.net", "example.com").forEach { assertFalse(it, AdBlocker.isSecurityCheck(it)) }
+    }
+
     @Test fun ownSitesAreNeverBlocked() {
         assertTrue(AdBlocker.isOwnSite("toolsepulse.co"))
         assertTrue(AdBlocker.isOwnSite("games.toolsepulse.co"))

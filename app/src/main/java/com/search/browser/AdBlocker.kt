@@ -199,9 +199,31 @@ object AdBlocker {
     )
 
     /** Whether [host] is one of [LEFT_ALONE] or under one. */
-    fun isLeftAlone(host: String?): Boolean {
+    fun isLeftAlone(host: String?): Boolean = under(host, LEFT_ALONE)
+
+    /**
+     * The services sites use to tell a person from a bot - AWS WAF (Amazon,
+     * IMDb and many more), PerimeterX's Press & Hold, DataDome, Arkose,
+     * hCaptcha, Cloudflare Turnstile, reCAPTCHA, GeeTest - never blocked, and
+     * nothing hidden in their frames. EasyPrivacy lists parts of them, as the
+     * device data they collect is tracking; but a check that cannot report
+     * back never passes, and the site stays shut: in testing, Amazon and IMDb
+     * came up blank behind an AWS WAF check whose verify call was blocked.
+     * uBlock Origin carries exceptions of its own for these; Search's lists
+     * do not, so they are here.
+     */
+    private val SECURITY_CHECKS = setOf(
+        "awswaf.com", "perimeterx.net", "px-cdn.net", "px-cloud.net", "px-client.net",
+        "perimeterx.com", "humansecurity.com", "datadome.co", "captcha-delivery.com",
+        "arkoselabs.com", "funcaptcha.com", "hcaptcha.com", "challenges.cloudflare.com",
+        "recaptcha.net", "geetest.com", "geevisit.com", "friendlycaptcha.com", "mtcaptcha.com"
+    )
+
+    fun isSecurityCheck(host: String?): Boolean = under(host, SECURITY_CHECKS)
+
+    private fun under(host: String?, set: Set<String>): Boolean {
         val h = host?.lowercase()?.removeSuffix(".") ?: return false
-        return LEFT_ALONE.any { h == it || h.endsWith(".$it") }
+        return set.any { h == it || h.endsWith(".$it") }
     }
 
     fun isEnabled(c: Context): Boolean =
@@ -251,7 +273,7 @@ object AdBlocker {
         if (request == null || request.isForMainFrame) return null
         val uri = request.url ?: return null
         val host = uri.host?.lowercase()?.removeSuffix(".") ?: return null
-        if (isLeftAlone(host)) return null
+        if (isLeftAlone(host) || isSecurityCheck(host)) return null
         val path = (uri.path ?: "").lowercase()
         val types = requestTypes(path, request.method, request.requestHeaders)
         val listed = isBlockedHost(host) || isFacebookPixel(host, path) ||
@@ -373,8 +395,10 @@ object AdBlocker {
         if (url == null || pageHost.isNullOrEmpty() || !isEnabled(c)) return ""
         if (!url.startsWith("https://") && !url.startsWith("http://")) return ""
         if (isOwnSite(pageHost) || isLeftAlone(pageHost) || AdBlockSites.isAllowed(c, pageHost)) return ""
-        // A YouTube player embedded in another site is left alone too.
-        if (isLeftAlone(try { android.net.Uri.parse(url).host } catch (e: Exception) { null })) return ""
+        // A YouTube player embedded in another site, and a bot check's frame,
+        // are left alone too.
+        val docHost = try { android.net.Uri.parse(url).host } catch (e: Exception) { null }
+        if (isLeftAlone(docHost) || isSecurityCheck(docHost)) return ""
         AdblockEngine.warmUp(c)
         return AdblockEngine.cosmetic(url)
             ?: org.json.JSONObject().put("css", BASIC_CSS).put("generichide", true).toString()
