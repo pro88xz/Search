@@ -78,9 +78,15 @@ object AdblockEngine {
         }
         val app = c.applicationContext
         Thread({
-            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
-            ready = load(app)
-            maybeUpdate(app)
+            // Nothing here may take the app down: an error leaves the host
+            // list doing the blocking, as before the engine.
+            try {
+                android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
+                ready = load(app)
+                maybeUpdate(app)
+            } catch (t: Throwable) {
+                // ready stays as load left it.
+            }
         }, "adblock-engine").start()
     }
 

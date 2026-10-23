@@ -40,7 +40,8 @@ object Downloads {
     }
 
     fun load(c: Context): List<Item> {
-        val dm = c.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        // Missing on a phone whose Download Manager has been disabled.
+        val dm = c.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager ?: return emptyList()
         val out = ArrayList<Item>()
         val query = DownloadManager.Query()
         var cur: Cursor? = null

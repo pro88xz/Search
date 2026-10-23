@@ -4727,8 +4727,18 @@ class MainActivity : AppCompatActivity() {
             override fun onGroupClick(g: TabGroup) = openDeckGroup(g)
             override fun onGroupLongPress(g: TabGroup, card: View) = showGroupMenu(g, card)
         })
-        binding.tabList.layoutManager = GridLayoutManager(this, 2)
+        binding.tabList.layoutManager = GridLayoutManager(this, deckColumns(resources.displayMetrics.widthPixels))
         binding.tabList.adapter = deckAdapter
+        // Two columns on a phone; more as the deck gets wider - turned
+        // sideways, on a tablet or an unfolded phone - so cards keep a card's
+        // size rather than growing a screen tall.
+        binding.tabList.addOnLayoutChangeListener { v, l, _, r, _, ol, _, or, _ ->
+            if (r - l != or - ol) {
+                val grid = binding.tabList.layoutManager as? GridLayoutManager
+                val n = deckColumns(r - l)
+                if (grid != null && grid.spanCount != n) v.post { grid.spanCount = n }
+            }
+        }
         // Flick a tab card sideways to close its tab. The throw keeps its
         // momentum: a fast flick flies off from a short drag, a slow drag has
         // to carry the card over a third of its width, and anything less
@@ -4874,6 +4884,10 @@ class MainActivity : AppCompatActivity() {
             } else false
         }
     }
+
+    /** How many columns of cards a deck [widthPx] wide holds: at least two, one per 190dp. */
+    private fun deckColumns(widthPx: Int): Int =
+        (widthPx / (190f * resources.displayMetrics.density)).toInt().coerceIn(2, 6)
 
     private fun openDeck() {
         showBars(animate = false)
@@ -5225,7 +5239,9 @@ return {title:title,lang:(document.documentElement.lang||''),parts:parts};
             w.destroy()
             tab.webView = null
         }
-        tab.thumbnail?.recycle()
+        // Let go of, not recycled: the deck or the swipe peek may still be
+        // drawing it this frame, and drawing a recycled bitmap is a crash.
+        // The collector frees it once nothing shows it.
         tab.thumbnail = null
         tabs.removeTab(tab)
         if (tabs.count() == 0) { closeDeck(); addNewTab(homePage) }
