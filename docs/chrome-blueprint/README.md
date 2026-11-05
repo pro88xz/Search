@@ -173,3 +173,23 @@ Batch numbers refer to the roadmap below.
 | 3 | Inline autocomplete; site search shortcuts and custom engines; `@` shortcuts ✅; ranking by frecency ✅; clipboard text ✅; edit-URL row ✅; custom engine ✅ | Partly on this branch |
 | 4 | Safety check ✅; Privacy review; per-site desktop; offer translate ✅; offer reader view; homepage choice; Android font size; tab archive; Private DNS link | Partly on this branch |
 | 5 | Preloading (androidx.webkit), app language, download location, PDFs | |
+
+### Deferred, and why
+
+These need a phone to test on, or a decision from the owner, before they are worth doing:
+
+- **Inline autocomplete.** Rewriting the field while the keyboard is composing a word is where
+  IME bugs (doubled letters, lost input) come from; test on Gboard and Samsung Keyboard first.
+- **Archiving inactive tabs.** Chrome moves tabs unopened for weeks into an "Inactive tabs"
+  section of the tab switcher. That needs a last-opened time saved with each tab
+  (`SessionStore`) and a new section in the deck: a visible UI change to try on a device.
+- **Desktop site per site.** WebView sets the user agent per view, not per navigation, so
+  switching it as a link crosses into a remembered site means reloading inside a navigation
+  callback, which the HANDOFF warns can crash the app. Needs a careful design and device testing.
+- **Match Android font size.** Text zoom is worked out in four places; they need one shared rule.
+- **Homepage choice.** Home is `home.html` with the feed and its ad; letting another page be
+  home changes what the ad and feed code can assume. An owner decision.
+- **App language.** The app's text is written in the code in English only, so a per-app
+  language setting would have nothing to switch to until strings are translated.
+- **Preloading pages.** The androidx.webkit version in use (1.12.1) has no prefetch API; newer
+  ones have it as experimental.
