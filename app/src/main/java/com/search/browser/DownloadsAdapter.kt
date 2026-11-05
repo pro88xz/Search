@@ -61,9 +61,15 @@ class DownloadsAdapter(
                     of.isEmpty() -> " \u00B7 $so"
                     else -> " \u00B7 $so of $of"
                 }
-                val rate = rates[d.id]?.takeIf { it > 0.0 }
-                    ?.let { " \u00B7 " + Downloads.formatSize(it.toLong()) + "/s" } ?: ""
-                (if (d.bytesTotal > 0) "Downloading\u2026 $pct%" else "Downloading\u2026") + amount + rate
+                val bps = rates[d.id]?.takeIf { it > 0.0 }
+                val rate = bps?.let { " \u00B7 " + Downloads.formatSize(it.toLong()) + "/s" } ?: ""
+                // Time left, once there is a speed to go on (DownloadEta).
+                val eta = if (bps != null && d.bytesTotal > 0)
+                    DownloadEta.text(d.bytesTotal - d.bytesSoFar, bps) else ""
+                // One line, cut at the end on a narrow phone, so what matters
+                // most comes first: how far, how long, how fast, how big.
+                (if (d.bytesTotal > 0) "Downloading $pct%" else "Downloading") +
+                    (if (eta.isNotEmpty()) " \u00B7 $eta" else "") + rate + amount
             }
             else -> "Pending"
         }

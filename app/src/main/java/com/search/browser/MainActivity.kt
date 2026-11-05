@@ -986,16 +986,22 @@ class MainActivity : AppCompatActivity() {
         setTheme(R.style.Theme_Search)
         val splash = installSplashScreen()
         splash.setKeepOnScreenCondition { keepSplash }
-        // Release the splash ~1.2s after the animation so it settles, then
-        // enters. There is no app open ad to wait for any more: the browser
-        // opens straight after the splash, every time.
+        // The splash goes as soon as home is ready to be seen (home.html's
+        // homeShown, or the first page restored finishing), but not before
+        // 0.4 s, so it never just flashes, and not after 1.5 s, whatever
+        // happens. It used to stay the full 1.5 s on every launch, most of
+        // it with home already there behind it.
         // Opened for something specific (the widget, a link, a shortcut) it
         // goes as soon as the browser is drawn: the launcher's own animation
         // from the widget has already led in, and a second and a half of
         // splash after it read as a stall.
-        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-            onSplashMinimumDone()
-        }, if (savedInstanceState == null && opensForATask(intent)) 150L else 1500L)
+        val splashHandler = android.os.Handler(android.os.Looper.getMainLooper())
+        if (savedInstanceState == null && opensForATask(intent)) {
+            splashHandler.postDelayed({ onSplashMinimumDone() }, 150L)
+        } else {
+            splashHandler.postDelayed({ onSplashMinimumDone() }, 1500L)
+            splashHandler.postDelayed({ splashMinPassed = true; maybeEndSplashEarly() }, 400L)
+        }
         enableEdgeToEdge()
         // The bottom bar paints behind the navigation bar itself
         // (NavSheetView.bottomInset), so Android's own shade over the buttons
@@ -1394,6 +1400,8 @@ class MainActivity : AppCompatActivity() {
             shownAccent = HomeWash.normalise(accent)
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
+                // Home has drawn its first look: the splash can go.
+                if (activeWeb()?.tag === this@SearchAppBridge) noteSplashContentReady()
                 if (activeWeb()?.tag === this@SearchAppBridge && tabs.activeTab?.url == homePage &&
                     !searchMode) plainBars(homePage, animate = true)
             }
@@ -2430,6 +2438,8 @@ class MainActivity : AppCompatActivity() {
                     // The page's own icon list exists now.
                     showSiteIcon(tabs.activeTab?.url ?: url)
                     scheduleVideoScan(700L)
+                    // The page the browser opened on is in: the splash can go.
+                    noteSplashContentReady()
                     // A page in another language than the phone's.
                     maybeOfferTranslate(view)
                     // A long article: reader view, when that offer is on.
@@ -4423,6 +4433,9 @@ class MainActivity : AppCompatActivity() {
      * ad remains, and nothing waits for it.)
      */
     private fun onSplashMinimumDone() {
+        // Reached early (home ready) or by the 1.5 s limit: whichever is first.
+        if (splashDone) return
+        splashDone = true
         if (isFinishing || isDestroyed) { keepSplash = false; return }
         if (introFromSplash) { introFromSplash = false; openIntroFromSplash(); return }
         releaseSplash()
@@ -4431,6 +4444,24 @@ class MainActivity : AppCompatActivity() {
     private fun releaseSplash() {
         if (!keepSplash) return
         keepSplash = false
+    }
+
+    private var splashDone = false
+    private var splashMinPassed = false
+    private var splashContentReady = false
+
+    /**
+     * Home (or the page the browser reopened on) is ready to be seen: the
+     * splash may go, once its 0.4 s minimum has passed.
+     */
+    internal fun noteSplashContentReady() {
+        if (splashContentReady) return
+        splashContentReady = true
+        maybeEndSplashEarly()
+    }
+
+    private fun maybeEndSplashEarly() {
+        if (splashMinPassed && splashContentReady && keepSplash && !splashDone) onSplashMinimumDone()
     }
 
     /**
