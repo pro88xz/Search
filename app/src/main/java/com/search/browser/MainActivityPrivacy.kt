@@ -207,3 +207,31 @@ internal fun MainActivity.applyOptOut(web: android.webkit.WebView?) {
 internal fun MainActivity.syncOptOut() {
     tabs.tabs.forEach { applyOptOut(it.webView) }
 }
+
+// ---------- Unused sites lose their permissions ----------
+
+/**
+ * Once a day, as the browser comes to the front: grants of sites unused for
+ * 60 days are taken back (SitePermissions.revokeUnused), and the user is
+ * told which, as Chrome's Safety Check tells them. Settings > Search
+ * Security > Remove permissions from unused sites turns it off.
+ */
+internal fun MainActivity.checkUnusedPermissions() {
+    if (!Settings.getBool(this, Settings.PERMISSIONS_AUTO_REVOKE, true)) return
+    val now = System.currentTimeMillis()
+    val last = Settings.getLong(this, Settings.PERMISSIONS_CHECKED_AT, 0L)
+    if (now - last in 0 until 86_400_000L) return
+    Settings.setLong(this, Settings.PERMISSIONS_CHECKED_AT, now)
+    val sites = SitePermissions.revokeUnused(this)
+    if (sites.isEmpty()) return
+    val names = sites.map { SitePermissions.hostOf(it) }
+    val text = if (names.size == 1) "Removed permissions from " + names[0] +
+        ", unused for " + SitePermissions.UNUSED_DAYS + " days"
+    else "Removed permissions from " + names.size + " sites unused for " +
+        SitePermissions.UNUSED_DAYS + " days"
+    try {
+        com.google.android.material.snackbar.Snackbar
+            .make(binding.webArea, text, 6000)
+            .show()
+    } catch (e: Exception) { /* the view is going */ }
+}

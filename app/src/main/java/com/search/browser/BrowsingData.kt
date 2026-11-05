@@ -126,8 +126,23 @@ object BrowsingData {
      */
     fun deleteRecent(c: Context, minutes: Int = 15): Int {
         val since = System.currentTimeMillis() - minutes * 60_000L
-        SiteVisits.forgetSince(c, since)
+        // Over a day or more, sites seen in the window come off home's
+        // shortcuts altogether (SiteVisits.forgetSince).
+        SiteVisits.forgetSince(c, since, wholeSites = minutes >= Range.DAY.minutes)
         return History.deleteSince(c, since)
+    }
+
+    /**
+     * The time ranges Chrome offers for deleting browsing data
+     * (components/browsing_data/core/browsing_data_utils.h, TimePeriod), all
+     * but "All time", which is Clear all browsing data.
+     */
+    enum class Range(val label: String, val minutes: Int) {
+        QUARTER_HOUR("Last 15 minutes", 15),
+        HOUR("Last hour", 60),
+        DAY("Last 24 hours", 24 * 60),
+        WEEK("Last 7 days", 7 * 24 * 60),
+        FOUR_WEEKS("Last 4 weeks", 28 * 24 * 60)
     }
 
     /** Everything a browser accumulates about where you have been. Bookmarks stay. */

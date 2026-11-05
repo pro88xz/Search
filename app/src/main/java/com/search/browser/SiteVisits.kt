@@ -61,13 +61,17 @@ object SiteVisits {
      * loses a visit, and one that had only that visit is forgotten.
      */
     @Synchronized
-    fun forgetSince(c: Context, since: Long) {
+    fun forgetSince(c: Context, since: Long, wholeSites: Boolean = false) {
         val all = load(c)
         val touched = all.filterValues { it.last >= since }
         if (touched.isEmpty()) return
         touched.forEach { (k, s) ->
+            // Scores do not keep each visit's time. Over a short window one
+            // visit is the honest guess; over a day or more a site seen in it
+            // may have had many, so it goes, rather than staying on home as a
+            // shortcut to somewhere the user asked to forget.
             s.score -= 1.0
-            if (s.score < 0.5) all.remove(k)
+            if (wholeSites || s.score < 0.5) all.remove(k)
         }
         save(c, all)
     }

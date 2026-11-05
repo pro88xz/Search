@@ -137,6 +137,13 @@ class SectionActivity : AppCompatActivity() {
                 "pass for a familiar name - a common phishing trick.",
             Settings.SEC_LOOKALIKE, true
         )
+        addToggle(
+            "Remove permissions from unused sites",
+            "Takes back camera, microphone, location and pop-up permissions from " +
+                "sites you haven't used in " + SitePermissions.UNUSED_DAYS + " days. " +
+                "They'll ask again next time.",
+            Settings.PERMISSIONS_AUTO_REVOKE, true
+        )
         group("Night Owl")
         addToggle(
             "Lock Night Owl tabs when you leave",
@@ -755,6 +762,30 @@ class SectionActivity : AppCompatActivity() {
                 else "Deleted " + n + (if (n == 1) " page" else " pages") + " from the last 15 minutes",
                 android.widget.Toast.LENGTH_SHORT).show()
             refreshSizes(300L)
+        }
+        addAction("Delete history by time range",
+            "The last hour, day, week or four weeks off history and home's " +
+                "shortcuts. Cookies and cached files can only be cleared whole, above.") {
+            val ranges = BrowsingData.Range.values()
+            var picked = BrowsingData.Range.HOUR.ordinal
+            com.google.android.material.dialog.MaterialAlertDialogBuilder(
+                this, R.style.Theme_Search_Dialog)
+                .setTitle("Delete history")
+                .setSingleChoiceItems(ranges.map { it.label }.toTypedArray(), picked) { _, which ->
+                    picked = which
+                }
+                .setPositiveButton("Delete") { _, _ ->
+                    val range = ranges[picked]
+                    val n = BrowsingData.deleteRecent(this, range.minutes)
+                    val span = range.label.replaceFirstChar { it.lowercase() }
+                    android.widget.Toast.makeText(this,
+                        if (n == 0) "Nothing from the $span"
+                        else "Deleted " + n + (if (n == 1) " page" else " pages") + " from the $span",
+                        android.widget.Toast.LENGTH_SHORT).show()
+                    refreshSizes(300L)
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
         }
         addAction("Clear all browsing data",
             "History, cookies, cached files and site data. Bookmarks and " +

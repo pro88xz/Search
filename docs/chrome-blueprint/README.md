@@ -100,7 +100,7 @@ Batch numbers refer to the roadmap below.
 
 | Chrome | Source | Search | Batch |
 | --- | --- | --- | --- |
-| Delete browsing data with a time range (15 min, 1 h, 24 h, 7 days, 4 weeks, all time) and a choice of what | `components/browsing_data/core/browsing_data_utils.h` `TimePeriod` | Partial (all, or the last 15 minutes) | 2 |
+| Delete browsing data with a time range (15 min, 1 h, 24 h, 7 days, 4 weeks, all time) and a choice of what | `components/browsing_data/core/browsing_data_utils.h` `TimePeriod` | History and shortcuts by any of Chrome's ranges; each kind of data cleared on its own. WebView limit: cookies, cache and site storage clear only whole | 2 ✅ |
 | Third-party cookies | `cookie_settings.xml` | Have | — |
 | Send an opt-out request (Global Privacy Control) | `universal_opt_out_preferences.xml` | Gap. WebView limit: the header goes only on loads Search starts; `navigator.globalPrivacyControl` on every page | 1 ✅ |
 | Do Not Track | `do_not_track_preferences.xml` | Folded into the opt-out above (DNT is deprecated) | 1 ✅ |
@@ -119,7 +119,7 @@ Batch numbers refer to the roadmap below.
 | Look-alike site warning | | Have | — |
 | Dangerous download warnings | | Have (risky downloads) | — |
 | Safety check (one screen for every protection) | `SafetyHubFragment`, `safety_hub` | Gap | 4 |
-| Remove permissions from sites unused for 60 days | `unused_site_permissions_manager.cc:74` | Gap | 2 |
+| Remove permissions from sites unused for 60 days | `unused_site_permissions_manager.cc:74` | Have: camera/mic, location, pop-ups; daily check, on by default | 2 ✅ |
 | Compromised password check | | Skip (Google Password Manager) | — |
 
 ### Site settings
@@ -169,7 +169,7 @@ Batch numbers refer to the roadmap below.
 | Batch | Contents | Status |
 | --- | --- | --- |
 | 1 | Engine suggestion servers; GPC/DNT opt-out; desktop UA version; delete a history suggestion; calculator answer; motion tokens | This branch |
-| 2 | Time-range data deletion with choices; auto-remove unused permissions (60 days) | Next |
+| 2 | Time-range data deletion with choices; auto-remove unused permissions (60 days) | This branch |
 | 3 | Inline autocomplete; site search shortcuts and custom engines; ranking by frecency; clipboard text; edit-URL row | |
 | 4 | Safety check screen; Privacy review; per-site desktop; offer translate; offer reader view; homepage choice; Android font size; tab archive; Private DNS link | |
 | 5 | Preloading (androidx.webkit), app language, download location, PDFs | |

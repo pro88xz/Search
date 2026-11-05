@@ -721,6 +721,8 @@ class MainActivity : AppCompatActivity() {
         refreshScrollPrefs()
         // The privacy opt-out may have been switched in Settings.
         syncOptOut()
+        // Once a day: sites unused for 60 days lose their permissions.
+        checkUnusedPermissions()
         // Back after a while: the owl says hello - wide awake after twenty
         // minutes or more, a nod after a few. Not for a trip to Settings, a
         // permission dialog or the share sheet. After four hours, home is
