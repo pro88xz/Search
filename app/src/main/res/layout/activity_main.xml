@@ -68,7 +68,7 @@
                 android:layout_marginStart="@dimen/space_xxs"
                 android:layout_marginEnd="@dimen/space_xxs">
 
-                <EditText
+                <com.search.browser.AutocompleteEditText
                     android:id="@+id/urlBar"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"

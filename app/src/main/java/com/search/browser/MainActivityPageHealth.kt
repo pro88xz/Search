@@ -123,6 +123,9 @@ internal fun MainActivity.siteSettingsSignature(): String {
         Settings.getBool(this, Settings.SEC_SAFE_BROWSING, true),
         Settings.getBool(this, Settings.SEC_BLOCK_3P_COOKIES, false),
         Settings.getTextScale(this),
+        // Match Android font size, and the phone's font size it multiplies by.
+        Settings.getBool(this, Settings.A11Y_MATCH_FONT, false),
+        resources.configuration.fontScale,
         SiteZoom.signature(this),
         Settings.getBool(this, Settings.DARK_WEB, false)
     ).joinToString("|")
@@ -270,10 +273,44 @@ internal fun MainActivity.confirmRemoveSuggestion(item: JSONObject) {
         .setMessage(item.optString("title"))
         .setPositiveButton("Remove") { _, _ ->
             History.delete(this, url)
-            if (searchMode) fetchSuggests(binding.urlBar.text?.toString() ?: "")
+            if (searchMode) fetchSuggests(binding.urlBar.typedText)
         }
         .setNegativeButton("Cancel", null)
         .show()
+}
+
+/**
+ * Settings > Search Security > Complete addresses as you type (off by
+ * default): after two letters that begin a site the user uses, the rest of
+ * its address is shown selected in the box (AutocompleteEditText), as
+ * Chrome's omnibox does. Only with the cursor at the end, never for words
+ * with a space or a path, and only once the keyboard's edit is in.
+ */
+internal fun MainActivity.offerInlineCompletion(typed: String) {
+    if (!Settings.getBool(this, Settings.INLINE_COMPLETE, false)) return
+    val t = typed.lowercase()
+    if (t.length < 2 || t.any { it == ' ' || it == '/' || it == ':' || it == '@' }) return
+    val host = completionHosts().firstOrNull { it.length > t.length && it.startsWith(t) } ?: return
+    val field = binding.urlBar
+    field.post {
+        if (!searchMode || field.isCompleting || field.typedText != typed) return@post
+        if (field.selectionStart != typed.length || field.selectionEnd != typed.length) return@post
+        field.complete(host.substring(typed.length))
+    }
+}
+
+/** The sites to complete to: the most used (SiteVisits), then bookmarked ones. Kept 30s. */
+internal fun MainActivity.completionHosts(): List<String> {
+    val now = android.os.SystemClock.uptimeMillis()
+    if (completionHostsAt != 0L && now - completionHostsAt < 30_000L) return completionHostList
+    val hosts = LinkedHashSet<String>()
+    try {
+        SiteVisits.top(this, 40).forEach { hosts += it.first }
+        Bookmarks.load(this).forEach { b -> SiteVisits.domainOf(b.url)?.let { hosts += it } }
+    } catch (e: Exception) { }
+    completionHostList = hosts.toList()
+    completionHostsAt = now
+    return completionHostList
 }
 
 internal fun MainActivity.fetchSuggests(query: String) {

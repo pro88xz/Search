@@ -317,9 +317,22 @@ internal fun MainActivity.webPageUrl(): String? {
 
 internal fun MainActivity.needAPage() = toast("Open a page first")
 
-/** The text size for [url]: its own (Menu > Zoom) or the one from Settings. */
+/** The text size for [url]: its own (Menu > Zoom) or the one pages start at. */
 internal fun MainActivity.zoomFor(url: String?): Int =
-    SiteZoom.get(this, url) ?: Settings.getTextScale(this)
+    SiteZoom.get(this, url) ?: baseTextZoom()
+
+/**
+ * The text size pages start at: Settings > Accessibility > Text size, times
+ * the font size in Android's own settings while Match Android font size is
+ * on (Chrome's setting of the same name; off by default). The one rule every
+ * place that sets a page's text size goes through - new tabs, open tabs,
+ * Reset in Menu > Zoom - so they can never disagree.
+ */
+internal fun MainActivity.baseTextZoom(): Int {
+    val pct = Settings.getTextScale(this)
+    if (!Settings.getBool(this, Settings.A11Y_MATCH_FONT, false)) return pct
+    return Math.round(pct * resources.configuration.fontScale).coerceIn(SiteZoom.MIN, SiteZoom.MAX)
+}
 
 /**
  * Menu > Zoom: a minus, a slider and a plus in 10% steps, the page
@@ -332,7 +345,7 @@ internal fun MainActivity.showZoom() {
     val url = webPageUrl()
     val site = SiteZoom.keyOf(url)
     if (web == null || url == null || site == null) { needAPage(); return }
-    val def = Settings.getTextScale(this)
+    val def = baseTextZoom()
     val d = resources.displayMetrics.density
     fun dp(v: Int) = (v * d).toInt()
     var pct = web.settings.textZoom.coerceIn(SiteZoom.MIN, SiteZoom.MAX)
