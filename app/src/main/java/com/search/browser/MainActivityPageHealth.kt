@@ -230,6 +230,12 @@ internal fun MainActivity.pickSuggestion(item: JSONObject) {
             exitSearchMode()
             if (link.isNotBlank()) go(link)
         }
+        // The page being shown: its link, copied (cleaned of tracking tags
+        // when that setting is on). The arrow puts it in the box to edit.
+        "page" -> {
+            val link = item.optString("pageUrl")
+            if (link.isNotBlank()) copyText("Link", shareable(link))
+        }
         // The calculator's answer, or a shortcut (@tabs), goes into the box
         // to carry on from.
         "calc", "scope" -> {
@@ -251,6 +257,12 @@ internal fun MainActivity.pickSuggestion(item: JSONObject) {
  */
 internal fun MainActivity.confirmRemoveSuggestion(item: JSONObject) {
     if (suggestListMoving()) return
+    // Held, the page being shown is shared instead.
+    if (item.optString("kind") == "page") {
+        val link = item.optString("pageUrl")
+        if (link.isNotBlank()) shareLink(link, activeWeb()?.title ?: "")
+        return
+    }
     val url = item.optString("url")
     if (url.isBlank() || item.optString("kind") != "history") return
     com.google.android.material.dialog.MaterialAlertDialogBuilder(this, R.style.Theme_Search_Dialog)
@@ -266,7 +278,18 @@ internal fun MainActivity.confirmRemoveSuggestion(item: JSONObject) {
 
 internal fun MainActivity.fetchSuggests(query: String) {
     val id = ++suggestSeq
-    val q = query.trim()
+    // Search opens on a website with that page's address in the box,
+    // selected. Taken as typing, it sent the address of every page the user
+    // was on to the search engine's suggest server each time they tapped
+    // the bar. Until it is edited it is not a query: the box counts as empty
+    // (recents, the clipboard) and the page itself is offered first, as
+    // Chrome's omnibox does.
+    // The box is filled from the tab's address; the WebView's own can differ
+    // after a redirect, so either counts.
+    val pageUrl = webPageUrl()
+    val typed = query.trim()
+    val atPage = typed.isNotEmpty() && (typed == pageUrl || typed == tabs.activeTab?.url)
+    val q = if (atPage) "" else typed
     // @bookmarks, @history and @tabs (SearchScopes): the shortcuts while one
     // is being typed, then results from that place alone, on the phone -
     // nothing typed after a shortcut goes to the search engine.
@@ -297,6 +320,12 @@ internal fun MainActivity.fetchSuggests(query: String) {
     // Gathered here, on the main thread, where the tab list and the
     // clipboard live: the link just copied, then open tabs that match.
     val first = mutableListOf<JSONObject>()
+    if (atPage && pageUrl != null) {
+        val title = PageLabel.title(activeWeb()?.title ?: "", pageUrl).ifBlank { siteNameOf(pageUrl) }
+        first += JSONObject().put("kind", "page").put("title", title)
+            .put("sub", "Tap to copy link \u00B7 hold to share").put("fill", pageUrl)
+            .put("pageUrl", pageUrl).put("url", pageUrl)
+    }
     // A calculation typed in the box is answered first, on the phone (Calc).
     Calc.answer(q)?.let { result ->
         first += JSONObject().put("kind", "calc").put("title", "= $result")

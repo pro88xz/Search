@@ -160,6 +160,8 @@ class SuggestAdapter(
             "tab" -> R.drawable.nav_tabs
             // The calculator's answer (Calc).
             "calc" -> R.drawable.ic_sug_calc
+            // The page being shown: copy, share or edit its address.
+            "page" -> R.drawable.ic_sug_web
             // A shortcut (@bookmarks, @history, @tabs): the icon of where it searches.
             "scope" -> when (item.optString("title")) {
                 SearchScopes.BOOKMARKS -> R.drawable.ic_sug_bookmark
@@ -172,7 +174,8 @@ class SuggestAdapter(
         h.row.setOnClickListener { onPick(item) }
         h.fill.setOnClickListener { onFill(item) }
         // Rows are recycled, so the long-press is set or cleared every time.
-        if (item.optString("kind") == "history") {
+        // A history row offers removal; the page being shown, sharing.
+        if (item.optString("kind") == "history" || item.optString("kind") == "page") {
             h.row.setOnLongClickListener { onRemove(item); true }
         } else {
             h.row.setOnLongClickListener(null)
