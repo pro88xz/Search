@@ -206,7 +206,7 @@ internal fun MainActivity.enterSearchMode() {
     applyBarForeground()
     binding.suggestBackdrop.setBackgroundColor(pageBg)
     animateSearchIn(fieldWasShowing)
-    fetchSuggests(binding.urlBar.text.toString())
+    fetchSuggests(binding.urlBar.typedText)
 }
 
 internal fun MainActivity.exitSearchMode() {

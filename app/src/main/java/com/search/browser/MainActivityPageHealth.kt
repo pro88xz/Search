@@ -842,7 +842,7 @@ internal fun MainActivity.applyHomeCompact(compact: Boolean, animate: Boolean = 
     if (searchMode || deckVisible) return
     val url = tabs.activeTab?.url
     if (!(url == null || url == homePage)) return
-    if (compact && binding.urlBar.text.isNotEmpty()) binding.urlBar.setText("")
+    if (compact && !binding.urlBar.text.isNullOrEmpty()) binding.urlBar.setText("")
 
     homeBarAnim?.cancel()
     homeBarAnim = null
