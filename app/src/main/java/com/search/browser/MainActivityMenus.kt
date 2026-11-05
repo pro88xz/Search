@@ -539,6 +539,40 @@ internal fun MainActivity.translatePage() {
     loadInto(web, PageTranslate.translatedUrl(url, lang))
 }
 
+/**
+ * Chrome's "Offer to translate pages in other languages": a page that says it
+ * is in another language than the phone's gets a snackbar with Translate,
+ * once per site per session. The page's own lang attribute is the evidence
+ * (Chrome also reads the text itself; a page with no lang gets no offer).
+ * Never in Night Owl: translating hands the address to Google Translate.
+ */
+internal fun MainActivity.maybeOfferTranslate(view: WebView?) {
+    if (view == null || view !== activeWeb() || nightOwl) return
+    if (!Settings.getBool(this, Settings.OFFER_TRANSLATE, true)) return
+    val url = view.url ?: return
+    if (!(url.startsWith("https://") || url.startsWith("http://"))) return
+    if (PageTranslate.isTranslated(url)) return
+    val host = try { android.net.Uri.parse(url).host } catch (e: Exception) { null } ?: return
+    if (host in translateOffered) return
+    val mine = resources.configuration.locales.get(0)?.language?.lowercase()?.ifBlank { null } ?: return
+    view.evaluateJavascript("(document.documentElement&&document.documentElement.lang)||''") { r ->
+        val lang = r?.trim('"')?.lowercase()?.substringBefore('-')?.substringBefore('_') ?: ""
+        if (lang.length !in 2..3 || lang == mine) return@evaluateJavascript
+        if (isFinishing || isDestroyed || view !== activeWeb() || view.url != url) return@evaluateJavascript
+        if (!translateOffered.add(host)) return@evaluateJavascript
+        val name = java.util.Locale.forLanguageTag(lang)
+            .getDisplayLanguage(java.util.Locale.forLanguageTag(mine))
+            .ifBlank { lang }
+        try {
+            com.google.android.material.snackbar.Snackbar
+                .make(binding.webArea, "This page is in " + name, 8000)
+                .setAction("Translate") { if (activeWeb() === view) translatePage() }
+                .setActionTextColor(currentAccent())
+                .show()
+        } catch (e: Exception) { /* the view is going */ }
+    }
+}
+
 /** The article on its own, in clean type (ReaderView); again, the page as it was. */
 internal fun MainActivity.toggleReaderView() {
     val web = activeWeb() ?: return

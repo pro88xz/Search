@@ -97,7 +97,58 @@ class SectionActivity : AppCompatActivity() {
 
     // ---- Security section ----
 
+    /**
+     * Safety check, as Chrome's Safety Hub: one look at whether every
+     * protection is on, each one that is off a tap away from on, and the
+     * version of the engine pages run on. Rebuilt on every visit.
+     */
+    private fun buildSafetyCheck() {
+        group("Safety check")
+        val checks = listOf(
+            "Safe Browsing" to Settings.SEC_SAFE_BROWSING,
+            "HTTPS-only mode" to Settings.SEC_HTTPS_ONLY,
+            "Look-alike site warnings" to Settings.SEC_LOOKALIKE,
+            "Risky download warnings" to Settings.SEC_RISKY_DOWNLOADS,
+            "Removing permissions from unused sites" to Settings.PERMISSIONS_AUTO_REVOKE,
+            "Asking sites not to sell or share your data" to Settings.PRIVACY_OPT_OUT
+        )
+        // Every one of these is on unless the user turned it off.
+        val off = checks.filter { !Settings.getBool(this, it.second, true) }
+        if (off.isEmpty()) {
+            addNote("✓ All of Search's protections are on.")
+        } else {
+            addNote(if (off.size == 1) "1 protection is off." else "${off.size} protections are off.")
+            off.forEach { (name, key) ->
+                addAction(name + " is off", "Tap to turn it on.") {
+                    Settings.setBool(this, key, true)
+                    toast(name + " is on")
+                    recreate()
+                }
+            }
+        }
+        val engine = try {
+            androidx.webkit.WebViewCompat.getCurrentWebViewPackage(this)
+        } catch (e: Exception) { null }
+        if (engine != null) {
+            addAction("Browser engine " + (engine.versionName ?: ""),
+                "Pages open in Android System WebView, which Google Play keeps up to date " +
+                    "with Chrome's security fixes. Tap to check for an update.") {
+                val pkg = engine.packageName
+                try {
+                    startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,
+                        android.net.Uri.parse("market://details?id=" + pkg)))
+                } catch (e: Exception) {
+                    try {
+                        startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,
+                            android.net.Uri.parse("https://play.google.com/store/apps/details?id=" + pkg)))
+                    } catch (e2: Exception) { toast("Couldn't open the Play Store") }
+                }
+            }
+        }
+    }
+
     private fun buildSecurity() {
+        buildSafetyCheck()
         group("Protection")
         addToggle(
             "HTTPS-only mode",
@@ -337,6 +388,14 @@ class SectionActivity : AppCompatActivity() {
             Settings.A11Y_FORCE_ZOOM, false
         )
         addNote("Takes effect as pages load.")
+
+        group("Languages")
+        addToggle(
+            "Offer to translate pages",
+            "When a page is in another language than your phone's, offer to show it " +
+                "in yours through Google Translate. Never in Night Owl.",
+            Settings.OFFER_TRANSLATE, true
+        )
 
         siteZoomList = group("Sites with their own zoom")
         fillSiteZoom()

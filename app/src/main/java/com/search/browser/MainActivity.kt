@@ -1880,7 +1880,20 @@ class MainActivity : AppCompatActivity() {
             .map { Triple("bookmark", it.title, it.url) }
         val hist = History.load(this).filter { matchesQuery(it.title, it.url, query) }
             .map { Triple("history", it.title, it.url) }
-        return (marks + hist).distinctBy { it.third }.take(limit)
+        val all = (marks + hist).distinctBy { it.third }
+        // With the box empty these are recents, newest first. While typing,
+        // the sites used most come first, as Chrome ranks history matches by
+        // how often and how lately they are visited: the same frecency as
+        // home's shortcuts (SiteVisits), with a bookmark counting as a visit.
+        // Ties keep the old order (bookmarks, then newest history).
+        if (query.isEmpty()) return all.take(limit)
+        val scores = SiteVisits.scores(this)
+        return all.withIndex().sortedWith(
+            compareByDescending<IndexedValue<Triple<String, String, String>>> {
+                (scores[SiteVisits.domainOf(it.value.third) ?: ""] ?: 0.0) +
+                    (if (it.value.first == "bookmark") 1.0 else 0.0)
+            }.thenBy { it.index }
+        ).map { it.value }.take(limit)
     }
 
     /**
@@ -2438,6 +2451,8 @@ class MainActivity : AppCompatActivity() {
                     // The page's own icon list exists now.
                     showSiteIcon(tabs.activeTab?.url ?: url)
                     scheduleVideoScan(700L)
+                    // A page in another language than the phone's.
+                    maybeOfferTranslate(view)
                 }
                 // The upgrade worked, so nothing needs remembering about it.
                 url?.let { upgradedFrom.remove(it) }
@@ -5115,6 +5130,8 @@ class MainActivity : AppCompatActivity() {
     // Settings > Security > Warn about look-alike sites.
 
     internal val lookalikeWarned = HashSet<String>()
+    // Sites offered translation this session (maybeOfferTranslate).
+    internal val translateOffered = HashSet<String>()
 
     // ---------- Night Owl: lock and hide ----------
     //

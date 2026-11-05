@@ -330,16 +330,27 @@ internal fun MainActivity.copiedLinkSuggestion(q: String): JSONObject? {
             if (age < 0 || age > 10 * 60 * 1000L) return null
         }
         val offer = JSONObject().put("kind", "clip").put("title", "Link you copied")
+        // Text that is not a link is offered too, to search for, as Chrome's
+        // "Text you copied". Picking either reads the clipboard then (url
+        // left blank), and go() opens a link or searches for text.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val isLink = desc.classificationStatus ==
-                android.content.ClipDescription.CLASSIFICATION_COMPLETE &&
+            if (desc.classificationStatus !=
+                android.content.ClipDescription.CLASSIFICATION_COMPLETE) return null
+            val isLink =
                 desc.getConfidenceScore(android.view.textclassifier.TextClassifier.TYPE_URL) >= 0.5f
-            if (!isLink) return null
-            offer.put("url", "").put("sub", "Tap to open it")
+            if (isLink) offer.put("url", "").put("sub", "Tap to open it")
+            else offer.put("title", "Text you copied").put("url", "").put("sub", "Tap to search for it")
         } else {
-            val text = readClipboardText() ?: return null
-            if (!looksLikeLink(text)) return null
-            offer.put("url", text).put("sub", PageLabel.siteOf(text).ifEmpty { text })
+            val text = readClipboardText()?.trim() ?: return null
+            if (text.isEmpty()) return null
+            if (looksLikeLink(text)) {
+                offer.put("url", text).put("sub", PageLabel.siteOf(text).ifEmpty { text })
+            } else {
+                // A paragraph is not a search anyone means.
+                if (text.length > 200) return null
+                offer.put("title", "Text you copied").put("url", "")
+                    .put("sub", text.replace(Regex("\\s+"), " ").take(80)).put("fill", text)
+            }
         }
     } catch (e: Exception) { null }
 }

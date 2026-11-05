@@ -56,6 +56,13 @@ object SiteVisits {
             .take(n).map { it.key to it.value.url }
     }
 
+    /** How used each site is now, by domain, for ranking search suggestions. */
+    @Synchronized
+    fun scores(c: Context): Map<String, Double> {
+        val now = System.currentTimeMillis()
+        return load(c).mapValues { decayed(it.value, now) }
+    }
+
     /**
      * Takes back the visits made at or after [since]: a site last seen then
      * loses a visit, and one that had only that visit is forgotten.

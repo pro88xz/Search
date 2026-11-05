@@ -76,16 +76,16 @@ Batch numbers refer to the roadmap below.
 | Each engine's own suggestion server | prepopulated engines (`libchrome.so`) | **Gap (privacy bug)**: Yahoo, Ecosia, Brave, Startpage and Yandex sent keystrokes to Google's suggest server | 1 ✅ |
 | Suggestions: search, URL, history, bookmarks | `omnibox/suggestions/basic` | Have | — |
 | Switch to tab | `omnibox/suggestions/tabgroup` | Have | — |
-| Clipboard link | `omnibox/suggestions/clipboard` | Have (link). Text and image: Gap | 3 |
+| Clipboard link and text | `omnibox/suggestions/clipboard` | Have: link, and text to search for ("Text you copied"). Image: Gap | 3 ✅ |
 | Refine (fill the box from a suggestion) | `BaseSuggestionView` action | Have (`sugFill`) | — |
 | Delete a history suggestion (long-press) | `SuggestionHost.onDeleteMatch` | Gap | 1 ✅ |
-| Inline autocomplete of sites you visit | `AutocompleteMediator` | Gap | 3 |
+| Inline autocomplete of sites you visit | `AutocompleteMediator` | Gap. Deferred: rewriting the field while the keyboard is composing a word is where IME bugs live (Chrome has a dedicated model for it, `SpannableAutocompleteEditTextModel`); needs testing on a phone with Gboard and Samsung Keyboard | 3 |
 | Answers in the box (calculator) | `omnibox/suggestions/answer` | Gap: a local calculator answer | 1 ✅ |
 | Site search shortcuts (`@bookmarks`, `@tabs`, `@history`, engine keywords) | `custom_site_search_preferences.xml` | Gap | 3 |
 | Custom search engines | `custom_search_engine_preferences.xml` | Gap | 3 |
 | Edit current URL row (copy, share, edit) | `omnibox/suggestions/editurl` | Partial (long-press on the address) | 3 |
 | Cached zero-prefix suggestions | `CachedZeroSuggestionsManager` | Have (local recents are instant) | — |
-| Ranking by visits and recency | HistoryURL provider | Partial: tiles use frecency (`SiteVisits`); suggestions don't | 3 |
+| Ranking by visits and recency | HistoryURL provider | Have: history matches ranked by the same frecency as home's tiles (`SiteVisits.scores`), bookmarks boosted | 3 ✅ |
 
 ### Tabs
 
@@ -118,7 +118,7 @@ Batch numbers refer to the roadmap below.
 | Secure DNS | `privacy_preferences.xml` | WebView limit: follows Android's Private DNS. We link to it | 4 |
 | Look-alike site warning | | Have | — |
 | Dangerous download warnings | | Have (risky downloads) | — |
-| Safety check (one screen for every protection) | `SafetyHubFragment`, `safety_hub` | Gap | 4 |
+| Safety check (one screen for every protection) | `SafetyHubFragment`, `safety_hub` | Have: top of Search Security; each protection that is off, one tap to turn on; WebView version with a Play link | 4 ✅ |
 | Remove permissions from sites unused for 60 days | `unused_site_permissions_manager.cc:74` | Have: camera/mic, location, pop-ups; daily check, on by default | 2 ✅ |
 | Compromised password check | | Skip (Google Password Manager) | — |
 
@@ -142,14 +142,14 @@ Batch numbers refer to the roadmap below.
 | Default zoom, saved zoom per site, force zoom | Have | — |
 | Show zoom in the main menu | Have (Menu › Zoom) | — |
 | Simplified view (offer reader mode on articles) | Partial (Reader view on request; no offer) | 4 |
-| Match Android font size | Gap | 4 |
+| Match Android font size | Gap. Deferred: text zoom is worked out in four places (new tabs, per-site zoom, the zoom panel, the text-size presets), which need one shared rule first | 4 |
 
 ### Languages, downloads, start-up
 
 | Chrome | Search | Batch |
 | --- | --- | --- |
 | Translate page | Have | — |
-| Offer to translate pages in other languages | Gap | 4 |
+| Offer to translate pages in other languages | Have: from the page's `lang`, once per site per session, never in Night Owl (Settings › Accessibility › Languages) | 4 ✅ |
 | App language (Android 13 per-app language) | Gap: `locales_config` | 5 |
 | Download location, ask where to save | Gap (SAF picker) | 5 |
 | Automatically open PDFs | Partial | 5 |
@@ -170,6 +170,6 @@ Batch numbers refer to the roadmap below.
 | --- | --- | --- |
 | 1 | Engine suggestion servers; GPC/DNT opt-out; desktop UA version; delete a history suggestion; calculator answer; motion tokens | This branch |
 | 2 | Time-range data deletion with choices; auto-remove unused permissions (60 days) | This branch |
-| 3 | Inline autocomplete; site search shortcuts and custom engines; ranking by frecency; clipboard text; edit-URL row | |
-| 4 | Safety check screen; Privacy review; per-site desktop; offer translate; offer reader view; homepage choice; Android font size; tab archive; Private DNS link | |
+| 3 | Inline autocomplete; site search shortcuts and custom engines; ranking by frecency ✅; clipboard text ✅; edit-URL row | Partly on this branch |
+| 4 | Safety check ✅; Privacy review; per-site desktop; offer translate ✅; offer reader view; homepage choice; Android font size; tab archive; Private DNS link | Partly on this branch |
 | 5 | Preloading (androidx.webkit), app language, download location, PDFs | |
