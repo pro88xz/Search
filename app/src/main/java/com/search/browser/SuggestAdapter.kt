@@ -33,7 +33,9 @@ import org.json.JSONObject
 class SuggestAdapter(
     items: List<JSONObject>,
     private val onPick: (JSONObject) -> Unit,
-    private val onFill: (JSONObject) -> Unit = {}
+    private val onFill: (JSONObject) -> Unit = {},
+    // Long-press on a history suggestion offers to remove it from history.
+    private val onRemove: (JSONObject) -> Unit = {}
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     private companion object {
@@ -61,6 +63,9 @@ class SuggestAdapter(
         chips = items.filter { isQuery(it) }
         rows = items.filterNot { isQuery(it) }
     }
+
+    /** The suggestion shown first, as the list reads: what Enter opens after a shortcut. */
+    fun firstItem(): JSONObject? = chips.firstOrNull() ?: rows.firstOrNull()
 
     fun submit(newItems: List<JSONObject>, q: String = "") {
         query = q
@@ -129,6 +134,10 @@ class SuggestAdapter(
                 val chip = inf.inflate(R.layout.item_suggest_chip, holder.group, false) as Chip
                 chip.text = weighted(item.optString("title"))
                 chip.setOnClickListener { onPick(item) }
+                // A past search is a history entry too.
+                if (item.optString("kind") == "history") {
+                    chip.setOnLongClickListener { onRemove(item); true }
+                }
                 holder.group.addView(chip)
             }
             return
@@ -149,10 +158,28 @@ class SuggestAdapter(
             "bookmark" -> R.drawable.ic_sug_bookmark
             // An open tab: picking it switches to that tab.
             "tab" -> R.drawable.nav_tabs
+            // The calculator's answer (Calc).
+            "calc" -> R.drawable.ic_sug_calc
+            // The page being shown: copy, share or edit its address.
+            "page" -> R.drawable.ic_sug_web
+            // A shortcut (@bookmarks, @history, @tabs): the icon of where it searches.
+            "scope" -> when (item.optString("title")) {
+                SearchScopes.BOOKMARKS -> R.drawable.ic_sug_bookmark
+                SearchScopes.HISTORY -> R.drawable.ic_sug_history
+                else -> R.drawable.nav_tabs
+            }
             else -> R.drawable.ic_sug_web
         })
 
         h.row.setOnClickListener { onPick(item) }
         h.fill.setOnClickListener { onFill(item) }
+        // Rows are recycled, so the long-press is set or cleared every time.
+        // A history row offers removal; the page being shown, sharing.
+        if (item.optString("kind") == "history" || item.optString("kind") == "page") {
+            h.row.setOnLongClickListener { onRemove(item); true }
+        } else {
+            h.row.setOnLongClickListener(null)
+            h.row.isLongClickable = false
+        }
     }
 }

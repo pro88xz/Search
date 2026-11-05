@@ -151,27 +151,7 @@ internal fun MainActivity.setupSuggestOverlay() {
     if (suggestBasePad < 0) suggestBasePad = binding.suggestBackdrop.paddingBottom
     suggestAdapter = SuggestAdapter(emptyList(), { item ->
         if (suggestListMoving()) return@SuggestAdapter
-        val kind = item.optString("kind")
-        val title = item.optString("title")
-        val url = item.optString("url")
-        when (kind) {
-            // An open tab: go to it rather than loading the page again.
-            "tab" -> {
-                exitSearchMode()
-                val id = item.optLong("tabId", -1L)
-                tabs.tabs.firstOrNull { it.id == id }?.let { openTab(it) }
-            }
-            // The copied link, read now if it was not read to offer it.
-            "clip" -> {
-                val link = url.ifBlank { readClipboardText() ?: "" }
-                exitSearchMode()
-                if (link.isNotBlank()) go(link)
-            }
-            else -> {
-                exitSearchMode()
-                if (kind == "web" || url.isBlank()) go(title) else loadInto(activeWeb(), url)
-            }
-        }
+        pickSuggestion(item)
     }, { item ->
         // The arrow loads a suggestion into the box instead of running it, so
         // a near-miss can be edited rather than retyped. The box's own text
@@ -186,7 +166,7 @@ internal fun MainActivity.setupSuggestOverlay() {
         }
         binding.urlBar.setText(fill)
         binding.urlBar.setSelection(fill.length)
-    })
+    }, { item -> confirmRemoveSuggestion(item) })
     // Rows are clipped to the card's rounded corners. Set here rather
     // than in XML: android:clipToOutline is API 31+, and this app runs
     // from 24, where it would be ignored and the corner would square off
@@ -232,12 +212,125 @@ internal fun MainActivity.setupSuggestOverlay() {
         })
 }
 
+/** What picking a suggestion does: a tap on it, or Enter on a shortcut search (@tabs and the like). */
+internal fun MainActivity.pickSuggestion(item: JSONObject) {
+    val kind = item.optString("kind")
+    val title = item.optString("title")
+    val url = item.optString("url")
+    when (kind) {
+        // An open tab: go to it rather than loading the page again.
+        "tab" -> {
+            exitSearchMode()
+            val id = item.optLong("tabId", -1L)
+            tabs.tabs.firstOrNull { it.id == id }?.let { openTab(it) }
+        }
+        // The copied link, read now if it was not read to offer it.
+        "clip" -> {
+            val link = url.ifBlank { readClipboardText() ?: "" }
+            exitSearchMode()
+            if (link.isNotBlank()) go(link)
+        }
+        // The page being shown: its link, copied (cleaned of tracking tags
+        // when that setting is on). The arrow puts it in the box to edit.
+        "page" -> {
+            val link = item.optString("pageUrl")
+            if (link.isNotBlank()) copyText("Link", shareable(link))
+        }
+        // The calculator's answer, or a shortcut (@tabs), goes into the box
+        // to carry on from.
+        "calc", "scope" -> {
+            val fill = item.optString("fill")
+            binding.urlBar.setText(fill)
+            binding.urlBar.setSelection(fill.length)
+        }
+        else -> {
+            exitSearchMode()
+            if (kind == "web" || url.isBlank()) go(title) else loadInto(activeWeb(), url)
+        }
+    }
+}
+
+/**
+ * Long-press on a history suggestion: remove it from history, as Chrome's
+ * omnibox offers. The list is rebuilt from what is in the box, so the row
+ * goes at once.
+ */
+internal fun MainActivity.confirmRemoveSuggestion(item: JSONObject) {
+    if (suggestListMoving()) return
+    // Held, the page being shown is shared instead.
+    if (item.optString("kind") == "page") {
+        val link = item.optString("pageUrl")
+        if (link.isNotBlank()) shareLink(link, activeWeb()?.title ?: "")
+        return
+    }
+    val url = item.optString("url")
+    if (url.isBlank() || item.optString("kind") != "history") return
+    com.google.android.material.dialog.MaterialAlertDialogBuilder(this, R.style.Theme_Search_Dialog)
+        .setTitle("Remove from history?")
+        .setMessage(item.optString("title"))
+        .setPositiveButton("Remove") { _, _ ->
+            History.delete(this, url)
+            if (searchMode) fetchSuggests(binding.urlBar.text?.toString() ?: "")
+        }
+        .setNegativeButton("Cancel", null)
+        .show()
+}
+
 internal fun MainActivity.fetchSuggests(query: String) {
     val id = ++suggestSeq
-    val q = query.trim()
+    // Search opens on a website with that page's address in the box,
+    // selected. Taken as typing, it sent the address of every page the user
+    // was on to the search engine's suggest server each time they tapped
+    // the bar. Until it is edited it is not a query: the box counts as empty
+    // (recents, the clipboard) and the page itself is offered first, as
+    // Chrome's omnibox does.
+    // The box is filled from the tab's address; the WebView's own can differ
+    // after a redirect, so either counts.
+    val pageUrl = webPageUrl()
+    val typed = query.trim()
+    val atPage = typed.isNotEmpty() && (typed == pageUrl || typed == tabs.activeTab?.url)
+    val q = if (atPage) "" else typed
+    // @bookmarks, @history and @tabs (SearchScopes): the shortcuts while one
+    // is being typed, then results from that place alone, on the phone -
+    // nothing typed after a shortcut goes to the search engine.
+    val offers = SearchScopes.offers(query)
+    if (offers.isNotEmpty()) {
+        suggestAdapter?.submit(offers.map { (scope, what) ->
+            JSONObject().put("kind", "scope").put("title", scope)
+                .put("sub", what).put("fill", "$scope ")
+        }, q)
+        return
+    }
+    SearchScopes.parse(query)?.let { scoped ->
+        if (scoped.scope == SearchScopes.TABS) {
+            suggestAdapter?.submit(openTabSuggestions(scoped.rest, max = 8, minLength = 0), scoped.rest)
+            return
+        }
+        try {
+            suggestIo.execute {
+                if (id != suggestSeq) return@execute
+                val items = try { scopedMatches(scoped) } catch (t: Throwable) { emptyList() }
+                runOnUiThread {
+                    if (id == suggestSeq && searchMode) suggestAdapter?.submit(items, scoped.rest)
+                }
+            }
+        } catch (e: java.util.concurrent.RejectedExecutionException) { /* closing down */ }
+        return
+    }
     // Gathered here, on the main thread, where the tab list and the
     // clipboard live: the link just copied, then open tabs that match.
     val first = mutableListOf<JSONObject>()
+    if (atPage && pageUrl != null) {
+        val title = PageLabel.title(activeWeb()?.title ?: "", pageUrl).ifBlank { siteNameOf(pageUrl) }
+        first += JSONObject().put("kind", "page").put("title", title)
+            .put("sub", "Tap to copy link \u00B7 hold to share").put("fill", pageUrl)
+            .put("pageUrl", pageUrl).put("url", pageUrl)
+    }
+    // A calculation typed in the box is answered first, on the phone (Calc).
+    Calc.answer(q)?.let { result ->
+        first += JSONObject().put("kind", "calc").put("title", "= $result")
+            .put("sub", "Calculator").put("fill", result)
+    }
     copiedLinkSuggestion(q)?.let { first += it }
     first += openTabSuggestions(q)
     val firstUrls = first.map { it.optString("url") }.filter { it.isNotBlank() }.toSet()
@@ -255,19 +348,36 @@ internal fun MainActivity.fetchSuggests(query: String) {
     } catch (e: java.util.concurrent.RejectedExecutionException) { /* closing down */ }
 }
 
+/** Bookmarks or history alone, for @bookmarks and @history. Off the main thread. */
+internal fun MainActivity.scopedMatches(scoped: SearchScopes.Scoped): List<JSONObject> {
+    val found = if (scoped.scope == SearchScopes.BOOKMARKS) {
+        Bookmarks.load(this).filter { matchesQuery(it.title, it.url, scoped.rest) }
+            .map { Triple("bookmark", it.title, it.url) }
+    } else {
+        History.load(this).filter { matchesQuery(it.title, it.url, scoped.rest) }
+            .map { Triple("history", it.title, it.url) }
+    }
+    return found.distinctBy { it.third }.take(8).map { (kind, title, url) ->
+        JSONObject().put("kind", kind).put("title", PageLabel.title(title, url))
+            .put("url", url).put("sub", siteNameOf(url).ifBlank { url })
+    }
+}
+
 /**
  * Open tabs matching what is typed, offered as "Switch to tab" - so typing
  * the name of a site already open goes to it instead of opening it twice.
  * Night Owl's tabs and the others are never offered across the line.
  */
-internal fun MainActivity.openTabSuggestions(q: String): List<JSONObject> {
-    if (q.length < 2) return emptyList()
+internal fun MainActivity.openTabSuggestions(
+    q: String, max: Int = 2, minLength: Int = 2
+): List<JSONObject> {
+    if (q.length < minLength) return emptyList()
     val active = tabs.activeTab
     return tabs.tabs.asSequence()
         .filter { it !== active && it.isPrivate == nightOwl }
         .filter { it.url.startsWith("http://") || it.url.startsWith("https://") }
         .filter { matchesQuery(it.title, it.url, q) }
-        .take(2)
+        .take(max)
         .map { t ->
             JSONObject()
                 .put("kind", "tab")
@@ -299,16 +409,27 @@ internal fun MainActivity.copiedLinkSuggestion(q: String): JSONObject? {
             if (age < 0 || age > 10 * 60 * 1000L) return null
         }
         val offer = JSONObject().put("kind", "clip").put("title", "Link you copied")
+        // Text that is not a link is offered too, to search for, as Chrome's
+        // "Text you copied". Picking either reads the clipboard then (url
+        // left blank), and go() opens a link or searches for text.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val isLink = desc.classificationStatus ==
-                android.content.ClipDescription.CLASSIFICATION_COMPLETE &&
+            if (desc.classificationStatus !=
+                android.content.ClipDescription.CLASSIFICATION_COMPLETE) return null
+            val isLink =
                 desc.getConfidenceScore(android.view.textclassifier.TextClassifier.TYPE_URL) >= 0.5f
-            if (!isLink) return null
-            offer.put("url", "").put("sub", "Tap to open it")
+            if (isLink) offer.put("url", "").put("sub", "Tap to open it")
+            else offer.put("title", "Text you copied").put("url", "").put("sub", "Tap to search for it")
         } else {
-            val text = readClipboardText() ?: return null
-            if (!looksLikeLink(text)) return null
-            offer.put("url", text).put("sub", PageLabel.siteOf(text).ifEmpty { text })
+            val text = readClipboardText()?.trim() ?: return null
+            if (text.isEmpty()) return null
+            if (looksLikeLink(text)) {
+                offer.put("url", text).put("sub", PageLabel.siteOf(text).ifEmpty { text })
+            } else {
+                // A paragraph is not a search anyone means.
+                if (text.length > 200) return null
+                offer.put("title", "Text you copied").put("url", "")
+                    .put("sub", text.replace(Regex("\\s+"), " ").take(80)).put("fill", text)
+            }
         }
     } catch (e: Exception) { null }
 }

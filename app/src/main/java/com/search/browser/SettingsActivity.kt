@@ -111,6 +111,8 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun setupEngines() {
         val group = findViewById<RadioGroup>(R.id.engineGroup)
+        // Built again after the user's own engine is added, changed or removed.
+        group.removeAllViews()
         val current = Settings.getEngineName(this)
         val iconPx = (22 * resources.displayMetrics.density).toInt()
         Settings.ENGINES.keys.forEach { name ->
@@ -128,6 +130,92 @@ class SettingsActivity : AppCompatActivity() {
             if (name == current) group.check(rb.id)
             loadEngineIcon(rb, name, iconPx)
         }
+        // The user's own engine, after the built-in ones; held, it can be
+        // changed or removed.
+        val custom = Settings.customEngine(this)
+        if (custom != null) {
+            val rb = RadioButton(this)
+            rb.id = android.view.View.generateViewId()
+            rb.text = custom.first
+            rb.textSize = 16f
+            rb.setPadding(8, 20, 8, 20)
+            rb.setOnClickListener {
+                Settings.setEngine(this, custom.first)
+                Toast.makeText(this, "Search engine: " + custom.first, Toast.LENGTH_SHORT).show()
+            }
+            rb.setOnLongClickListener { editCustomEngine(); true }
+            group.addView(rb)
+            if (custom.first == current) group.check(rb.id)
+        }
+        val add = TextView(this)
+        add.text = if (custom == null) "+ Add a search engine" else "Change or remove " + custom.first
+        add.textSize = 15f
+        add.setTextColor(Settings.accentInk(this))
+        val pad = (12 * resources.displayMetrics.density).toInt()
+        add.setPadding(pad, pad, pad, pad)
+        add.minHeight = (48 * resources.displayMetrics.density).toInt()
+        add.gravity = android.view.Gravity.CENTER_VERTICAL
+        add.setOnClickListener { editCustomEngine() }
+        group.addView(add)
+    }
+
+    /**
+     * A search engine of the user's own, as Chrome's Manage search engines
+     * allows: a name and the address of a search with %s where the words go.
+     */
+    private fun editCustomEngine() {
+        val existing = Settings.customEngine(this)
+        val dp = resources.displayMetrics.density
+        val box = android.widget.LinearLayout(this)
+        box.orientation = android.widget.LinearLayout.VERTICAL
+        box.setPadding((24 * dp).toInt(), (8 * dp).toInt(), (24 * dp).toInt(), 0)
+        val name = android.widget.EditText(this)
+        name.hint = "Name"
+        name.isSingleLine = true
+        name.setText(existing?.first ?: "")
+        val url = android.widget.EditText(this)
+        url.hint = "https://example.com/search?q=%s"
+        url.isSingleLine = true
+        url.inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI
+        url.setText(existing?.second ?: "")
+        val note = TextView(this)
+        note.text = "Search for anything on the site, copy the address of the results " +
+            "and put %s where your words were."
+        note.textSize = 13f
+        note.setPadding(0, (8 * dp).toInt(), 0, 0)
+        box.addView(name)
+        box.addView(url)
+        box.addView(note)
+        val dialog = com.google.android.material.dialog.MaterialAlertDialogBuilder(
+            this, R.style.Theme_Search_Dialog)
+            .setTitle(if (existing == null) "Add a search engine" else "Your search engine")
+            .setView(box)
+            .setPositiveButton("Save") { _, _ ->
+                val n = name.text.toString().trim()
+                val u = url.text.toString().trim()
+                when {
+                    n.isEmpty() -> toast("Give it a name")
+                    Settings.ENGINES.keys.any { it.equals(n, ignoreCase = true) } ->
+                        toast(n + " is already in the list")
+                    !Settings.isEngineTemplate(u) ->
+                        toast("The address needs to start with https:// and have %s in it")
+                    else -> {
+                        Settings.setCustomEngine(this, n, u)
+                        Settings.setEngine(this, n)
+                        toast("Search engine: " + n)
+                        setupEngines()
+                    }
+                }
+            }
+            .setNegativeButton("Cancel", null)
+        if (existing != null) {
+            dialog.setNeutralButton("Remove") { _, _ ->
+                Settings.clearCustomEngine(this)
+                toast("Removed " + existing.first)
+                setupEngines()
+            }
+        }
+        dialog.show()
     }
 
     /** Loads an engine's favicon (crisp, requested at 2x) onto its radio button

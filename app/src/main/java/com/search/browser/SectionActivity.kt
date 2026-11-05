@@ -97,7 +97,58 @@ class SectionActivity : AppCompatActivity() {
 
     // ---- Security section ----
 
+    /**
+     * Safety check, as Chrome's Safety Hub: one look at whether every
+     * protection is on, each one that is off a tap away from on, and the
+     * version of the engine pages run on. Rebuilt on every visit.
+     */
+    private fun buildSafetyCheck() {
+        group("Safety check")
+        val checks = listOf(
+            "Safe Browsing" to Settings.SEC_SAFE_BROWSING,
+            "HTTPS-only mode" to Settings.SEC_HTTPS_ONLY,
+            "Look-alike site warnings" to Settings.SEC_LOOKALIKE,
+            "Risky download warnings" to Settings.SEC_RISKY_DOWNLOADS,
+            "Removing permissions from unused sites" to Settings.PERMISSIONS_AUTO_REVOKE,
+            "Asking sites not to sell or share your data" to Settings.PRIVACY_OPT_OUT
+        )
+        // Every one of these is on unless the user turned it off.
+        val off = checks.filter { !Settings.getBool(this, it.second, true) }
+        if (off.isEmpty()) {
+            addNote("✓ All of Search's protections are on.")
+        } else {
+            addNote(if (off.size == 1) "1 protection is off." else "${off.size} protections are off.")
+            off.forEach { (name, key) ->
+                addAction(name + " is off", "Tap to turn it on.") {
+                    Settings.setBool(this, key, true)
+                    toast(name + " is on")
+                    recreate()
+                }
+            }
+        }
+        val engine = try {
+            androidx.webkit.WebViewCompat.getCurrentWebViewPackage(this)
+        } catch (e: Exception) { null }
+        if (engine != null) {
+            addAction("Browser engine " + (engine.versionName ?: ""),
+                "Pages open in Android System WebView, which Google Play keeps up to date " +
+                    "with Chrome's security fixes. Tap to check for an update.") {
+                val pkg = engine.packageName
+                try {
+                    startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,
+                        android.net.Uri.parse("market://details?id=" + pkg)))
+                } catch (e: Exception) {
+                    try {
+                        startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,
+                            android.net.Uri.parse("https://play.google.com/store/apps/details?id=" + pkg)))
+                    } catch (e2: Exception) { toast("Couldn't open the Play Store") }
+                }
+            }
+        }
+    }
+
     private fun buildSecurity() {
+        buildSafetyCheck()
         group("Protection")
         addToggle(
             "HTTPS-only mode",
@@ -137,6 +188,13 @@ class SectionActivity : AppCompatActivity() {
                 "pass for a familiar name - a common phishing trick.",
             Settings.SEC_LOOKALIKE, true
         )
+        addToggle(
+            "Remove permissions from unused sites",
+            "Takes back camera, microphone, location and pop-up permissions from " +
+                "sites you haven't used in " + SitePermissions.UNUSED_DAYS + " days. " +
+                "They'll ask again next time.",
+            Settings.PERMISSIONS_AUTO_REVOKE, true
+        )
         group("Night Owl")
         addToggle(
             "Lock Night Owl tabs when you leave",
@@ -156,6 +214,12 @@ class SectionActivity : AppCompatActivity() {
             "Take tracking tags (utm_, fbclid and the like) off links you tap, copy " +
                 "or share. The page is the same without them.",
             Settings.CLEAN_LINKS, true
+        )
+        addToggle(
+            "Ask sites not to sell or share your data",
+            "Sends Global Privacy Control, the opt-out signal privacy laws recognise, " +
+                "and Do Not Track. Each site decides how it responds.",
+            Settings.PRIVACY_OPT_OUT, true
         )
         addToggle(
             "Search suggestions",
@@ -324,6 +388,14 @@ class SectionActivity : AppCompatActivity() {
             Settings.A11Y_FORCE_ZOOM, false
         )
         addNote("Takes effect as pages load.")
+
+        group("Languages")
+        addToggle(
+            "Offer to translate pages",
+            "When a page is in another language than your phone's, offer to show it " +
+                "in yours through Google Translate. Never in Night Owl.",
+            Settings.OFFER_TRANSLATE, true
+        )
 
         siteZoomList = group("Sites with their own zoom")
         fillSiteZoom()
@@ -749,6 +821,30 @@ class SectionActivity : AppCompatActivity() {
                 else "Deleted " + n + (if (n == 1) " page" else " pages") + " from the last 15 minutes",
                 android.widget.Toast.LENGTH_SHORT).show()
             refreshSizes(300L)
+        }
+        addAction("Delete history by time range",
+            "The last hour, day, week or four weeks off history and home's " +
+                "shortcuts. Cookies and cached files can only be cleared whole, above.") {
+            val ranges = BrowsingData.Range.values()
+            var picked = BrowsingData.Range.HOUR.ordinal
+            com.google.android.material.dialog.MaterialAlertDialogBuilder(
+                this, R.style.Theme_Search_Dialog)
+                .setTitle("Delete history")
+                .setSingleChoiceItems(ranges.map { it.label }.toTypedArray(), picked) { _, which ->
+                    picked = which
+                }
+                .setPositiveButton("Delete") { _, _ ->
+                    val range = ranges[picked]
+                    val n = BrowsingData.deleteRecent(this, range.minutes)
+                    val span = range.label.replaceFirstChar { it.lowercase() }
+                    android.widget.Toast.makeText(this,
+                        if (n == 0) "Nothing from the $span"
+                        else "Deleted " + n + (if (n == 1) " page" else " pages") + " from the $span",
+                        android.widget.Toast.LENGTH_SHORT).show()
+                    refreshSizes(300L)
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
         }
         addAction("Clear all browsing data",
             "History, cookies, cached files and site data. Bookmarks and " +

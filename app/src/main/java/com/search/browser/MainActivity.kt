@@ -719,6 +719,10 @@ class MainActivity : AppCompatActivity() {
         if (AppOpenAds.takeOpen() == AppOpenAds.WARM_OPEN) warmOpenAd()
         resumePendingApkInstall()
         refreshScrollPrefs()
+        // The privacy opt-out may have been switched in Settings.
+        syncOptOut()
+        // Once a day: sites unused for 60 days lose their permissions.
+        checkUnusedPermissions()
         // Back after a while: the owl says hello - wide awake after twenty
         // minutes or more, a nod after a few. Not for a trip to Settings, a
         // permission dialog or the share sheet. After four hours, home is
@@ -1876,7 +1880,20 @@ class MainActivity : AppCompatActivity() {
             .map { Triple("bookmark", it.title, it.url) }
         val hist = History.load(this).filter { matchesQuery(it.title, it.url, query) }
             .map { Triple("history", it.title, it.url) }
-        return (marks + hist).distinctBy { it.third }.take(limit)
+        val all = (marks + hist).distinctBy { it.third }
+        // With the box empty these are recents, newest first. While typing,
+        // the sites used most come first, as Chrome ranks history matches by
+        // how often and how lately they are visited: the same frecency as
+        // home's shortcuts (SiteVisits), with a bookmark counting as a visit.
+        // Ties keep the old order (bookmarks, then newest history).
+        if (query.isEmpty()) return all.take(limit)
+        val scores = SiteVisits.scores(this)
+        return all.withIndex().sortedWith(
+            compareByDescending<IndexedValue<Triple<String, String, String>>> {
+                (scores[SiteVisits.domainOf(it.value.third) ?: ""] ?: 0.0) +
+                    (if (it.value.first == "bookmark") 1.0 else 0.0)
+            }.thenBy { it.index }
+        ).map { it.value }.take(limit)
     }
 
     /**
@@ -1906,12 +1923,11 @@ class MainActivity : AppCompatActivity() {
         // Settings > Search Security > Search suggestions off: what is typed
         // stays on the phone until it is searched for.
         if (!Settings.getBool(this, Settings.SEARCH_SUGGESTIONS, true)) return emptyList()
-        val q = URLEncoder.encode(query, "UTF-8")
-        val endpoint = when (Settings.getEngineName(this)) {
-            "DuckDuckGo" -> "https://duckduckgo.com/ac/?type=list&q=$q"
-            "Bing" -> "https://api.bing.com/osjson.aspx?query=$q"
-            else -> "https://www.google.com/complete/search?client=chrome&q=$q"
-        }
+        // The chosen engine's own suggest server: before, every engine but
+        // DuckDuckGo and Bing asked Google's (SuggestEndpoints).
+        val endpoint = SuggestEndpoints.url(
+            Settings.getEngineName(this), query, java.util.Locale.getDefault().toLanguageTag())
+            ?: return emptyList()
         return try {
             val conn = URL(endpoint).openConnection() as HttpURLConnection
             conn.connectTimeout = 3000
@@ -1919,9 +1935,7 @@ class MainActivity : AppCompatActivity() {
             conn.setRequestProperty("User-Agent", "Mozilla/5.0")
             val body = conn.inputStream.bufferedReader().use { it.readText() }
             conn.disconnect()
-            val cleaned = body.trim().removePrefix(")]}'").trim()
-            val list = JSONArray(cleaned).optJSONArray(1) ?: return emptyList()
-            (0 until list.length()).mapNotNull { i -> list.optString(i, null) }
+            SuggestEndpoints.parse(body)
         } catch (e: Exception) {
             emptyList()
         }
@@ -2064,15 +2078,13 @@ class MainActivity : AppCompatActivity() {
             // the legacy "Version/4.0" token. Strict sites (e.g. Notion) read
             // "Version/4.0" as an ancient browser and block it, so removing it
             // lets those sites render normally.
-            userAgentString = userAgentString
-                .replace("; wv", "")
-                .replace("Version/4.0 ", "")
+            val webViewAgent = userAgentString
+            userAgentString = UserAgents.mobile(webViewAgent)
 
             // --- Desktop mode ---
             if (Settings.getBool(this@MainActivity, Settings.DESKTOP_MODE, false)) {
-                userAgentString =
-                    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 " +
-                    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                // Desktop Chrome at the version this WebView really is.
+                userAgentString = UserAgents.desktop(webViewAgent)
                 useWideViewPort = true
                 loadWithOverviewMode = true
                 builtInZoomControls = true
@@ -2129,6 +2141,8 @@ class MainActivity : AppCompatActivity() {
                 // An older WebView that says it can and cannot: the page-finished route below.
             }
         }
+        // Settings > Privacy > Ask sites not to sell or share your data.
+        applyOptOut(web)
 
         web.webViewClient = object : WebViewClient() {
             /**
@@ -2438,6 +2452,8 @@ class MainActivity : AppCompatActivity() {
                     // The page's own icon list exists now.
                     showSiteIcon(tabs.activeTab?.url ?: url)
                     scheduleVideoScan(700L)
+                    // A page in another language than the phone's.
+                    maybeOfferTranslate(view)
                 }
                 // The upgrade worked, so nothing needs remembering about it.
                 url?.let { upgradedFrom.remove(it) }
@@ -3053,7 +3069,9 @@ class MainActivity : AppCompatActivity() {
         val target = web ?: return
         (target.tag as? SearchAppBridge)?.privileged =
             url.startsWith("file:///android_asset/")
-        target.loadUrl(url)
+        // The privacy opt-out's headers ride on loads Search starts.
+        val headers = optOutHeaders(url)
+        if (headers.isEmpty()) target.loadUrl(url) else target.loadUrl(url, headers)
         // Leaving home: the feed ad card goes now, not when the next page
         // commits. Home stays on screen until then, and a search or a story
         // opened from it showed the card over home and then over the new page
@@ -5113,6 +5131,8 @@ class MainActivity : AppCompatActivity() {
     // Settings > Security > Warn about look-alike sites.
 
     internal val lookalikeWarned = HashSet<String>()
+    // Sites offered translation this session (maybeOfferTranslate).
+    internal val translateOffered = HashSet<String>()
 
     // ---------- Night Owl: lock and hide ----------
     //
@@ -5478,7 +5498,15 @@ return {title:title,lang:(document.documentElement.lang||''),parts:parts};
         binding.urlBar.setOnEditorActionListener { _, actionId, event ->
             val enter = actionId == EditorInfo.IME_ACTION_GO ||
                 event?.keyCode == KeyEvent.KEYCODE_ENTER
-            if (enter) { go(binding.urlBar.text.toString()); true } else false
+            if (enter) {
+                val text = binding.urlBar.text.toString()
+                // After a shortcut (@tabs mail), Enter opens the best match, as
+                // in Chrome; it never searches the web for "@tabs mail".
+                if (SearchScopes.parse(text) != null || SearchScopes.offers(text).isNotEmpty()) {
+                    suggestAdapter?.firstItem()?.let { pickSuggestion(it) }
+                } else go(text)
+                true
+            } else false
         }
     }
 

@@ -152,3 +152,86 @@ internal fun MainActivity.maybeOfferDefaultBrowser() {
         .setNegativeButton("Not now", null)
         .show()
 }
+
+// ---------- Ask sites not to sell or share your data ----------
+
+/**
+ * Global Privacy Control, the signal US state privacy laws (California's
+ * among them) recognise as a request to opt out of the sale or sharing of
+ * your data, plus the older Do Not Track. Chrome offers it as "Send an
+ * opt-out request to sites regarding use of your data"
+ * (universal_opt_out_preferences.xml); this is the same, on by default.
+ *
+ * Sites read it two ways, and WebView lets Search give one fully and one in
+ * part. navigator.globalPrivacyControl (and navigator.doNotTrack) is set from
+ * the moment every document starts, in every frame - which is what consent
+ * tools check. The Sec-GPC and DNT request headers go only on loads Search
+ * starts itself (an address typed, a search, a link from another app): a
+ * WebView cannot add a header to the requests a page makes on its own.
+ */
+internal const val OPT_OUT_JS = "(function(){try{" +
+    "Object.defineProperty(navigator,'globalPrivacyControl',{get:function(){return true},configurable:true});" +
+    "Object.defineProperty(navigator,'doNotTrack',{get:function(){return '1'},configurable:true});" +
+    "}catch(e){}})();"
+
+internal fun MainActivity.optOutOn(): Boolean =
+    Settings.getBool(this, Settings.PRIVACY_OPT_OUT, true)
+
+/** The opt-out headers for a load Search starts, or none. */
+internal fun MainActivity.optOutHeaders(url: String): Map<String, String> =
+    if (optOutOn() && (url.startsWith("https://") || url.startsWith("http://")))
+        mapOf("Sec-GPC" to "1", "DNT" to "1")
+    else emptyMap()
+
+/**
+ * Adds or removes the opt-out script on [web] to match Settings. Takes effect
+ * from the next page that view loads. Where WebView cannot run scripts at
+ * document start, the headers above are all there is.
+ */
+internal fun MainActivity.applyOptOut(web: android.webkit.WebView?) {
+    val v = web as? BrowserWebView ?: return
+    val on = optOutOn()
+    if (on && v.optOutScript == null) {
+        if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
+            try {
+                v.optOutScript = androidx.webkit.WebViewCompat.addDocumentStartJavaScript(v, OPT_OUT_JS, setOf("*"))
+            } catch (e: Exception) { /* a WebView that says it can and cannot */ }
+        }
+    } else if (!on && v.optOutScript != null) {
+        try { v.optOutScript?.remove() } catch (e: Exception) { }
+        v.optOutScript = null
+    }
+}
+
+/** Every live tab brought in line with Settings, as the browser comes back from it. */
+internal fun MainActivity.syncOptOut() {
+    tabs.tabs.forEach { applyOptOut(it.webView) }
+}
+
+// ---------- Unused sites lose their permissions ----------
+
+/**
+ * Once a day, as the browser comes to the front: grants of sites unused for
+ * 60 days are taken back (SitePermissions.revokeUnused), and the user is
+ * told which, as Chrome's Safety Check tells them. Settings > Search
+ * Security > Remove permissions from unused sites turns it off.
+ */
+internal fun MainActivity.checkUnusedPermissions() {
+    if (!Settings.getBool(this, Settings.PERMISSIONS_AUTO_REVOKE, true)) return
+    val now = System.currentTimeMillis()
+    val last = Settings.getLong(this, Settings.PERMISSIONS_CHECKED_AT, 0L)
+    if (now - last in 0 until 86_400_000L) return
+    Settings.setLong(this, Settings.PERMISSIONS_CHECKED_AT, now)
+    val sites = SitePermissions.revokeUnused(this)
+    if (sites.isEmpty()) return
+    val names = sites.map { SitePermissions.hostOf(it) }
+    val text = if (names.size == 1) "Removed permissions from " + names[0] +
+        ", unused for " + SitePermissions.UNUSED_DAYS + " days"
+    else "Removed permissions from " + names.size + " sites unused for " +
+        SitePermissions.UNUSED_DAYS + " days"
+    try {
+        com.google.android.material.snackbar.Snackbar
+            .make(binding.webArea, text, 6000)
+            .show()
+    } catch (e: Exception) { /* the view is going */ }
+}

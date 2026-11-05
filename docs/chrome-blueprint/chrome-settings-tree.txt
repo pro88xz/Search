@@ -1,0 +1,429 @@
+
+######## MAIN (chrome/android/java/res/xml/main_preferences.xml)
+- settings_promo_card  [SettingsPromoCardPreference]
+## You and Google
+- sign_in  [SignInPreference]
+- Google services  [ChromeBasePreference]
+## Basics
+- Search engine  [ChromeBasePreference]
+- Address bar  [ChromeBasePreference]
+  - address_bar_header  [AddressBarHeaderPreference]
+  - address_bar_title  [TextMessagePreference] — You can also touch and hold the address bar to change the position.
+  - address_bar_preference  [AddressBarPreference]
+- Privacy and security  [ChromeBasePreference]
+- Safety check  [ChromeBasePreference]
+  - browser_state_indicator  [CardPreference]
+  - safety_hub_description  [TextMessagePreference] — Chrome regularly checks to make sure your browser has the safest settings. We'll let you know if anything need
+  ## Safety at a glance
+    - Updates  [SafetyHubExpandablePreference]
+    - No compromised passwords found  [SafetyHubExpandablePreference]
+    - Checking passwords on this device…  [SafetyHubExpandablePreference]
+    - Checking passwords on this device…  [SafetyHubExpandablePreference]
+    - Safe Browsing is on  [SafetyHubExpandablePreference]
+    - Permissions look good  [SafetyHubExpandablePreference]
+  - Learn how Chrome keeps you safe  [SafetyHubExpandablePreferenceCategory]
+    - Chrome’s safety tools  [Preference] — With tools from Chrome, you can browse safely and stay in control
+    - Chrome Incognito  [Preference] — Incognito mode keeps your browsing private from others who use your device
+    - Safe Browsing  [Preference] — Chrome warns you about unsafe sites and downloads
+- Default browser  [ChromeBasePreference]
+- Autofill and passwords  [ChromeBasePreference]
+## Advanced
+- @string/tabs_settings_title  [ChromeBasePreference]
+- @string/options_homepage_title  [ChromeBasePreference]
+- Notifications  [ChromeBasePreference]
+- Appearance  [ChromeBasePreference]
+- On startup  [ChromeBasePreference]
+- @string/glic_setting_label  [ChromeBasePreference]
+- Accessibility  [ChromeBasePreference]
+  - page_zoom_default_zoom  [PageZoomPreference]
+  - Saved zoom for sites  [ChromeBasePreference]
+  - Match Android font size  [ChromeSwitchPreference] — When enabled, Chrome will adjust web content size to match your Android setting
+  - Show zoom option in main menu  [ChromeSwitchPreference] — Make it easier to customize zoom for different sites
+  - Force enable zoom  [ChromeSwitchPreference] — Override a website’s request to prevent zooming in
+  - Simplified view for web pages  [ChromeSwitchPreference] — Get notified when an article can be shown in simplified view
+  - Show hyperlinks  [ChromeSwitchPreference] — Show links once Reading Mode is on
+  - Navigate pages with a text cursor when a keyboard is attached  [ChromeSwitchPreference] — To turn caret browsing on or off, use the shortcut F7
+  - Captions  [ChromeBasePreference]
+  - Image descriptions  [ChromeBasePreference]
+  - Swipe between pages using a touchpad  [ChromeSwitchPreference] — Navigate back and forth by swiping with two fingers on the touchpad
+- Site settings  [ChromeBasePreference]
+  - All sites  [ChromeBasePreference]
+    - clear_browsing_data_link  [ChromeBasePreference]
+  ## Permissions
+  - device_location  [ChromeBasePreference]
+    - card_preference  [CardPreference]
+    - info_text  [TextMessagePreference]
+    - binary_toggle  [ChromeSwitchPreference]
+    - binary_radio_button  [BinaryStatePermissionPreference]
+    - tri_state_toggle  [TriStateSiteSettingsPreference]
+    - cookie_toggle  [CookieSettingsPreference]
+    - toggle_disable_reason  [ChromeBasePreference]
+    - Use quieter messaging (blocks notification prompts from interrupting you)  [ChromeBaseCheckBoxPreference]
+    - Vibrate  [ChromeBaseCheckBoxPreference] — Notifications may vibrate the device
+    - notifications_tri_state_toggle  [TriStatePermissionPreference]
+    - location_tri_state_toggle  [TriStatePermissionPreference]
+    - When the window is narrow, request mobile view  [ChromeBaseCheckBoxPreference]
+    - protected_content_learn_more  [LearnMorePreference]
+    - managed_group  [ExpandablePreferenceGroup]
+    - blocked_group  [ExpandablePreferenceGroup]
+    - allowed_group  [ExpandablePreferenceGroup]
+    ## When on
+    - anti_abuse_when_on_section_one  [TextMessagePreference] — A site you visit can save a small amount of info with Chrome, mainly to validate you're not a bot
+    - anti_abuse_when_on_section_two  [TextMessagePreference] — As you keep browsing, sites can check with Chrome and verify with a previous site you've visited that you're l
+    - anti_abuse_when_on_section_three  [TextMessagePreference] — Browsing is faster because a site is less likely to ask you to verify you're a real person
+    ## Things to consider
+    - anti_abuse_things_to_consider_section_one  [TextMessagePreference] — This setting works without identifying you or allowing sites to see your browsing history, though sites can sh
+  - camera  [ChromeBasePreference]
+  - microphone  [ChromeBasePreference]
+  - notifications  [ChromeBasePreference]
+  - storage_access  [ChromeBasePreference]
+  - sensors  [ChromeBasePreference]
+  - nfc  [ChromeBasePreference]
+  - usb  [ChromeBasePreference]
+  - serial_port  [ChromeBasePreference]
+  - hid_devices  [ChromeBasePreference]
+  - file_editing  [ChromeBasePreference]
+  - clipboard  [ChromeBasePreference]
+  - bluetooth  [ChromeBasePreference]
+  - bluetooth_scanning  [ChromeBasePreference]
+  - virtual_reality  [ChromeBasePreference]
+  - augmented_reality  [ChromeBasePreference]
+  - hand_tracking  [ChromeBasePreference]
+  - idle_detection  [ChromeBasePreference]
+  - window_management  [ChromeBasePreference]
+  - auto_picture_in_picture  [ChromeBasePreference]
+  - local_network  [ChromeBasePreference]
+  - loopback_network  [ChromeBasePreference]
+  ## Content
+  - third_party_cookies  [ChromeBasePreference]
+  - javascript  [ChromeBasePreference]
+  - popups  [ChromeBasePreference]
+  - sound  [ChromeBasePreference]
+  - ads  [ChromeBasePreference]
+  - protected_content  [ChromeBasePreference]
+  - federated_identity_api  [ChromeBasePreference]
+  - anti_abuse  [ChromeBasePreference]
+  - site_data  [ChromeBasePreference]
+  - request_desktop_site  [ChromeBasePreference]
+  - auto_dark_web_content  [ChromeBasePreference]
+  - background_sync  [ChromeBasePreference]
+  - automatic_downloads  [ChromeBasePreference]
+  - javascript_optimizer  [ChromeBasePreference]
+  - Saved zoom for sites  [ChromeBasePreference]
+  - Data stored  [ChromeBasePreference]
+  - Automatically remove permissions  [ChromeSwitchPreference] — To protect your data, let Chrome remove permissions from sites that you haven’t visited recently
+- Languages  [ChromeBasePreference]
+  ## app_language_section
+    - app_language_preference  [LanguageItemPickerPreference]
+  ## Preferred languages
+    - languages_list_description_preference  [TextMessagePreference] — Let websites know the languages you speak. They’ll show content in those languages, when possible.
+    - content_languages_preference  [ContentLanguagesPreference]
+  ## Translation settings
+    - Offer to send pages in other languages to Google Translate  [ChromeSwitchPreference]
+    ## Advanced
+      - Translate into this language  [LanguageItemPickerPreference]
+      - Automatically translate these languages  [LanguageItemListPreference]
+      - Don’t offer to translate these languages  [LanguageItemListPreference]
+  - languages_list_description_preference  [TextMessagePreference] — Let websites know the languages you speak. They’ll show content in those languages, when possible.
+  - preferred_languages  [ContentLanguagesPreference]
+  - Offer to translate pages in other languages  [ChromeSwitchPreference]
+- Downloads  [ChromeBasePreference]
+  - Download location  [DownloadLocationPreference]
+  - Ask where to save files  [ChromeSwitchPreference]
+  - Automatically open PDFs  [ChromeSwitchPreference]
+- Developer options  [ChromeBasePreference]
+- About Chrome  [ChromeBasePreference]
+
+######## about_chrome_preferences (chrome/android/java/res/xml/about_chrome_preferences.xml)
+- Application version  [LongClickCopySummaryPreference]
+- Operating system  [AboutChromePreferenceOSVersion]
+- Legal information  [LongClickCopySummaryPreference]
+
+######## account_management_preferences (chrome/android/java/res/xml/account_management_preferences.xml)
+- parent_account_category  [TextMessagePreference]
+- identity_error_card  [IdentityErrorCardPreference]
+## Signed in to Google as
+- sign_out_divider  [Preference]
+- Sign out of Chrome  [ChromeBasePreference]
+
+######## adaptive_toolbar_preference (chrome/browser/ui/android/toolbar/java/res/xml/adaptive_toolbar_preference.xml)
+- adaptive_toolbar_header  [AdaptiveToolbarHeaderPreference]
+- Toolbar shortcut  [ChromeSwitchPreference]
+- adaptive_toolbar_radio_group  [RadioButtonGroupAdaptiveToolbarPreference]
+
+######## appearance_preferences (chrome/android/java/res/xml/appearance_preferences.xml)
+- Theme  [ChromeBasePreference]
+  - ui_theme_pref  [RadioButtonGroupThemePreference]
+- Address bar  [ChromeBasePreference]
+- Toolbar shortcut  [ChromeBasePreference]
+- Toolbar  [ChromeSwitchPreference] — Display navigation and tools in a bottom toolbar for easy access
+- Show bookmarks bar  [ChromeBasePreference]
+- Show bookmarks bar  [ChromeSwitchPreference] — Hidden on narrow screens
+- @string/options_homepage_title  [ChromeBasePreference]
+- Tab position  [ChromeBasePreference]
+
+######## autofill_and_passwords_preferences (chrome/browser/autofill/android/java/res/xml/autofill_and_passwords_preferences.xml)
+- autofill_and_passwords_signin_promo  [SigninPromoPreference]
+- Google Password Manager  [PasswordsPreference] — Passwords · Passkeys
+- Payments  [ChromeBasePreference] — Credit & debit cards · IBANs · Loyalty cards
+- Contact info  [ChromeBasePreference] — Addresses
+- Identity docs  [ChromeBasePreference] — Driver’s licenses · Identity cards · Passports
+- Travel  [ChromeBasePreference] — Travel info · Vehicles
+- Shopping  [ChromeBasePreference] — Orders · Shipments
+- Enhanced autofill  [ChromeBasePreference] — Manage finding and filling info with Gemini
+  - Find and fill with Gemini  [ChromeSwitchPreference] — Autofill info from apps such as Gmail and Photos. Powered by Personal Intelligence.
+  - Manage Connected Apps  [ChromeBasePreference] — Choose which apps Gemini connects to
+  - You’re helping improve enhanced autofill  [AutofillPersonalContextNoticePreference] — When you make a request for enhanced autofill, your usage data, requests, and page details are shared with Goo
+- Autofill settings  [ChromeBasePreference] — Change autofill provider and other settings
+
+######## autofill_options_preferences (chrome/browser/autofill/android/java/res/xml/autofill_options_preferences.xml)
+## Autofill service provider
+- autofill_third_party_filling  [RadioButtonGroupThirdPartyPreference]
+- third_party_toggle_hint  [TextMessagePreference]
+## Enhanced autofill
+  - Enhanced autofill  [AutofillAiPreference] — Chrome understands forms better and can autofill them faster for you
+  - Verify it’s you to autofill sensitive info  [ChromeSwitchPreference] — For added protection, always use your fingerprint, face, or other screen lock when you use sensitive info like
+
+######## bookmark_bar_preferences (chrome/android/java/res/xml/bookmark_bar_preferences.xml)
+- Show bookmarks bar  [RadioButtonGroupBookmarkBarPreference]
+- managed_disclaimer_text  [Preference]
+
+######## clear_browsing_data_preferences (chrome/android/java/res/xml/clear_browsing_data_preferences.xml)
+- Time range  [SpinnerPreference]
+- Browsing history  [ClearBrowsingDataCheckBoxPreference] — Deletes history, including in the search box
+- Cookies and site data  [ClearBrowsingDataCheckBoxPreference] — Signs you out of most sites
+- Cached images and files  [ClearBrowsingDataCheckBoxPreference]
+- Tabs  [ClearBrowsingDataCheckBoxPreference]
+- Saved passwords  [ClearBrowsingDataCheckBoxPreference]
+- Autofill form data  [ClearBrowsingDataCheckBoxPreference]
+- Site settings  [ClearBrowsingDataCheckBoxPreference]
+- Manage other Google data  [ClearBrowsingDataExpandablePreferenceCategory]
+  - Passwords and passkeys  [ChromeBasePreference] — Manage in Google Password Manager
+  - Search history  [ChromeBasePreference]
+  - Search history  [ChromeBasePreference] — Manage in your Google Account
+  - My Activity  [ChromeBasePreference] — Manage in your Google Account
+- sign_out_of_chrome_text  [ClickableSpansTextMessagePreference]
+
+######## contextual_search_preferences (chrome/android/java/res/xml/contextual_search_preferences.xml)
+- contextual_search_switch  [ChromeSwitchPreference]
+- Include surrounding text in Google searches  [ChromeSwitchPreference] — By including more of a page’s text, you might see better results
+- contextual_search_description  [TextMessagePreference] — Learn about topics on websites without leaving the page. Select one or more words on the page to search for th
+
+######## cookie_settings (components/browser_ui/site_settings/android/java/res/xml/cookie_settings.xml)
+- subtitle  [TextMessagePreference]
+- bullet_one  [TextMessagePreference]
+- bullet_two  [TextMessagePreference]
+- bullet_three  [TextMessagePreference]
+- Allow related sites to see your activity in the group  [ChromeSwitchPreference] — A company can define a group of sites that can use cookies to share your activity in the group. This is off in
+
+######## custom_search_engine_preferences (chrome/browser/search_engines/android/java/res/xml/custom_search_engine_preferences.xml)
+## Search engines
+  - custom_search_engine_description  [TextMessagePreference] — To use a search engine other than the default, type its shortcut in the address bar followed by your preferred
+  - custom_search_engine_item_list  [SearchEngineListPreference]
+
+######## custom_site_search_preferences (chrome/browser/search_engines/android/java/res/xml/custom_site_search_preferences.xml)
+## Site search
+  - custom_site_search_description  [TextMessagePreference] — To search a specific site or part of Chrome, type its shortcut in the address bar, followed by your preferred 
+  - custom_site_search_item_list  [SearchEngineListPreference]
+
+######## developer_preferences (chrome/android/java/res/xml/developer_preferences.xml)
+- Tracing  [ChromeBasePreference]
+- Hint: You can also enable Developer options on Beta/Stable channels by tapping the Chrome version in "Settings > About Chrome" multiple times.  [TextMessagePreference]
+
+######## do_not_track_preferences (chrome/android/java/res/xml/do_not_track_preferences.xml)
+- do_not_track_switch  [ChromeSwitchPreference]
+- do_not_track_description  [LongSummaryTextMessagePreference] — Enabling “Do Not Track” means that a request will be included with your browsing traffic. Any effect depends o
+
+######## enhanced_protection_preferences (chrome/browser/safe_browsing/android/java/res/xml/enhanced_protection_preferences.xml)
+- Enhanced protection  [TextMessagePreference]
+- When on  [TextMessagePreference]
+- bullet_one  [TextMessagePreference] — Warns you about dangerous sites, even ones Google didn’t know about before, by analyzing more data from sites 
+- bullet_two  [TextMessagePreference] — In-depth scans for suspicious downloads.
+- bullet_three  [TextMessagePreference] — When you're signed in, protects you across Google services.
+- bullet_four  [TextMessagePreference] — Improves security for you and everyone on the web.
+- Things to consider  [TextMessagePreference]
+- bullet_six  [TextMessagePreference] — Sends the URLs of sites you visit and a small sample of page content, downloads, extension activity, and syste
+- bullet_seven  [TextMessagePreference] — When you’re signed in, this data is linked to your Google Account to protect you across Google services, for e
+- bullet_eight  [TextMessagePreference] — Doesn’t noticeably slow down your browser or device.
+- learn_more  [TextMessagePreference]
+
+######## extensions_preferences (chrome/browser/search_engines/android/java/res/xml/extensions_preferences.xml)
+## Extensions
+  - extension_description  [TextMessagePreference] — Some extensions can add search engines to Chrome.
+  - extension_item_list  [SearchEngineListPreference]
+
+######## google_services_preferences (chrome/android/java/res/xml/google_services_preferences.xml)
+- Allow Chrome sign-in  [ChromeSwitchPreference] — Shows prompts to sign in to Chrome
+- Help improve Chrome\u2019s features and performance  [ChromeSwitchPreference] — Automatically sends usage statistics and crash reports to Google
+- Make searches and browsing better  [ChromeSwitchPreference] — Sends URLs of pages you visit to Google
+- Improve search suggestions  [ChromeSwitchPreference] — When you type in the address bar or search box, Chrome sends what you type to your default search engine to ge
+- @string/track_prices_on_tabs  [ChromeSwitchPreference] — @string/track_prices_on_tabs_description
+- Get price tracking notifications  [ChromeBasePreference] — Manage mobile and email notifications
+- Remove your Chrome activity from Digital Wellbeing  [ChromeBasePreference]
+- Touch to Search  [ChromeBasePreference]
+
+######## grouped_websites_preferences (components/browser_ui/site_settings/android/java/res/xml/grouped_websites_preferences.xml)
+## Site
+- site_title  [TextMessagePreference]
+## Usage
+- Delete site data?  [ClearWebsiteStorage]
+## Related sites
+## sites_in_group
+- Delete data & reset permissions  [ButtonPreference]
+
+######## homepage_preferences (chrome/android/java/res/xml/homepage_preferences.xml)
+- homepage_switch  [ChromeSwitchPreference]
+- homepage_radio_group  [RadioButtonGroupHomepagePreference]
+
+######## inactive_shortcut_preferences (chrome/browser/search_engines/android/java/res/xml/inactive_shortcut_preferences.xml)
+## Inactive shortcuts
+  - inactive_shortcut_list  [SearchEngineListPreference]
+
+######## keyboard_shortcut_preferences (chrome/browser/search_engines/android/java/res/xml/keyboard_shortcut_preferences.xml)
+## Keyboard shortcut
+  - keyboard_shortcut_description  [TextMessagePreference] — In the address bar, use this keyboard shortcut with shortcuts for search engines and site search.
+  - keyboard_shortcut_radio_group  [KeyboardShortcutRadioButtonGroupPreference]
+
+######## legal_information_preferences (chrome/android/java/res/xml/legal_information_preferences.xml)
+- Open source licenses  [HyperlinkPreference]
+- Google Terms of Service  [HyperlinkPreference]
+- Chrome & ChromeOS Additional Terms of Service  [HyperlinkPreference]
+- Google Privacy Policy  [HyperlinkPreference]
+
+######## location_permission_settings (components/browser_ui/site_settings/android/java/res/xml/location_permission_settings.xml)
+- page_description  [TextMessagePreference] — Sites usually use your location for relevant features or info, like local news or nearby shops
+- radio_button_group  [LocationPermissionOptionsPreference]
+
+######## on_startup_preferences (chrome/android/java/res/xml/on_startup_preferences.xml)
+- on_startup_radio_button_group  [RadioButtonGroupOnStartupPreference]
+
+######## page_info_cookie_preference (components/page_info/android/java/res/xml/page_info_cookie_preference.xml)
+- cookie_summary  [TextMessagePreference]
+- cookie_in_use  [ChromeImageViewPreference]
+- rws_in_use  [ChromeBasePreference]
+- tpc_title  [TextMessagePreference]
+- tpc_summary  [TextMessagePreference]
+- Third-party cookies  [ChromeSwitchPreference]
+
+######## personalize_google_services_preferences (chrome/android/java/res/xml/personalize_google_services_preferences.xml)
+- personalize_google_services_summary  [TextMessagePreference] — To get the most personalized experience, include Chrome in Web & App Activity and linked Google services
+- Web & App Activity  [ChromeBasePreference]
+- Linked Google services  [ChromeBasePreference] — Link Chrome and other Google services for personalization and other purposes
+
+######## privacy_preferences (chrome/android/java/res/xml/privacy_preferences.xml)
+## Privacy
+- Delete browsing data  [ChromeBasePreference] — Delete history, cookies, site data, cache…
+- Privacy Guide  [ChromeBasePreference] — Review key privacy and security controls
+- Third-party cookies  [ChromeBasePreference]
+- Send a “Do Not Track” request  [ChromeBasePreference]
+- Send an opt-out request to sites regarding use of your data  [ChromeBasePreference]
+- Preload pages  [ChromeBasePreference] — You can browse and search faster when Chrome preloads pages that it thinks you might visit
+- Lock Incognito tabs when you leave Chrome  [IncognitoReauthSettingSwitchPreference] — {BEGIN_LINK}Turn on screen lock in Android settings{END_LINK}
+## Security
+- Advanced Protection is on  [SafetyHubExpandablePreference]
+- Safe Browsing  [ChromeBasePreference] — {SAFE_BROWSING_MODE} is on
+  - safe_browsing_radio_button_group  [RadioButtonGroupSafeBrowsingPreference]
+  - managed_disclaimer_text  [Preference]
+- Warn you if a password was compromised in a data breach  [ChromeSwitchPreference] — When you use a password, Chrome warns you if it has been published online. When doing this, your passwords and
+- Always use secure connections  [ChromeSwitchPreference]
+- Always use secure connections  [ChromeBasePreference]
+- Use secure DNS  [ChromeBasePreference]
+- JavaScript optimization & security  [ChromeBasePreference]
+- Access payment methods  [ChromeSwitchPreference] — Allow sites to check if you have payment methods saved
+- sync_and_services_link  [TextMessagePreference] — For more settings that relate to privacy, security, and data collection, see {BEGIN_LINK}Sync and Google servi
+
+######## safety_hub_subpage_preferences (chrome/browser/safety_hub/android/java/res/xml/safety_hub_subpage_preferences.xml)
+- header  [TextMessagePreference]
+## preference_list
+
+######## settings_search_header_preference (chrome/android/java/res/xml/settings_search_header_preference.xml)
+- settings_search_header  [ChromeBasePreference]
+
+######## single_website_preferences (components/browser_ui/site_settings/android/java/res/xml/single_website_preferences.xml)
+- page_description  [TextMessagePreference] — Control this site's access to your device
+- os_permissions_warning  [ChromeBasePreference]
+- os_permissions_warning_extra  [ChromeBasePreference]
+- os_permissions_warning_divider  [Preference]
+- This site shows intrusive or misleading ads  [TextMessagePreference]
+- intrusive_ads_info_divider  [Preference]
+## Site
+- site_title  [TextMessagePreference]
+## Usage
+- Delete site data?  [ClearWebsiteStorage]
+## Related sites
+## Permissions
+## Files this site can view or edit
+- reset_site_button  [ButtonPreference]
+
+######## standard_protection_preferences (chrome/browser/safe_browsing/android/java/res/xml/standard_protection_preferences.xml)
+- Standard protection  [TextMessagePreference]
+- Help improve security on the web for everyone  [ChromeSwitchPreference] — Sends URLs of some pages you visit, limited system information, and some page content to Google, to help disco
+
+######## storage_access_settings (components/browser_ui/site_settings/android/java/res/xml/storage_access_settings.xml)
+- subtitle  [TextMessagePreference]
+
+######## tab_position_preferences (chrome/android/java/res/xml/tab_position_preferences.xml)
+- tab_position_description  [TextMessagePreference] — Customize your tab layout to appear at the top or along the side of your browser.
+- tab_position_card_selector  [TabPositionCardPreference]
+- Auto expand tabs on hover  [ChromeSwitchPreference]
+
+######## test_chrome_base_checkbox_preference_screen (components/browser_ui/settings/android/widget/java_test_resources/res/xml/test_chrome_base_checkbox_preference_screen.xml)
+- preference_with_custom_layout  [ChromeBaseCheckBoxPreference]
+
+######## test_chrome_base_preference_screen (components/browser_ui/settings/android/widget/java_test_resources/res/xml/test_chrome_base_preference_screen.xml)
+- preference_with_custom_layout  [ChromeBasePreference]
+
+######## test_chrome_expandable_switch_preference_screen (components/browser_ui/settings/android/widget/java_test_resources/res/xml/test_chrome_expandable_switch_preference_screen.xml)
+- Expandable Switch  [ChromeExpandableSwitchPreference] — Summary
+
+######## test_chrome_switch_preference_screen (components/browser_ui/settings/android/widget/java_test_resources/res/xml/test_chrome_switch_preference_screen.xml)
+- preference_with_custom_layout  [ChromeSwitchPreference]
+
+######## test_settings_custom_preference_screen (components/browser_ui/widget/android/test/java/res/xml/test_settings_custom_preference_screen.xml)
+## Preference Category
+- text_message_preference  [TextMessagePreference] — Text message preference
+- Preference at the top  [ChromeBasePreference]
+- Preference in the middle  [ChromeBasePreference]
+- Preference at the bottom  [ChromeBasePreference]
+- Preference Card  [ChromeBasePreference]
+- Preference Custom Color  [ChromeBasePreference]
+- Preference Standard  [ChromeBasePreference]
+- Preference None  [ChromeBasePreference]
+
+######## tracing_preferences (chrome/android/java/res/xml/tracing_preferences.xml)
+- Default categories  [ChromeBasePreference]
+- Disabled-by-default categories  [ChromeBasePreference]
+- Tracing mode  [ChromeBaseListPreference]
+- start_recording  [ButtonPreference]
+- share_trace  [ButtonPreference]
+- tracing_status  [TextMessagePreference]
+
+######## unified_account_settings_preferences (chrome/android/java/res/xml/unified_account_settings_preferences.xml)
+- central_account_card  [CentralAccountCardPreference]
+- identity_error_card  [IdentityErrorCardPreference]
+- batch_upload_card  [BatchUploadCardPreference]
+## In your Google Account
+- Managed by your administrator  [ChromeBasePreference]
+- History and tabs  [ChromeSwitchPreference]
+- Bookmarks  [ChromeSwitchPreference]
+- Extensions  [ChromeSwitchPreference]
+- Reading list  [ChromeSwitchPreference]
+- Addresses and more  [ChromeSwitchPreference]
+- Passwords  [ChromeSwitchPreference]
+- Payment methods and other info from Google Wallet  [ChromeSwitchPreference]
+- Settings  [ChromeSwitchPreference]
+- Themes  [ChromeSwitchPreference]
+- account_section_footer  [TextMessagePreference] — When on, use and save data in your Google Account. When off, data is saved only to this device.
+## Control your data & account
+- Personalization  [ChromeBasePreference] — Control how browsing history is used with your other data across Google services
+- Encryption  [ChromeBasePreference]
+- Google Search AI Mode and connected apps  [ChromeBasePreference] — Manage the connection between search services and Google Workspace apps, like Google Drive
+- Chrome data in your account  [ChromeBasePreference] — Review your account data
+- Manage your Google Account  [ChromeBasePreference]
+- Manage accounts on this device  [ChromeBasePreference]
+- Open new Incognito window  [ClickableSummaryPreference] — When you're browsing in Incognito, others who use this device won't see your activity, so you can browse more 
+- sign_out_button  [SignoutButtonPreference]
+
+######## universal_opt_out_preferences (chrome/android/java/res/xml/universal_opt_out_preferences.xml)
+- universal_opt_out_switch  [ChromeSwitchPreference] — Send an opt-out request to sites regarding use of your data
+- universal_opt_out_info_text  [ClickableSpansTextMessagePreference] — The sites you visit, including Google, are responsible for determining how they respond to this request. Depen

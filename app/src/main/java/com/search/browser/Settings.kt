@@ -47,8 +47,46 @@ object Settings {
     fun getEngineName(c: Context): String =
         prefs(c).getString(KEY_ENGINE, "Google") ?: "Google"
 
-    fun getEngineUrl(c: Context): String =
-        ENGINES[getEngineName(c)] ?: ENGINES["Google"]!!
+    fun getEngineUrl(c: Context): String {
+        val name = getEngineName(c)
+        customEngine(c)?.let { (custom, template) -> if (custom == name) return template }
+        return ENGINES[name] ?: ENGINES["Google"]!!
+    }
+
+    // ---- A search engine of the user's own (Chrome: Manage search engines) ----
+    // One, as a name and an address with %s where the search goes, the form
+    // Chrome uses. It gets no suggestions as you type: the suggest servers
+    // are known only for the built-in engines, and falling back to Google's
+    // would send someone's keystrokes to an engine they did not choose.
+    private const val KEY_CUSTOM_NAME = "custom_engine_name"
+    private const val KEY_CUSTOM_URL = "custom_engine_url"
+
+    /** The user's own engine as (name, address with %s), or null. */
+    fun customEngine(c: Context): Pair<String, String>? {
+        val p = prefs(c)
+        val name = p.getString(KEY_CUSTOM_NAME, null)?.trim().orEmpty()
+        val url = p.getString(KEY_CUSTOM_URL, null)?.trim().orEmpty()
+        return if (name.isNotEmpty() && isEngineTemplate(url)) name to url else null
+    }
+
+    fun setCustomEngine(c: Context, name: String, url: String) {
+        prefs(c).edit().putString(KEY_CUSTOM_NAME, name.trim())
+            .putString(KEY_CUSTOM_URL, url.trim()).apply()
+    }
+
+    /** Forgets the user's own engine; if it was the one in use, Google takes over. */
+    fun clearCustomEngine(c: Context) {
+        val wasInUse = customEngine(c)?.first == getEngineName(c)
+        prefs(c).edit().remove(KEY_CUSTOM_NAME).remove(KEY_CUSTOM_URL).apply()
+        if (wasInUse) setEngine(c, "Google")
+    }
+
+    /** An http(s) address with %s where the search goes. */
+    fun isEngineTemplate(url: String): Boolean {
+        val u = url.trim()
+        return (u.startsWith("https://") || u.startsWith("http://")) &&
+            u.contains("%s") && u.length > "https://%s".length && !u.contains(' ')
+    }
 
     fun setEngine(c: Context, name: String) {
         prefs(c).edit().putString(KEY_ENGINE, name).apply()
@@ -133,6 +171,10 @@ object Settings {
     const val DATA_SAVER_MOBILE = "data_saver_mobile"  // default false: block images on mobile data (metered networks) only
     const val VIDEO_BUTTON = "video_button"            // default true: the Download video button on pages with a saveable video
     const val CLEAN_LINKS = "clean_links"              // default true: tracking tags off tapped, copied and shared links
+    const val PRIVACY_OPT_OUT = "privacy_opt_out"      // default true: Global Privacy Control and Do Not Track sent to sites
+    const val PERMISSIONS_AUTO_REVOKE = "permissions_auto_revoke" // default true: grants of sites unused for 60 days are taken back
+    const val PERMISSIONS_CHECKED_AT = "permissions_checked_at"   // wall clock of the last unused-permissions check
+    const val OFFER_TRANSLATE = "offer_translate"      // default true: offer to translate pages in another language than the phone's
     const val SEC_RISKY_DOWNLOADS = "sec_risky_downloads" // default true: a warning on app/program files and files sent without https
     const val SEC_LOOKALIKE = "sec_lookalike"          // default true: a warning on sites whose name uses look-alike letters (xn--)
     const val NIGHT_OWL_LOCK = "night_owl_lock"        // default false: Night Owl tabs need the screen lock after leaving the app
