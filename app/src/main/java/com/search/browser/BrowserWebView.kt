@@ -47,6 +47,9 @@ class BrowserWebView(context: Context) : WebView(context) {
     /** Whether ad blocking's element hiding runs as each document starts here (MainActivity), rather than once it has loaded. */
     var cosmeticAtStart = false
 
+    /** The privacy opt-out script on this view while Settings has it on (MainActivityPrivacy.applyOptOut). */
+    var optOutScript: androidx.webkit.ScriptHandler? = null
+
     /**
      * Settings > Block autoplay, as the user set it.
      *

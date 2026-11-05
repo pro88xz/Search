@@ -33,7 +33,9 @@ import org.json.JSONObject
 class SuggestAdapter(
     items: List<JSONObject>,
     private val onPick: (JSONObject) -> Unit,
-    private val onFill: (JSONObject) -> Unit = {}
+    private val onFill: (JSONObject) -> Unit = {},
+    // Long-press on a history suggestion offers to remove it from history.
+    private val onRemove: (JSONObject) -> Unit = {}
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     private companion object {
@@ -129,6 +131,10 @@ class SuggestAdapter(
                 val chip = inf.inflate(R.layout.item_suggest_chip, holder.group, false) as Chip
                 chip.text = weighted(item.optString("title"))
                 chip.setOnClickListener { onPick(item) }
+                // A past search is a history entry too.
+                if (item.optString("kind") == "history") {
+                    chip.setOnLongClickListener { onRemove(item); true }
+                }
                 holder.group.addView(chip)
             }
             return
@@ -149,10 +155,19 @@ class SuggestAdapter(
             "bookmark" -> R.drawable.ic_sug_bookmark
             // An open tab: picking it switches to that tab.
             "tab" -> R.drawable.nav_tabs
+            // The calculator's answer (Calc).
+            "calc" -> R.drawable.ic_sug_calc
             else -> R.drawable.ic_sug_web
         })
 
         h.row.setOnClickListener { onPick(item) }
         h.fill.setOnClickListener { onFill(item) }
+        // Rows are recycled, so the long-press is set or cleared every time.
+        if (item.optString("kind") == "history") {
+            h.row.setOnLongClickListener { onRemove(item); true }
+        } else {
+            h.row.setOnLongClickListener(null)
+            h.row.isLongClickable = false
+        }
     }
 }

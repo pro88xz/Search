@@ -25,7 +25,8 @@ object Motion {
                     if (animationsOn()) {
                         view.animate().cancel()
                         view.animate().scaleX(depth).scaleY(depth)
-                            .setDuration(90L).setInterpolator(pressIn).start()
+                            .setDuration(view.resources.getInteger(R.integer.motion_press).toLong())
+                            .setInterpolator(pressIn).start()
                     }
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
@@ -33,7 +34,8 @@ object Motion {
                     view.animate().cancel()
                     if (animationsOn()) {
                         view.animate().scaleX(1f).scaleY(1f)
-                            .setDuration(320L).setInterpolator(release).start()
+                            .setDuration(view.resources.getInteger(R.integer.motion_emphasis).toLong())
+                            .setInterpolator(release).start()
                     } else { view.scaleX = 1f; view.scaleY = 1f }
                 }
             }

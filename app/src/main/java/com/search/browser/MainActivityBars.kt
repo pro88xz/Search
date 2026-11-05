@@ -620,11 +620,13 @@ internal fun MainActivity.freezeTab(tab: Tab) {
 
 internal fun MainActivity.applyDesktopMode(on: Boolean) {
     val web = tabs.activeTab?.webView ?: return
-    val desktopUA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 " +
-        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    // Both faces from WebView's own agent (UserAgents). Off used to set null,
+    // which brought back WebView's raw agent with "; wv" and "Version/4.0" -
+    // the tokens newWebView takes out because strict sites refuse them.
+    val webViewAgent = android.webkit.WebSettings.getDefaultUserAgent(this)
     web.settings.apply {
         if (on) {
-            userAgentString = desktopUA
+            userAgentString = UserAgents.desktop(webViewAgent)
             useWideViewPort = true
             loadWithOverviewMode = true
             // Force a desktop-width layout so responsive sites render desktop.
@@ -632,7 +634,7 @@ internal fun MainActivity.applyDesktopMode(on: Boolean) {
             builtInZoomControls = true
             displayZoomControls = false
         } else {
-            userAgentString = null
+            userAgentString = UserAgents.mobile(webViewAgent)
             useWideViewPort = true
             loadWithOverviewMode = true
         }

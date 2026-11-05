@@ -719,6 +719,8 @@ class MainActivity : AppCompatActivity() {
         if (AppOpenAds.takeOpen() == AppOpenAds.WARM_OPEN) warmOpenAd()
         resumePendingApkInstall()
         refreshScrollPrefs()
+        // The privacy opt-out may have been switched in Settings.
+        syncOptOut()
         // Back after a while: the owl says hello - wide awake after twenty
         // minutes or more, a nod after a few. Not for a trip to Settings, a
         // permission dialog or the share sheet. After four hours, home is
@@ -1906,12 +1908,10 @@ class MainActivity : AppCompatActivity() {
         // Settings > Search Security > Search suggestions off: what is typed
         // stays on the phone until it is searched for.
         if (!Settings.getBool(this, Settings.SEARCH_SUGGESTIONS, true)) return emptyList()
-        val q = URLEncoder.encode(query, "UTF-8")
-        val endpoint = when (Settings.getEngineName(this)) {
-            "DuckDuckGo" -> "https://duckduckgo.com/ac/?type=list&q=$q"
-            "Bing" -> "https://api.bing.com/osjson.aspx?query=$q"
-            else -> "https://www.google.com/complete/search?client=chrome&q=$q"
-        }
+        // The chosen engine's own suggest server: before, every engine but
+        // DuckDuckGo and Bing asked Google's (SuggestEndpoints).
+        val endpoint = SuggestEndpoints.url(
+            Settings.getEngineName(this), query, java.util.Locale.getDefault().toLanguageTag())
         return try {
             val conn = URL(endpoint).openConnection() as HttpURLConnection
             conn.connectTimeout = 3000
@@ -1919,9 +1919,7 @@ class MainActivity : AppCompatActivity() {
             conn.setRequestProperty("User-Agent", "Mozilla/5.0")
             val body = conn.inputStream.bufferedReader().use { it.readText() }
             conn.disconnect()
-            val cleaned = body.trim().removePrefix(")]}'").trim()
-            val list = JSONArray(cleaned).optJSONArray(1) ?: return emptyList()
-            (0 until list.length()).mapNotNull { i -> list.optString(i, null) }
+            SuggestEndpoints.parse(body)
         } catch (e: Exception) {
             emptyList()
         }
@@ -2064,15 +2062,13 @@ class MainActivity : AppCompatActivity() {
             // the legacy "Version/4.0" token. Strict sites (e.g. Notion) read
             // "Version/4.0" as an ancient browser and block it, so removing it
             // lets those sites render normally.
-            userAgentString = userAgentString
-                .replace("; wv", "")
-                .replace("Version/4.0 ", "")
+            val webViewAgent = userAgentString
+            userAgentString = UserAgents.mobile(webViewAgent)
 
             // --- Desktop mode ---
             if (Settings.getBool(this@MainActivity, Settings.DESKTOP_MODE, false)) {
-                userAgentString =
-                    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 " +
-                    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                // Desktop Chrome at the version this WebView really is.
+                userAgentString = UserAgents.desktop(webViewAgent)
                 useWideViewPort = true
                 loadWithOverviewMode = true
                 builtInZoomControls = true
@@ -2129,6 +2125,8 @@ class MainActivity : AppCompatActivity() {
                 // An older WebView that says it can and cannot: the page-finished route below.
             }
         }
+        // Settings > Privacy > Ask sites not to sell or share your data.
+        applyOptOut(web)
 
         web.webViewClient = object : WebViewClient() {
             /**
@@ -3053,7 +3051,9 @@ class MainActivity : AppCompatActivity() {
         val target = web ?: return
         (target.tag as? SearchAppBridge)?.privileged =
             url.startsWith("file:///android_asset/")
-        target.loadUrl(url)
+        // The privacy opt-out's headers ride on loads Search starts.
+        val headers = optOutHeaders(url)
+        if (headers.isEmpty()) target.loadUrl(url) else target.loadUrl(url, headers)
         // Leaving home: the feed ad card goes now, not when the next page
         // commits. Home stays on screen until then, and a search or a story
         // opened from it showed the card over home and then over the new page

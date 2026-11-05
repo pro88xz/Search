@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MOTION TOKENS: how long each kind of movement takes, in milliseconds.
+     Use these for every new animation instead of a number of its own, and move
+     old animations onto them as they are touched (as with dimens.xml).
+     Search's motion has its own character (the press spring, the owl); these
+     only fix how quick each kind of move is. The quick, fade, standard and
+     colour values match Chrome's (docs/chrome-blueprint/README.md, Design
+     system), which a large team tuned for a browser's bars. -->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="UnusedResources">
+    <!-- A button sinking under the finger (Motion.pressable). -->
+    <integer name="motion_press">90</integer>
+    <!-- Small feedback: a button swapping, a badge changing. -->
+    <integer name="motion_quick">100</integer>
+    <!-- An icon fading in or out. -->
+    <integer name="motion_fade">150</integer>
+    <!-- A bar or field changing shape: search opening and closing. -->
+    <integer name="motion_standard">225</integer>
+    <!-- A colour change: page colours in the bars, the theme. -->
+    <integer name="motion_colour">250</integer>
+    <!-- The press spring settling back, with its overshoot (Motion.pressable). -->
+    <integer name="motion_emphasis">320</integer>
+</resources>

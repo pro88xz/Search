@@ -167,6 +167,12 @@ internal fun MainActivity.setupSuggestOverlay() {
                 exitSearchMode()
                 if (link.isNotBlank()) go(link)
             }
+            // The calculator's answer goes into the box, to carry on from.
+            "calc" -> {
+                val result = item.optString("fill")
+                binding.urlBar.setText(result)
+                binding.urlBar.setSelection(result.length)
+            }
             else -> {
                 exitSearchMode()
                 if (kind == "web" || url.isBlank()) go(title) else loadInto(activeWeb(), url)
@@ -186,7 +192,7 @@ internal fun MainActivity.setupSuggestOverlay() {
         }
         binding.urlBar.setText(fill)
         binding.urlBar.setSelection(fill.length)
-    })
+    }, { item -> confirmRemoveSuggestion(item) })
     // Rows are clipped to the card's rounded corners. Set here rather
     // than in XML: android:clipToOutline is API 31+, and this app runs
     // from 24, where it would be ignored and the corner would square off
@@ -232,12 +238,37 @@ internal fun MainActivity.setupSuggestOverlay() {
         })
 }
 
+/**
+ * Long-press on a history suggestion: remove it from history, as Chrome's
+ * omnibox offers. The list is rebuilt from what is in the box, so the row
+ * goes at once.
+ */
+internal fun MainActivity.confirmRemoveSuggestion(item: JSONObject) {
+    if (suggestListMoving()) return
+    val url = item.optString("url")
+    if (url.isBlank() || item.optString("kind") != "history") return
+    com.google.android.material.dialog.MaterialAlertDialogBuilder(this, R.style.Theme_Search_Dialog)
+        .setTitle("Remove from history?")
+        .setMessage(item.optString("title"))
+        .setPositiveButton("Remove") { _, _ ->
+            History.delete(this, url)
+            if (searchMode) fetchSuggests(binding.urlBar.text?.toString() ?: "")
+        }
+        .setNegativeButton("Cancel", null)
+        .show()
+}
+
 internal fun MainActivity.fetchSuggests(query: String) {
     val id = ++suggestSeq
     val q = query.trim()
     // Gathered here, on the main thread, where the tab list and the
     // clipboard live: the link just copied, then open tabs that match.
     val first = mutableListOf<JSONObject>()
+    // A calculation typed in the box is answered first, on the phone (Calc).
+    Calc.answer(q)?.let { result ->
+        first += JSONObject().put("kind", "calc").put("title", "= $result")
+            .put("sub", "Calculator").put("fill", result)
+    }
     copiedLinkSuggestion(q)?.let { first += it }
     first += openTabSuggestions(q)
     val firstUrls = first.map { it.optString("url") }.filter { it.isNotBlank() }.toSet()

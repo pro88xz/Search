@@ -158,6 +158,12 @@ class SectionActivity : AppCompatActivity() {
             Settings.CLEAN_LINKS, true
         )
         addToggle(
+            "Ask sites not to sell or share your data",
+            "Sends Global Privacy Control, the opt-out signal privacy laws recognise, " +
+                "and Do Not Track. Each site decides how it responds.",
+            Settings.PRIVACY_OPT_OUT, true
+        )
+        addToggle(
             "Search suggestions",
             "Suggestions from your search engine as you type. Off, nothing you " +
                 "type leaves the phone until you search for it.",
