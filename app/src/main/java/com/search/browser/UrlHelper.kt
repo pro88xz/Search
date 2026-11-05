@@ -46,7 +46,7 @@ object UrlHelper {
         // so an accidental Go on an empty bar landed on a blank Google page
         // even for someone who had chosen DuckDuckGo. Callers skip blank input
         // anyway; this only decides what an empty string means.
-        if (text.isEmpty()) return searchPrefix
+        if (text.isEmpty()) return searchPrefix.replace("%s", "")
 
         val lower = text.lowercase()
 
@@ -117,7 +117,11 @@ object UrlHelper {
         return tld !in FILE_SUFFIXES
     }
 
-    private fun search(query: String, prefix: String): String = prefix + Uri.encode(query)
+    // A user's own engine (Settings.customEngine) gives an address with %s
+    // where the search goes; the built-in ones a prefix the search follows.
+    private fun search(query: String, prefix: String): String =
+        if (prefix.contains("%s")) prefix.replace("%s", Uri.encode(query))
+        else prefix + Uri.encode(query)
 
     /**
      * Payment providers' own sites: wallets, pay-later, card checkouts and

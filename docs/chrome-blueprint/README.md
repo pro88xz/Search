@@ -82,7 +82,7 @@ Batch numbers refer to the roadmap below.
 | Inline autocomplete of sites you visit | `AutocompleteMediator` | Gap. Deferred: rewriting the field while the keyboard is composing a word is where IME bugs live (Chrome has a dedicated model for it, `SpannableAutocompleteEditTextModel`); needs testing on a phone with Gboard and Samsung Keyboard | 3 |
 | Answers in the box (calculator) | `omnibox/suggestions/answer` | Gap: a local calculator answer | 1 ✅ |
 | Site search shortcuts (`@bookmarks`, `@tabs`, `@history`, engine keywords) | `custom_site_search_preferences.xml` | Have: `@bookmarks`, `@history`, `@tabs` (`SearchScopes`), searched on the phone, Enter opens the best match. Engine keywords: Gap | 3 ✅ |
-| Custom search engines | `custom_search_engine_preferences.xml` | Gap | 3 |
+| Custom search engines | `custom_search_engine_preferences.xml` | Have: one engine of the user's own (name + address with `%s`), added, changed or removed under Settings › Search engine. It gets no suggestions rather than Google's | 3 ✅ |
 | Edit current URL row (copy, share, edit) | `omnibox/suggestions/editurl` | Have: the page's row first when search opens on it (tap copies, hold shares, arrow edits). **Privacy bug fixed with it**: the prefilled address was treated as typing and sent to the suggest server on every tap of the bar | 3 ✅ |
 | Cached zero-prefix suggestions | `CachedZeroSuggestionsManager` | Have (local recents are instant) | — |
 | Ranking by visits and recency | HistoryURL provider | Have: history matches ranked by the same frecency as home's tiles (`SiteVisits.scores`), bookmarks boosted | 3 ✅ |
@@ -170,6 +170,6 @@ Batch numbers refer to the roadmap below.
 | --- | --- | --- |
 | 1 | Engine suggestion servers; GPC/DNT opt-out; desktop UA version; delete a history suggestion; calculator answer; motion tokens | This branch |
 | 2 | Time-range data deletion with choices; auto-remove unused permissions (60 days) | This branch |
-| 3 | Inline autocomplete; site search shortcuts and custom engines; `@` shortcuts ✅; ranking by frecency ✅; clipboard text ✅; edit-URL row ✅ | Partly on this branch |
+| 3 | Inline autocomplete; site search shortcuts and custom engines; `@` shortcuts ✅; ranking by frecency ✅; clipboard text ✅; edit-URL row ✅; custom engine ✅ | Partly on this branch |
 | 4 | Safety check ✅; Privacy review; per-site desktop; offer translate ✅; offer reader view; homepage choice; Android font size; tab archive; Private DNS link | Partly on this branch |
 | 5 | Preloading (androidx.webkit), app language, download location, PDFs | |

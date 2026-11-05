@@ -1927,6 +1927,7 @@ class MainActivity : AppCompatActivity() {
         // DuckDuckGo and Bing asked Google's (SuggestEndpoints).
         val endpoint = SuggestEndpoints.url(
             Settings.getEngineName(this), query, java.util.Locale.getDefault().toLanguageTag())
+            ?: return emptyList()
         return try {
             val conn = URL(endpoint).openConnection() as HttpURLConnection
             conn.connectTimeout = 3000

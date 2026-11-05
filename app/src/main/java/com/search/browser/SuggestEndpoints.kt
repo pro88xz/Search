@@ -17,7 +17,8 @@ import org.json.JSONArray
  */
 object SuggestEndpoints {
 
-    fun url(engine: String, query: String, language: String): String {
+    /** The engine's suggest URL, or null for an engine whose server is not known (a user's own). */
+    fun url(engine: String, query: String, language: String): String? {
         val q = java.net.URLEncoder.encode(query, "UTF-8")
         val lang = java.net.URLEncoder.encode(language, "UTF-8")
         return when (engine) {
@@ -28,7 +29,8 @@ object SuggestEndpoints {
             "Brave" -> "https://search.brave.com/api/suggest?q=$q"
             "Startpage" -> "https://www.startpage.com/osuggestions?q=$q"
             "Yandex" -> "https://suggest.yandex.com/suggest-ff.cgi?part=$q"
-            else -> "https://www.google.com/complete/search?client=chrome&q=$q"
+            "Google" -> "https://www.google.com/complete/search?client=chrome&q=$q"
+            else -> null
         }
     }
 

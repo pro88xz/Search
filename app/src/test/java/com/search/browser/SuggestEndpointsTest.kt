@@ -2,6 +2,8 @@ package com.search.browser
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** Each engine's own suggest server (SuggestEndpoints): nobody's keystrokes go to an engine they did not choose. */
@@ -28,8 +30,23 @@ class SuggestEndpointsTest {
 
     @Test fun onlyGoogleAsksGoogle() {
         Settings.ENGINES.keys.filter { it != "Google" }.forEach { engine ->
-            assertFalse(engine, SuggestEndpoints.url(engine, "q", "en").contains("google."))
+            assertFalse(engine, SuggestEndpoints.url(engine, "q", "en")!!.contains("google."))
         }
+    }
+
+    /** A user's own engine gets no suggestions rather than Google's. */
+    @Test fun unknownEngineAsksNobody() {
+        assertNull(SuggestEndpoints.url("My wiki", "q", "en"))
+    }
+
+    @Test fun recognisesEngineTemplates() {
+        assertTrue(Settings.isEngineTemplate("https://wiki.example/search?q=%s"))
+        assertTrue(Settings.isEngineTemplate("http://intranet/find/%s"))
+        assertFalse(Settings.isEngineTemplate("https://wiki.example/search?q="))
+        assertFalse(Settings.isEngineTemplate("wiki.example/search?q=%s"))
+        assertFalse(Settings.isEngineTemplate("javascript:alert(%s)"))
+        assertFalse(Settings.isEngineTemplate("https://%s"))
+        assertFalse(Settings.isEngineTemplate("https://a b/%s"))
     }
 
     @Test fun queryIsEncoded() {
