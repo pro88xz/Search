@@ -2038,7 +2038,7 @@ internal fun MainActivity.applyAccentTints() {
     applyArtAccent(accent)
     pushAccentToPage(activeWeb())
     activeWeb()?.evaluateJavascript("window.__setWallpaper && window.__setWallpaper(" +
-        HomeWallpapers.json(HomeWallpapers.current(this), wallpaperLift) + ")", null)
+        HomeWallpapers.json(HomeWallpapers.current(this), wallpaperLift, wallpaperSpan) + ")", null)
     refreshWallpaperBar()
 }
 

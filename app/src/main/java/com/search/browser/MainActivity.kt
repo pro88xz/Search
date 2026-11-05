@@ -1762,7 +1762,7 @@ class MainActivity : AppCompatActivity() {
             // Focus and Zen's colours in this accent, light and dark (HomeWash).
             val wash = HomeWash.json(accent).toString()
             // The wallpaper chosen in Customize, if any (HomeWallpapers).
-            val wallpaper = HomeWallpapers.json(HomeWallpapers.current(this@MainActivity), wallpaperLift)
+            val wallpaper = HomeWallpapers.json(HomeWallpapers.current(this@MainActivity), wallpaperLift, wallpaperSpan)
             return "{\"background\":\"$bg\",\"accent\":\"$accent\",\"tiles\":$tiles,\"nightOwl\":$nightOwl," +
                 "\"mode\":\"$mode\",\"zenTiles\":$zen,\"powerSave\":$powerSave,\"wash\":$wash,\"wallpaper\":$wallpaper}"
         }
@@ -3278,6 +3278,9 @@ class MainActivity : AppCompatActivity() {
 
     /** How far below the top of the screen the page starts, in pixels: 0 until measured. Read by getConfig too. */
     @Volatile internal var wallpaperLift = 0
+    // Home's wallpaper's height in pixels, top of the screen to the bottom of
+    // the page at rest (refreshWallpaperBar); 0 until measured.
+    @Volatile internal var wallpaperSpan = 0
     /** What the top bar's wallpaper slice was last cut for: wallpaper, width, lift, span, file. */
     internal var wallpaperBarKey: String? = null
 
