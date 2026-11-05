@@ -326,6 +326,12 @@ internal fun MainActivity.fetchSuggests(query: String) {
             .put("sub", "Tap to copy link \u00B7 hold to share").put("fill", pageUrl)
             .put("pageUrl", pageUrl).put("url", pageUrl)
     }
+    // A keyword and words ("w cats"): that site's own search, offered first.
+    val lang = resources.configuration.locales.get(0)?.language ?: "en"
+    Keywords.match(q, lang)?.let { k ->
+        first += JSONObject().put("kind", "keyword").put("title", k.terms)
+            .put("sub", "Search " + k.name).put("url", k.url).put("fill", q)
+    }
     // A calculation typed in the box is answered first, on the phone (Calc).
     Calc.answer(q)?.let { result ->
         first += JSONObject().put("kind", "calc").put("title", "= $result")

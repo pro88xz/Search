@@ -560,6 +560,8 @@ internal fun MainActivity.maybeOfferTranslate(view: WebView?) {
         if (lang.length !in 2..3 || lang == mine) return@evaluateJavascript
         if (isFinishing || isDestroyed || view !== activeWeb() || view.url != url) return@evaluateJavascript
         if (!translateOffered.add(host)) return@evaluateJavascript
+        // One offer per page: reader view's waits its turn (maybeOfferReader).
+        offerShownFor = url
         val name = java.util.Locale.forLanguageTag(lang)
             .getDisplayLanguage(java.util.Locale.forLanguageTag(mine))
             .ifBlank { lang }
@@ -567,6 +569,35 @@ internal fun MainActivity.maybeOfferTranslate(view: WebView?) {
             com.google.android.material.snackbar.Snackbar
                 .make(binding.webArea, "This page is in " + name, 8000)
                 .setAction("Translate") { if (activeWeb() === view) translatePage() }
+                .setActionTextColor(currentAccent())
+                .show()
+        } catch (e: Exception) { /* the view is going */ }
+    }
+}
+
+/**
+ * Chrome's "Simplified view for web pages" (Settings > Accessibility, off by
+ * default as in Chrome): a page holding a long article gets a snackbar with
+ * Show, which opens reader view. Once per site per session, and not on a page
+ * that has just been offered translation.
+ */
+internal fun MainActivity.maybeOfferReader(view: WebView?) {
+    if (view == null || view !== activeWeb()) return
+    if (!Settings.getBool(this, Settings.OFFER_READER, false)) return
+    val url = view.url ?: return
+    if (!(url.startsWith("https://") || url.startsWith("http://"))) return
+    if (offerShownFor == url) return
+    val host = try { android.net.Uri.parse(url).host } catch (e: Exception) { null } ?: return
+    if (host in readerOffered) return
+    view.evaluateJavascript(ReaderView.DETECT_JS) { r ->
+        if (r?.trim('"') != "yes") return@evaluateJavascript
+        if (isFinishing || isDestroyed || view !== activeWeb() || view.url != url) return@evaluateJavascript
+        if (offerShownFor == url || !readerOffered.add(host)) return@evaluateJavascript
+        offerShownFor = url
+        try {
+            com.google.android.material.snackbar.Snackbar
+                .make(binding.webArea, "Simplified view available", 8000)
+                .setAction("Show") { if (activeWeb() === view) toggleReaderView() }
                 .setActionTextColor(currentAccent())
                 .show()
         } catch (e: Exception) { /* the view is going */ }

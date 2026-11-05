@@ -175,6 +175,8 @@ object Settings {
     const val PERMISSIONS_AUTO_REVOKE = "permissions_auto_revoke" // default true: grants of sites unused for 60 days are taken back
     const val PERMISSIONS_CHECKED_AT = "permissions_checked_at"   // wall clock of the last unused-permissions check
     const val OFFER_TRANSLATE = "offer_translate"      // default true: offer to translate pages in another language than the phone's
+    const val OFFER_READER = "offer_reader"            // default false (as Chrome): offer reader view on pages with a long article
+    const val AUTO_OPEN_PDF = "auto_open_pdf"          // default false: open a PDF as soon as its download finishes
     const val SEC_RISKY_DOWNLOADS = "sec_risky_downloads" // default true: a warning on app/program files and files sent without https
     const val SEC_LOOKALIKE = "sec_lookalike"          // default true: a warning on sites whose name uses look-alike letters (xn--)
     const val NIGHT_OWL_LOCK = "night_owl_lock"        // default false: Night Owl tabs need the screen lock after leaving the app

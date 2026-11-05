@@ -1287,15 +1287,22 @@ internal fun MainActivity.performDownload(
             val cookie = try {
                 android.webkit.CookieManager.getInstance().getCookie(url)
             } catch (e: Exception) { null }
+            var queued = -1L
             val ok = try {
                 cookie?.let { if (it.isNotBlank()) request.addRequestHeader("Cookie", it) }
-                dm.enqueue(request)
+                queued = dm.enqueue(request)
                 true
             } catch (e: Exception) { false }
             runOnUiThread {
                 if (ok) {
                     HealthStats.count(this, HealthStats.DOWNLOADS)
                     toast("Downloading $fileName")
+                    // Settings > Accessibility > Open PDFs when they finish.
+                    val pdf = fileName.lowercase().endsWith(".pdf") ||
+                        mimeType?.lowercase()?.startsWith("application/pdf") == true
+                    if (pdf && queued >= 0 && Settings.getBool(this, Settings.AUTO_OPEN_PDF, false)) {
+                        openPdfWhenDone(queued)
+                    }
                     return@runOnUiThread
                 }
                 // DownloadManager would not take it (switched off on this
@@ -2192,4 +2199,40 @@ internal fun MainActivity.recolouredToAccent(resId: Int, accent: Int): android.g
 internal fun MainActivity.hideKeyboard() {
     val imm = getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as InputMethodManager
     imm.hideSoftInputFromWindow(binding.urlBar.windowToken, 0)
+}
+
+
+/**
+ * Chrome's "Automatically open PDFs": a PDF the user downloads opens in their
+ * PDF reader as soon as DownloadManager has it, if Search is still on screen
+ * - never pulled up over another app the user has moved to. Listens for that
+ * one download only, and stops listening when it finishes or after half an
+ * hour. Off by default (Settings > Accessibility > Open PDFs when they finish).
+ */
+internal fun MainActivity.openPdfWhenDone(id: Long) {
+    val app = applicationContext
+    val receiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(c: Context?, intent: android.content.Intent?) {
+            if (intent?.getLongExtra(android.app.DownloadManager.EXTRA_DOWNLOAD_ID, -1L) != id) return
+            try { app.unregisterReceiver(this) } catch (e: Exception) { }
+            if (isFinishing || isDestroyed) return
+            if (!lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) return
+            Thread {
+                val d = try {
+                    Downloads.load(app).firstOrNull { it.id == id && it.managed }
+                } catch (e: Exception) { null }
+                runOnUiThread {
+                    if (d != null && d.isComplete && !isFinishing && !isDestroyed) openDownloadedFile(d)
+                }
+            }.start()
+        }
+    }
+    try {
+        androidx.core.content.ContextCompat.registerReceiver(app, receiver,
+            android.content.IntentFilter(android.app.DownloadManager.ACTION_DOWNLOAD_COMPLETE),
+            androidx.core.content.ContextCompat.RECEIVER_EXPORTED)
+        uiHandler.postDelayed({
+            try { app.unregisterReceiver(receiver) } catch (e: Exception) { }
+        }, 30 * 60_000L)
+    } catch (e: Exception) { /* no listening, no auto-open: the notification still says it is done */ }
 }
