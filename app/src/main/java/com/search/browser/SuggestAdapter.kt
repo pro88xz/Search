@@ -64,6 +64,9 @@ class SuggestAdapter(
         rows = items.filterNot { isQuery(it) }
     }
 
+    /** The suggestion shown first, as the list reads: what Enter opens after a shortcut. */
+    fun firstItem(): JSONObject? = chips.firstOrNull() ?: rows.firstOrNull()
+
     fun submit(newItems: List<JSONObject>, q: String = "") {
         query = q
         split(newItems)
@@ -157,6 +160,12 @@ class SuggestAdapter(
             "tab" -> R.drawable.nav_tabs
             // The calculator's answer (Calc).
             "calc" -> R.drawable.ic_sug_calc
+            // A shortcut (@bookmarks, @history, @tabs): the icon of where it searches.
+            "scope" -> when (item.optString("title")) {
+                SearchScopes.BOOKMARKS -> R.drawable.ic_sug_bookmark
+                SearchScopes.HISTORY -> R.drawable.ic_sug_history
+                else -> R.drawable.nav_tabs
+            }
             else -> R.drawable.ic_sug_web
         })
 

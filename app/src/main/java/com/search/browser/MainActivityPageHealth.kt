@@ -151,33 +151,7 @@ internal fun MainActivity.setupSuggestOverlay() {
     if (suggestBasePad < 0) suggestBasePad = binding.suggestBackdrop.paddingBottom
     suggestAdapter = SuggestAdapter(emptyList(), { item ->
         if (suggestListMoving()) return@SuggestAdapter
-        val kind = item.optString("kind")
-        val title = item.optString("title")
-        val url = item.optString("url")
-        when (kind) {
-            // An open tab: go to it rather than loading the page again.
-            "tab" -> {
-                exitSearchMode()
-                val id = item.optLong("tabId", -1L)
-                tabs.tabs.firstOrNull { it.id == id }?.let { openTab(it) }
-            }
-            // The copied link, read now if it was not read to offer it.
-            "clip" -> {
-                val link = url.ifBlank { readClipboardText() ?: "" }
-                exitSearchMode()
-                if (link.isNotBlank()) go(link)
-            }
-            // The calculator's answer goes into the box, to carry on from.
-            "calc" -> {
-                val result = item.optString("fill")
-                binding.urlBar.setText(result)
-                binding.urlBar.setSelection(result.length)
-            }
-            else -> {
-                exitSearchMode()
-                if (kind == "web" || url.isBlank()) go(title) else loadInto(activeWeb(), url)
-            }
-        }
+        pickSuggestion(item)
     }, { item ->
         // The arrow loads a suggestion into the box instead of running it, so
         // a near-miss can be edited rather than retyped. The box's own text
@@ -238,6 +212,38 @@ internal fun MainActivity.setupSuggestOverlay() {
         })
 }
 
+/** What picking a suggestion does: a tap on it, or Enter on a shortcut search (@tabs and the like). */
+internal fun MainActivity.pickSuggestion(item: JSONObject) {
+    val kind = item.optString("kind")
+    val title = item.optString("title")
+    val url = item.optString("url")
+    when (kind) {
+        // An open tab: go to it rather than loading the page again.
+        "tab" -> {
+            exitSearchMode()
+            val id = item.optLong("tabId", -1L)
+            tabs.tabs.firstOrNull { it.id == id }?.let { openTab(it) }
+        }
+        // The copied link, read now if it was not read to offer it.
+        "clip" -> {
+            val link = url.ifBlank { readClipboardText() ?: "" }
+            exitSearchMode()
+            if (link.isNotBlank()) go(link)
+        }
+        // The calculator's answer, or a shortcut (@tabs), goes into the box
+        // to carry on from.
+        "calc", "scope" -> {
+            val fill = item.optString("fill")
+            binding.urlBar.setText(fill)
+            binding.urlBar.setSelection(fill.length)
+        }
+        else -> {
+            exitSearchMode()
+            if (kind == "web" || url.isBlank()) go(title) else loadInto(activeWeb(), url)
+        }
+    }
+}
+
 /**
  * Long-press on a history suggestion: remove it from history, as Chrome's
  * omnibox offers. The list is rebuilt from what is in the box, so the row
@@ -261,6 +267,33 @@ internal fun MainActivity.confirmRemoveSuggestion(item: JSONObject) {
 internal fun MainActivity.fetchSuggests(query: String) {
     val id = ++suggestSeq
     val q = query.trim()
+    // @bookmarks, @history and @tabs (SearchScopes): the shortcuts while one
+    // is being typed, then results from that place alone, on the phone -
+    // nothing typed after a shortcut goes to the search engine.
+    val offers = SearchScopes.offers(query)
+    if (offers.isNotEmpty()) {
+        suggestAdapter?.submit(offers.map { (scope, what) ->
+            JSONObject().put("kind", "scope").put("title", scope)
+                .put("sub", what).put("fill", "$scope ")
+        }, q)
+        return
+    }
+    SearchScopes.parse(query)?.let { scoped ->
+        if (scoped.scope == SearchScopes.TABS) {
+            suggestAdapter?.submit(openTabSuggestions(scoped.rest, max = 8, minLength = 0), scoped.rest)
+            return
+        }
+        try {
+            suggestIo.execute {
+                if (id != suggestSeq) return@execute
+                val items = try { scopedMatches(scoped) } catch (t: Throwable) { emptyList() }
+                runOnUiThread {
+                    if (id == suggestSeq && searchMode) suggestAdapter?.submit(items, scoped.rest)
+                }
+            }
+        } catch (e: java.util.concurrent.RejectedExecutionException) { /* closing down */ }
+        return
+    }
     // Gathered here, on the main thread, where the tab list and the
     // clipboard live: the link just copied, then open tabs that match.
     val first = mutableListOf<JSONObject>()
@@ -286,19 +319,36 @@ internal fun MainActivity.fetchSuggests(query: String) {
     } catch (e: java.util.concurrent.RejectedExecutionException) { /* closing down */ }
 }
 
+/** Bookmarks or history alone, for @bookmarks and @history. Off the main thread. */
+internal fun MainActivity.scopedMatches(scoped: SearchScopes.Scoped): List<JSONObject> {
+    val found = if (scoped.scope == SearchScopes.BOOKMARKS) {
+        Bookmarks.load(this).filter { matchesQuery(it.title, it.url, scoped.rest) }
+            .map { Triple("bookmark", it.title, it.url) }
+    } else {
+        History.load(this).filter { matchesQuery(it.title, it.url, scoped.rest) }
+            .map { Triple("history", it.title, it.url) }
+    }
+    return found.distinctBy { it.third }.take(8).map { (kind, title, url) ->
+        JSONObject().put("kind", kind).put("title", PageLabel.title(title, url))
+            .put("url", url).put("sub", siteNameOf(url).ifBlank { url })
+    }
+}
+
 /**
  * Open tabs matching what is typed, offered as "Switch to tab" - so typing
  * the name of a site already open goes to it instead of opening it twice.
  * Night Owl's tabs and the others are never offered across the line.
  */
-internal fun MainActivity.openTabSuggestions(q: String): List<JSONObject> {
-    if (q.length < 2) return emptyList()
+internal fun MainActivity.openTabSuggestions(
+    q: String, max: Int = 2, minLength: Int = 2
+): List<JSONObject> {
+    if (q.length < minLength) return emptyList()
     val active = tabs.activeTab
     return tabs.tabs.asSequence()
         .filter { it !== active && it.isPrivate == nightOwl }
         .filter { it.url.startsWith("http://") || it.url.startsWith("https://") }
         .filter { matchesQuery(it.title, it.url, q) }
-        .take(2)
+        .take(max)
         .map { t ->
             JSONObject()
                 .put("kind", "tab")

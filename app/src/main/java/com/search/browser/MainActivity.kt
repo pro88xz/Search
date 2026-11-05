@@ -5497,7 +5497,15 @@ return {title:title,lang:(document.documentElement.lang||''),parts:parts};
         binding.urlBar.setOnEditorActionListener { _, actionId, event ->
             val enter = actionId == EditorInfo.IME_ACTION_GO ||
                 event?.keyCode == KeyEvent.KEYCODE_ENTER
-            if (enter) { go(binding.urlBar.text.toString()); true } else false
+            if (enter) {
+                val text = binding.urlBar.text.toString()
+                // After a shortcut (@tabs mail), Enter opens the best match, as
+                // in Chrome; it never searches the web for "@tabs mail".
+                if (SearchScopes.parse(text) != null || SearchScopes.offers(text).isNotEmpty()) {
+                    suggestAdapter?.firstItem()?.let { pickSuggestion(it) }
+                } else go(text)
+                true
+            } else false
         }
     }
 
