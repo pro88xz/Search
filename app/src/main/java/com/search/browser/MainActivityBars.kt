@@ -25,7 +25,17 @@ internal fun MainActivity.barsMayHide(web: View): Boolean =
         // and the bars come straight back when it opens anyway.
         !pageTyping &&
         // With TalkBack the bars are found by touch; they stay put.
-        !touchExploration
+        !touchExploration &&
+        // Nor on home with a wallpaper. Sliding the bars away grows the page
+        // and moves it up, and the wallpaper lives in the page: it jumped up
+        // and down with every scroll of the feed, and was re-scaled each
+        // time - a 4K picture, drawn again at its new size, with its flat
+        // colour showing as a band across the screen until it was.
+        !wallpaperHome(web)
+
+/** Home is on screen in [web] with a wallpaper behind it (HomeWallpapers; never in Night Owl). */
+internal fun MainActivity.wallpaperHome(web: View): Boolean =
+    !nightOwl && (web as? android.webkit.WebView)?.url == homePage && HomeWallpapers.current(this) != null
 
 internal fun MainActivity.onPageScrollForBars(web: View, y: Int, oldY: Int) {
     val dy = y - oldY
@@ -473,14 +483,15 @@ internal fun MainActivity.refreshWallpaperBar() {
     if (barsHidden || pageUnderBars || barOverlapHome != true ||
         bar.width <= 0 || bar.height <= 0 || page.height <= 0) return
     val lift = binding.rootView.paddingTop + bar.height
-    if (lift != wallpaperLift) {
+    val span = lift + page.height
+    if (lift != wallpaperLift || span != wallpaperSpan) {
         wallpaperLift = lift
+        wallpaperSpan = span
         // A home page already open takes it at once; one opening reads it (getConfig).
         activeWeb()?.takeIf { it.url == homePage }?.evaluateJavascript(
-            "window.__setWallpaper && window.__setWallpaper(" + HomeWallpapers.json(w, lift) + ")", null)
+            "window.__setWallpaper && window.__setWallpaper(" + HomeWallpapers.json(w, lift, span) + ")", null)
     }
     val width = bar.width
-    val span = lift + page.height
     // The file home.html picks for this screen.
     val dm = resources.displayMetrics
     val large = maxOf(dm.widthPixels, dm.heightPixels) > 2816

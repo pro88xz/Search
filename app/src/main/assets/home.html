@@ -713,8 +713,15 @@
      the picture runs up behind the bar and the status bar. */
   html.wp { background:var(--wp-bottom); }
   html.wp body { background:transparent; }
+  /* Its height is fixed (--wp-h, the app's measure of the screen's top to the
+     page's bottom at rest), not the page's height of the moment: sized to
+     the page, the picture was scaled again every time the page changed size
+     - the keyboard, the bars - and a 4K picture redrawn at a new size shows
+     its flat colour as a band until it is done. Until the app has measured,
+     it fills the page as before. */
   html.wp::before {
-    content:""; position:fixed; left:0; top:calc(0px - var(--wp-lift, 0px)); right:0; bottom:0; z-index:-1; pointer-events:none;
+    content:""; position:fixed; left:0; top:calc(0px - var(--wp-lift, 0px)); right:0; z-index:-1; pointer-events:none;
+    height:var(--wp-h, calc(100% + var(--wp-lift, 0px)));
     background:var(--wp-top) var(--wp-img) center top / cover no-repeat;
     animation:washIn .5s var(--ease-out);
   }
@@ -865,7 +872,7 @@
     var ok = !!w && /^[a-z_]+$/.test(String(w.id || '')) && !!parseHex(w.top) && !!parseHex(w.bottom);
     wallpaper = ok ? w : null;
     var st = root.style;
-    if (!wallpaper) { st.removeProperty('--wp-img'); st.removeProperty('--wp-lift'); return; }
+    if (!wallpaper) { st.removeProperty('--wp-img'); st.removeProperty('--wp-lift'); st.removeProperty('--wp-h'); return; }
     var px = Math.max(screen.width || 0, screen.height || 0) * (window.devicePixelRatio || 1);
     var file = 'wallpapers/' + wallpaper.id + (px <= 2816 ? '-1440' : '') + '.webp';
     st.setProperty('--wp-img', 'url("' + file + '")');
@@ -873,6 +880,10 @@
     // pixels (MainActivity.wallpaperLift); 0 until the app has measured it.
     var lift = Number(wallpaper.lift);
     st.setProperty('--wp-lift', (lift > 0 && lift < 2000 ? lift / (window.devicePixelRatio || 1) : 0) + 'px');
+    // Its height, fixed (see html.wp::before); none yet, it fills the page.
+    var span = Number(wallpaper.span);
+    if (span > 0 && span < 20000) st.setProperty('--wp-h', span / (window.devicePixelRatio || 1) + 'px');
+    else st.removeProperty('--wp-h');
     st.setProperty('--wp-top', toHex(parseHex(wallpaper.top)));
     st.setProperty('--wp-bottom', toHex(parseHex(wallpaper.bottom)));
   }

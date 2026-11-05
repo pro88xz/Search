@@ -48,10 +48,15 @@ object HomeWallpapers {
      * the top of the screen, and the top bar paints the part above the page
      * ([topSlice]).
      */
-    fun json(w: Wallpaper?, lift: Int = 0): String =
+    fun json(w: Wallpaper?, lift: Int = 0, span: Int = 0): String =
         if (w == null) "null"
         else org.json.JSONObject().put("id", w.id).put("dark", w.dark)
-            .put("top", hex(w.top)).put("bottom", hex(w.bottom)).put("lift", lift).toString()
+            .put("top", hex(w.top)).put("bottom", hex(w.bottom)).put("lift", lift)
+            // The height it is laid out at, from the top of the screen to the
+            // bottom of the page with the bars in place ([topSlice]'s span),
+            // so the page sizes it once rather than to whatever the page's
+            // height is at the moment (0: not measured yet).
+            .put("span", span).toString()
 
     /**
      * The part of [w] behind the top bar and the status bar, [width] by
