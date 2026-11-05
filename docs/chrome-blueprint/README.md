@@ -53,7 +53,7 @@ Ergonomic floors taken from Chrome (Search may be bigger, never smaller):
 | --- | --- | --- |
 | Toolbar height | 56dp (`default_action_bar_height`) | Top bar is 58dp (a 44dp box with 7dp above and below); bottom bar 56dp. Fine. |
 | Address field height | 40dp pill, +8dp on focus (`modern_toolbar_background_size`, `location_bar_background_on_focus_height_increase`) | 44dp. Fine: more than the floor. |
-| Address text | 16sp (`location_bar_url_text_size`) | Check: must not go below 16sp. |
+| Address text | 16sp (`location_bar_url_text_size`) | 15sp (`activity_main.xml`). 1sp under the floor; the owner's call. |
 | Toolbar buttons | 48dp wide (`location_bar_action_icon_width` = `min_touch_target_size`) | 48dp `touch_target`. Fine. |
 | Suggestion rows | 56dp; 48dp compact (`omnibox_suggestion_content_height`) | 48dp minimum (`item_suggestion.xml`). Fine. |
 | Load progress | 2dp line (`toolbar_progress_bar_height`); hides 100ms after the end | Search uses its own ring (`LoadRingView`). A different look, by design. |
@@ -79,7 +79,7 @@ Batch numbers refer to the roadmap below.
 | Clipboard link and text | `omnibox/suggestions/clipboard` | Have: link, and text to search for ("Text you copied"). Image: Gap | 3 ✅ |
 | Refine (fill the box from a suggestion) | `BaseSuggestionView` action | Have (`sugFill`) | — |
 | Delete a history suggestion (long-press) | `SuggestionHost.onDeleteMatch` | Gap | 1 ✅ |
-| Inline autocomplete of sites you visit | `AutocompleteMediator` | Gap. Deferred: rewriting the field while the keyboard is composing a word is where IME bugs live (Chrome has a dedicated model for it, `SpannableAutocompleteEditTextModel`); needs testing on a phone with Gboard and Samsung Keyboard | 3 |
+| Inline autocomplete of sites you visit | `AutocompleteMediator` | Have, **off by default until tested on a phone** (Search Security › Complete addresses as you type). `AutocompleteEditText` takes the suggestion away before every keyboard edit, as Chrome's field does; test with Gboard and Samsung Keyboard before turning it on for everyone | 3 ✅ |
 | Answers in the box (calculator) | `omnibox/suggestions/answer` | Gap: a local calculator answer | 1 ✅ |
 | Site search shortcuts (`@bookmarks`, `@tabs`, `@history`, engine keywords) | `custom_site_search_preferences.xml` | Have: `@bookmarks`, `@history`, `@tabs` (`SearchScopes`), searched on the phone, Enter opens the best match. Keywords (`w`, `yt`, `maps`, `g`, `ddg`, `b` and engine names, `Keywords`) offered as the first suggestion; Enter is unchanged | 3 ✅ |
 | Custom search engines | `custom_search_engine_preferences.xml` | Have: one engine of the user's own (name + address with `%s`), added, changed or removed under Settings › Search engine. It gets no suggestions rather than Google's | 3 ✅ |
@@ -142,7 +142,7 @@ Batch numbers refer to the roadmap below.
 | Default zoom, saved zoom per site, force zoom | Have | — |
 | Show zoom in the main menu | Have (Menu › Zoom) | — |
 | Simplified view (offer reader mode on articles) | Have: off by default as in Chrome (Accessibility › Reading), once per site per session, never on top of a translate offer | 4 ✅ |
-| Match Android font size | Gap. Deferred: text zoom is worked out in four places (new tabs, per-site zoom, the zoom panel, the text-size presets), which need one shared rule first | 4 |
+| Match Android font size | Have, off by default (Accessibility). Every text size now goes through one rule, `baseTextZoom` | 4 ✅ |
 
 ### Languages, downloads, start-up
 
@@ -178,15 +178,12 @@ Batch numbers refer to the roadmap below.
 
 These need a phone to test on, or a decision from the owner, before they are worth doing:
 
-- **Inline autocomplete.** Rewriting the field while the keyboard is composing a word is where
-  IME bugs (doubled letters, lost input) come from; test on Gboard and Samsung Keyboard first.
 - **Archiving inactive tabs.** Chrome moves tabs unopened for weeks into an "Inactive tabs"
   section of the tab switcher. That needs a last-opened time saved with each tab
   (`SessionStore`) and a new section in the deck: a visible UI change to try on a device.
 - **Desktop site per site.** WebView sets the user agent per view, not per navigation, so
   switching it as a link crosses into a remembered site means reloading inside a navigation
   callback, which the HANDOFF warns can crash the app. Needs a careful design and device testing.
-- **Match Android font size.** Text zoom is worked out in four places; they need one shared rule.
 - **Homepage choice.** Home is `home.html` with the feed and its ad; letting another page be
   home changes what the ad and feed code can assume. An owner decision.
 - **App language.** The app's text is written in the code in English only, so a per-app

@@ -2092,7 +2092,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             // --- Accessibility: text size ---
-            textZoom = Settings.getTextScale(this@MainActivity)
+            textZoom = this@MainActivity.baseTextZoom()
 
             // --- Security toggles ---
             // Multiple windows stay ON whatever the pop-up setting says, because
@@ -5139,6 +5139,9 @@ class MainActivity : AppCompatActivity() {
     // Sites offered reader view this session (maybeOfferReader), and the
     // page that last got an offer, so it never gets two at once.
     internal val readerOffered = HashSet<String>()
+    // Sites the search box can complete to, and when they were read (completionHosts).
+    internal var completionHostList: List<String> = emptyList()
+    internal var completionHostsAt = 0L
     internal var offerShownFor: String? = null
 
     // ---------- Night Owl: lock and hide ----------
@@ -5492,11 +5495,21 @@ return {title:title,lang:(document.documentElement.lang||''),parts:parts};
         binding.micBtn.setOnClickListener { launchVoiceSearch() }
         binding.scanBtn.setOnClickListener { launchScan() }
         binding.urlBar.addTextChangedListener(object : android.text.TextWatcher {
+            // How long the typed text was, to tell typing on from deleting.
+            private var typedLength = 0
             override fun beforeTextChanged(cs: CharSequence?, a: Int, b: Int, c: Int) {}
             override fun onTextChanged(cs: CharSequence?, a: Int, b: Int, c: Int) {}
             override fun afterTextChanged(e: android.text.Editable?) {
+                // The field adding or taking away its own suggestion.
+                if (binding.urlBar.isApplying) return
                 if (searchMode) {
-                    fetchSuggests(e?.toString() ?: "")
+                    // Suggestions are for what was typed, never the inline
+                    // completion shown after it (AutocompleteEditText).
+                    val typed = binding.urlBar.typedText
+                    val grew = typed.length > typedLength
+                    typedLength = typed.length
+                    if (grew) offerInlineCompletion(typed)
+                    fetchSuggests(typed)
                     updateSearchFieldActions()
                 }
             }

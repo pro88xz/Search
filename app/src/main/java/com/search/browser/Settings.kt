@@ -155,6 +155,7 @@ object Settings {
     const val SEC_CONFIRM_DOWNLOADS = "sec_confirm_downloads" // default true
 
     const val SEARCH_SUGGESTIONS = "search_suggestions" // default true: the engine's suggestions as you type
+    const val INLINE_COMPLETE = "inline_complete"       // default false: complete a used site's address in the box as you type
 
     // Adblock
     const val ADBLOCK_ENABLED = "adblock_enabled"     // default false
@@ -238,6 +239,7 @@ object Settings {
     // Accessibility
     const val A11Y_TEXT_SCALE = "a11y_text_scale"     // int percent, default 100
     const val A11Y_FORCE_ZOOM = "a11y_force_zoom"     // default false: pinch-zoom even where a site turns it off
+    const val A11Y_MATCH_FONT = "a11y_match_font"     // default false: page text also follows Android's font size
     fun getTextScale(c: Context): Int = prefs(c).getInt(A11Y_TEXT_SCALE, 100)
     fun setTextScale(c: Context, pct: Int) { prefs(c).edit().putInt(A11Y_TEXT_SCALE, pct).apply() }
 }

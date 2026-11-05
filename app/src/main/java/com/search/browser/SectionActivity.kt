@@ -298,6 +298,12 @@ class SectionActivity : AppCompatActivity() {
                 "type leaves the phone until you search for it.",
             Settings.SEARCH_SUGGESTIONS, true
         )
+        addToggle(
+            "Complete addresses as you type",
+            "Type the start of a site you use, like \"you\", and the box fills in the rest " +
+                "(youtube.com). Go opens it; keep typing to ignore it. Worked out on the phone.",
+            Settings.INLINE_COMPLETE, false
+        )
         // Answers about camera, microphone and location are remembered per
         // site, so without this there is no way to change your mind.
         addAction(
@@ -453,6 +459,12 @@ class SectionActivity : AppCompatActivity() {
         if (checkId != -1) radios.check(checkId)
 
         group("Zoom")
+        addToggle(
+            "Match Android font size",
+            "Page text also follows the font size in your phone's own settings, on top " +
+                "of the text size above.",
+            Settings.A11Y_MATCH_FONT, false
+        )
         addToggle(
             "Force enable zoom",
             "Pinch to zoom on every page, even where a site turns zooming off.",
