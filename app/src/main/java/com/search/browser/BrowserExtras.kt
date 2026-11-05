@@ -103,6 +103,25 @@ object PageTranslate {
  */
 object ReaderView {
 
+    /**
+     * Whether the page holds an article worth offering reader view for
+     * (Settings > Accessibility > Offer simplified view): the same search for
+     * the largest block of real paragraphs as [JS], touching nothing, with a
+     * higher bar - a long read, not a few paragraphs. Answers "yes" or "no".
+     */
+    val DETECT_JS: String = """
+(function(){
+if(document.documentElement.getAttribute('data-search-reader'))return 'no';
+var score=0,cs=document.querySelectorAll('article,main,[role=main],[itemprop=articleBody]');
+if(!cs.length)cs=document.querySelectorAll('section,div');
+for(var i=0;i<cs.length&&i<1500;i++){var e=cs[i],ps=e.querySelectorAll('p');if(ps.length<5)continue;
+var len=0;for(var j=0;j<ps.length;j++){var t=ps[j].textContent.length;if(t>40)len+=t;}
+var ln=0,as=e.querySelectorAll('a');for(var k=0;k<as.length;k++)ln+=as[k].textContent.length;
+var s=len-ln*1.5;if(s>score)score=s;}
+return score>=2500?'yes':'no';
+})()
+""".trimIndent()
+
     val JS: String = """
 (function(){
 var R='data-search-reader';

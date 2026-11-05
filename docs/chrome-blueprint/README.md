@@ -81,7 +81,7 @@ Batch numbers refer to the roadmap below.
 | Delete a history suggestion (long-press) | `SuggestionHost.onDeleteMatch` | Gap | 1 ✅ |
 | Inline autocomplete of sites you visit | `AutocompleteMediator` | Gap. Deferred: rewriting the field while the keyboard is composing a word is where IME bugs live (Chrome has a dedicated model for it, `SpannableAutocompleteEditTextModel`); needs testing on a phone with Gboard and Samsung Keyboard | 3 |
 | Answers in the box (calculator) | `omnibox/suggestions/answer` | Gap: a local calculator answer | 1 ✅ |
-| Site search shortcuts (`@bookmarks`, `@tabs`, `@history`, engine keywords) | `custom_site_search_preferences.xml` | Have: `@bookmarks`, `@history`, `@tabs` (`SearchScopes`), searched on the phone, Enter opens the best match. Engine keywords: Gap | 3 ✅ |
+| Site search shortcuts (`@bookmarks`, `@tabs`, `@history`, engine keywords) | `custom_site_search_preferences.xml` | Have: `@bookmarks`, `@history`, `@tabs` (`SearchScopes`), searched on the phone, Enter opens the best match. Keywords (`w`, `yt`, `maps`, `g`, `ddg`, `b` and engine names, `Keywords`) offered as the first suggestion; Enter is unchanged | 3 ✅ |
 | Custom search engines | `custom_search_engine_preferences.xml` | Have: one engine of the user's own (name + address with `%s`), added, changed or removed under Settings › Search engine. It gets no suggestions rather than Google's | 3 ✅ |
 | Edit current URL row (copy, share, edit) | `omnibox/suggestions/editurl` | Have: the page's row first when search opens on it (tap copies, hold shares, arrow edits). **Privacy bug fixed with it**: the prefilled address was treated as typing and sent to the suggest server on every tap of the bar | 3 ✅ |
 | Cached zero-prefix suggestions | `CachedZeroSuggestionsManager` | Have (local recents are instant) | — |
@@ -106,7 +106,7 @@ Batch numbers refer to the roadmap below.
 | Do Not Track | `do_not_track_preferences.xml` | Folded into the opt-out above (DNT is deprecated) | 1 ✅ |
 | Preload pages | `privacy_preferences.xml` | WebView limit: `androidx.webkit` prefetch is experimental | 5 |
 | Lock private tabs on leaving | `IncognitoReauthSettingSwitchPreference` | Have (Night Owl lock) | — |
-| Privacy Guide | `privacy_guide` | Gap: a short guided review | 4 |
+| Privacy Guide | `privacy_guide` | Have: Privacy review in Search Security, six settings one at a time | 4 ✅ |
 
 ### Security
 
@@ -115,7 +115,7 @@ Batch numbers refer to the roadmap below.
 | Safe Browsing (standard) | `safe_browsing_preferences.xml` | Have (WebView built-in) | — |
 | Enhanced Safe Browsing | `enhanced_protection_preferences.xml` | Skip (Google-account service) | — |
 | Always use secure connections | `privacy_preferences.xml` | Have (HTTPS-only) | — |
-| Secure DNS | `privacy_preferences.xml` | WebView limit: follows Android's Private DNS. We link to it | 4 |
+| Secure DNS | `privacy_preferences.xml` | WebView limit: follows Android's Private DNS. Search Security links to it (Android 9+) | 4 ✅ |
 | Look-alike site warning | | Have | — |
 | Dangerous download warnings | | Have (risky downloads) | — |
 | Safety check (one screen for every protection) | `SafetyHubFragment`, `safety_hub` | Have: top of Search Security; each protection that is off, one tap to turn on; WebView version with a Play link | 4 ✅ |
@@ -141,7 +141,7 @@ Batch numbers refer to the roadmap below.
 | --- | --- | --- |
 | Default zoom, saved zoom per site, force zoom | Have | — |
 | Show zoom in the main menu | Have (Menu › Zoom) | — |
-| Simplified view (offer reader mode on articles) | Partial (Reader view on request; no offer) | 4 |
+| Simplified view (offer reader mode on articles) | Have: off by default as in Chrome (Accessibility › Reading), once per site per session, never on top of a translate offer | 4 ✅ |
 | Match Android font size | Gap. Deferred: text zoom is worked out in four places (new tabs, per-site zoom, the zoom panel, the text-size presets), which need one shared rule first | 4 |
 
 ### Languages, downloads, start-up
@@ -152,7 +152,7 @@ Batch numbers refer to the roadmap below.
 | Offer to translate pages in other languages | Have: from the page's `lang`, once per site per session, never in Night Owl (Settings › Accessibility › Languages) | 4 ✅ |
 | App language (Android 13 per-app language) | Gap: `locales_config` | 5 |
 | Download location, ask where to save | Gap (SAF picker) | 5 |
-| Automatically open PDFs | Partial | 5 |
+| Automatically open PDFs | Have: off by default (Accessibility › Reading); only while Search is on screen; DownloadManager downloads only | 5 ✅ |
 | Homepage / on start-up | Partial (home after 4 h away). Custom homepage: Gap | 4 |
 
 ### Performance

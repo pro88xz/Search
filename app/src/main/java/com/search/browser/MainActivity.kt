@@ -2454,6 +2454,9 @@ class MainActivity : AppCompatActivity() {
                     scheduleVideoScan(700L)
                     // A page in another language than the phone's.
                     maybeOfferTranslate(view)
+                    // A long article: reader view, when that offer is on.
+                    // After the translate offer has had its chance.
+                    uiHandler.postDelayed({ maybeOfferReader(view) }, 1500L)
                 }
                 // The upgrade worked, so nothing needs remembering about it.
                 url?.let { upgradedFrom.remove(it) }
@@ -5133,6 +5136,10 @@ class MainActivity : AppCompatActivity() {
     internal val lookalikeWarned = HashSet<String>()
     // Sites offered translation this session (maybeOfferTranslate).
     internal val translateOffered = HashSet<String>()
+    // Sites offered reader view this session (maybeOfferReader), and the
+    // page that last got an offer, so it never gets two at once.
+    internal val readerOffered = HashSet<String>()
+    internal var offerShownFor: String? = null
 
     // ---------- Night Owl: lock and hide ----------
     //

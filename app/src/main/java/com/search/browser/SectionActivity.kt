@@ -147,8 +147,79 @@ class SectionActivity : AppCompatActivity() {
         }
     }
 
+    /** One question in the privacy review: a setting, what it does, and its default. */
+    private class ReviewStep(val title: String, val body: String, val key: String, val default: Boolean)
+
+    private val reviewSteps by lazy {
+        listOf(
+            ReviewStep("Search suggestions",
+                "As you type, Search asks your search engine for suggestions, so the engine " +
+                    "sees what you type before you search. Off, nothing you type leaves the " +
+                    "phone until you search for it.",
+                Settings.SEARCH_SUGGESTIONS, true),
+            ReviewStep("Block third-party cookies",
+                "Stops companies following you from site to site with cookies. A few " +
+                    "checkouts, payment pages and sign-ins need them.",
+                Settings.SEC_BLOCK_3P_COOKIES, false),
+            ReviewStep("Remove tracking from links",
+                "Takes tracking tags (utm_, fbclid and the like) off links you tap, copy or " +
+                    "share. The page is the same without them.",
+                Settings.CLEAN_LINKS, true),
+            ReviewStep("Ask sites not to sell or share your data",
+                "Sends Global Privacy Control, the opt-out signal privacy laws recognise, " +
+                    "and Do Not Track. Each site decides how it responds.",
+                Settings.PRIVACY_OPT_OUT, true),
+            ReviewStep("Safe Browsing",
+                "Warns you before dangerous sites and downloads, using Google Safe Browsing.",
+                Settings.SEC_SAFE_BROWSING, true),
+            ReviewStep("Remove permissions from unused sites",
+                "Takes back camera, microphone, location and pop-up permissions from sites " +
+                    "you haven't used in " + SitePermissions.UNUSED_DAYS + " days.",
+                Settings.PERMISSIONS_AUTO_REVOKE, true)
+        )
+    }
+
+    /**
+     * Privacy review, as Chrome's Privacy Guide: the settings that decide what
+     * sites and search engines learn about you, one at a time, each explained,
+     * each kept or changed with one tap.
+     */
+    private fun privacyReview(i: Int) {
+        if (i >= reviewSteps.size) {
+            toast("Privacy review done")
+            recreate()
+            return
+        }
+        val s = reviewSteps[i]
+        val on = Settings.getBool(this, s.key, s.default)
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(this, R.style.Theme_Search_Dialog)
+            .setTitle(s.title + "  (" + (i + 1) + " of " + reviewSteps.size + ")")
+            .setMessage(s.body + "\n\nIt's " + (if (on) "on" else "off") + " now.")
+            .setPositiveButton(if (on) "Keep on" else "Turn on") { _, _ ->
+                Settings.setBool(this, s.key, true); privacyReview(i + 1)
+            }
+            .setNegativeButton(if (on) "Turn off" else "Keep off") { _, _ ->
+                Settings.setBool(this, s.key, false); privacyReview(i + 1)
+            }
+            .setNeutralButton("Stop") { _, _ -> recreate() }
+            .show()
+    }
+
     private fun buildSecurity() {
         buildSafetyCheck()
+        addAction("Privacy review",
+            "Go through the settings that decide what sites and your search engine " +
+                "learn about you, one at a time.") { privacyReview(0) }
+        // Private DNS (Android 9+) is the phone's own setting; WebView uses it.
+        if (android.os.Build.VERSION.SDK_INT >= 28) {
+            addAction("Secure DNS",
+                "Search uses your phone's Private DNS, which encrypts the lookups for the " +
+                    "sites you visit. Tap to open network settings, then Private DNS.") {
+                try {
+                    startActivity(android.content.Intent(android.provider.Settings.ACTION_WIRELESS_SETTINGS))
+                } catch (e: Exception) { toast("Couldn't open network settings") }
+            }
+        }
         group("Protection")
         addToggle(
             "HTTPS-only mode",
@@ -395,6 +466,20 @@ class SectionActivity : AppCompatActivity() {
             "When a page is in another language than your phone's, offer to show it " +
                 "in yours through Google Translate. Never in Night Owl.",
             Settings.OFFER_TRANSLATE, true
+        )
+
+        group("Reading")
+        addToggle(
+            "Offer simplified view",
+            "On pages with a long article, offer reader view: the text alone in clean, " +
+                "large type.",
+            Settings.OFFER_READER, false
+        )
+        addToggle(
+            "Open PDFs when they finish",
+            "A PDF you download opens in your PDF reader as soon as it's saved, " +
+                "if you're still in Search.",
+            Settings.AUTO_OPEN_PDF, false
         )
 
         siteZoomList = group("Sites with their own zoom")
