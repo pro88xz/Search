@@ -85,6 +85,9 @@ Waiting on the owner's decision or a test on a phone; reasons in `docs/chrome-bl
 
 ## Important gotchas (learned the hard way)
 
+- **The search box's text can be null.** `binding.urlBar` is `AutocompleteEditText`, an `AppCompatEditText`, whose `getText()` is `Editable?` - unlike `EditText`'s. Use `text?.toString()`, `isNullOrEmpty()`, or `typedText` (what was typed, without the inline completion); `text.isNotEmpty()` does not compile. This broke two builds on main in Nov 2026.
+- **Check CI on the branch before merging into main.** A failed run on main emails the owner. Merge once the branch's run (unit tests, lint, release build) is green.
+
 - **Two repos, two terminals.** Search is `/workspaces/Search`; ToolsePulse is a separate repo/Codespace. Commands must run in the right terminal — a failed `cd` can misplace files. Always prefix with `cd /workspaces/<repo> &&`.
 - **Terminal auto-linkifies URLs on paste.** Pasting a bare domain like a URL can get mangled into markdown link syntax, corrupting files (this broke Settings.kt once). When editing code that contains URLs, build the URL from string parts in code, or avoid pasting raw URLs.
 - **github.dev can't build.** Must use a full Codespace from github.com.
